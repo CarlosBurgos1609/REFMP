@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "1026520234513",
+    "project_id": "musicalnetworkpasto",
+    "storage_bucket": "musicalnetworkpasto.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026520234513:android:44acb92693da01ac390fb0",
+        "android_client_info": {
+          "package_name": "com.music.refmp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDm0LQHjBCzwN8PeNhaX_WPLYRDF9OtlzI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026520234513:android:270937b1ee544ee4390fb0",
+        "android_client_info": {
+          "package_name": "com.pasto.music"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDm0LQHjBCzwN8PeNhaX_WPLYRDF9OtlzI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026520234513:android:08303af3907358ae390fb0",
+        "android_client_info": {
+          "package_name": "com.pasto.musicnetwor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDm0LQHjBCzwN8PeNhaX_WPLYRDF9OtlzI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
