@@ -38,7 +38,7 @@ class InicioPage extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: Image.asset(
-                    'assets/images/appbar.png',
+                    'assets/images/logofn.png',
                     width: MediaQuery.of(context).size.width * 0.9,
                     height: MediaQuery.of(context).size.width * 0.27,
                     fit: BoxFit.cover,
@@ -50,7 +50,7 @@ class InicioPage extends StatelessWidget {
                 'La Red de Escuelas de Formación Musical de Pasto es un proyecto que busca fomentar la educación musical en la región mediante la enseñanza de instrumentos y la promoción de la cultura musical local. Está conformada por diversas escuelas y centros de formación que ofrecen a niños, jóvenes y adultos la oportunidad de aprender música de manera estructurada. Su objetivo principal es desarrollar habilidades musicales, promover valores como la disciplina y el trabajo en equipo, y preservar las tradiciones culturales de la región. Además, la red se enfoca en brindar acceso inclusivo a la educación musical, contribuyendo al desarrollo personal y social de los participantes. También organiza actividades como conciertos, talleres y encuentros musicales que fortalecen la vida cultural de la comunidad.',
                 textAlign: TextAlign.justify,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 18,
                   height: 1.5,
                 ),
               ),
@@ -150,17 +150,19 @@ class _LoginPageState extends State<LoginPage> {
             // ),
             const SizedBox(height: 20),
             TextField(
+              style: TextStyle(color: Colors.blue),
               controller: emailController,
               decoration: InputDecoration(
-                labelText: 'Correo Electrónico',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
+                  labelText: 'Correo Electrónico',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  fillColor: Colors.blue),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 20),
             TextField(
+              style: TextStyle(color: Colors.blue),
               controller: passwordController,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
