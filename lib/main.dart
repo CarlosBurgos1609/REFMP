@@ -244,6 +244,7 @@ class _RegisterPageState extends State<RegisterPage> {
       //   email: emailController.text.trim(),
       //   password: passwordController.text.trim(),
       // );
+      // para la contraseña
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Registro exitoso')),
       );
