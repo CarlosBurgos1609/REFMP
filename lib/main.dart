@@ -50,11 +50,11 @@ class InicioPage extends StatelessWidget {
                 'La Red de Escuelas de Formación Musical de Pasto es un proyecto que busca fomentar la educación musical en la región mediante la enseñanza de instrumentos y la promoción de la cultura musical local. Está conformada por diversas escuelas y centros de formación que ofrecen a niños, jóvenes y adultos la oportunidad de aprender música de manera estructurada. Su objetivo principal es desarrollar habilidades musicales, promover valores como la disciplina y el trabajo en equipo, y preservar las tradiciones culturales de la región. Además, la red se enfoca en brindar acceso inclusivo a la educación musical, contribuyendo al desarrollo personal y social de los participantes. También organiza actividades como conciertos, talleres y encuentros musicales que fortalecen la vida cultural de la comunidad.',
                 textAlign: TextAlign.justify,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 18.5,
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 40),
               ElevatedButton(
                 onPressed: () {
                   Navigator.push(
@@ -64,14 +64,15 @@ class InicioPage extends StatelessWidget {
                 },
                 style: ElevatedButton.styleFrom(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 80, vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 child: const Text(
-                  'Ir a Login',
-                  style: TextStyle(fontSize: 16, color: Colors.blue),
+                  'Ir al Inicio de Sesión',
+                  style: TextStyle(fontSize: 20, color: Colors.blue),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ],
@@ -237,6 +238,8 @@ class RegisterPage extends StatefulWidget {
 class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController lastsController = TextEditingController();
 
   Future<void> registerUser() async {
     try {
@@ -263,9 +266,16 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Registro'),
+        title: const Text(
+          'Registro',
+          style: TextStyle(
+            fontSize: 22,
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -278,6 +288,28 @@ class _RegisterPageState extends State<RegisterPage> {
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: TextEditingController(),
+              decoration: InputDecoration(
+                labelText: 'Nombres',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              keyboardType: TextInputType.name,
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: lastsController,
+              decoration: InputDecoration(
+                labelText: 'Apellidos',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              keyboardType: TextInputType.name,
             ),
             const SizedBox(height: 20),
             TextField(
