@@ -293,17 +293,20 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             const SizedBox(height: 20),
             TextField(
-              controller: TextEditingController(),
+              style: TextStyle(color: Colors.blue),
+              controller: nameController,
               decoration: InputDecoration(
-                labelText: 'Nombres',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
+                  labelText: 'Nombres',
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  focusColor: Colors.blue),
               keyboardType: TextInputType.name,
             ),
             const SizedBox(height: 20),
             TextField(
+              style: TextStyle(color: Colors.blue),
               controller: lastsController,
               decoration: InputDecoration(
                 labelText: 'Apellidos',
@@ -315,6 +318,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             const SizedBox(height: 20),
             TextField(
+              style: TextStyle(color: Colors.blue),
               controller: emailController,
               decoration: InputDecoration(
                 labelText: 'Correo Electrónico',
@@ -326,6 +330,7 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
             const SizedBox(height: 20),
             TextField(
+              style: TextStyle(color: Colors.blue),
               controller: passwordController,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
@@ -346,7 +351,7 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               child: const Text(
                 'Registrarse',
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(fontSize: 16, color: Colors.blue),
               ),
             ),
           ],
