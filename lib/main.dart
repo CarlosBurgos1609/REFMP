@@ -281,13 +281,15 @@ class _RegisterPageState extends State<RegisterPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Registro',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            Center(
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/refmmp.png',
+                  width: MediaQuery.of(context).size.width * 0.5,
+                  height: MediaQuery.of(context).size.width * 0.5,
+                  fit: BoxFit.cover,
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             TextField(
