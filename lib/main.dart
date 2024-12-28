@@ -154,11 +154,14 @@ class _LoginPageState extends State<LoginPage> {
               style: TextStyle(color: Colors.blue),
               controller: emailController,
               decoration: InputDecoration(
-                  labelText: 'Correo Electrónico',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  fillColor: Colors.blue),
+                labelText: 'Correo Electrónico',
+                labelStyle: TextStyle(color: Colors.blue),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 20),
@@ -167,9 +170,12 @@ class _LoginPageState extends State<LoginPage> {
               controller: passwordController,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
+                labelStyle: TextStyle(color: Colors.blue),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
               ),
               obscureText: true,
             ),
@@ -296,12 +302,15 @@ class _RegisterPageState extends State<RegisterPage> {
               style: TextStyle(color: Colors.blue),
               controller: nameController,
               decoration: InputDecoration(
-                  labelText: 'Nombres',
-                  border: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.blue),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  focusColor: Colors.blue),
+                labelText: 'Nombres',
+                labelStyle: TextStyle(color: Colors.blue),
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.blue),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
+              ),
               keyboardType: TextInputType.name,
             ),
             const SizedBox(height: 20),
@@ -310,9 +319,12 @@ class _RegisterPageState extends State<RegisterPage> {
               controller: lastsController,
               decoration: InputDecoration(
                 labelText: 'Apellidos',
+                labelStyle: TextStyle(color: Colors.blue),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
               ),
               keyboardType: TextInputType.name,
             ),
@@ -322,9 +334,12 @@ class _RegisterPageState extends State<RegisterPage> {
               controller: emailController,
               decoration: InputDecoration(
                 labelText: 'Correo Electrónico',
+                labelStyle: TextStyle(color: Colors.blue),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
               ),
               keyboardType: TextInputType.emailAddress,
             ),
@@ -334,9 +349,12 @@ class _RegisterPageState extends State<RegisterPage> {
               controller: passwordController,
               decoration: InputDecoration(
                 labelText: 'Contraseña',
+                labelStyle: TextStyle(color: Colors.blue),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue)),
               ),
               obscureText: true,
             ),
