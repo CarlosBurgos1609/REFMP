@@ -7,7 +7,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Image.asset("assets/images/logofn.png"),
+        title: Image.asset("assets/images/logo-bar.png"),
       ),
       body: Center(
         child: Text(
