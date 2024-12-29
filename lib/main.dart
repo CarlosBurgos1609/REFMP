@@ -386,7 +386,7 @@ class MainPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pantalla Principal'),
+        title: Image.asset("assets/images/logofn.png"),
       ),
       body: Center(
         child: Text(
