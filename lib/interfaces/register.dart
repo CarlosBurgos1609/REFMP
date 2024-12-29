@@ -28,7 +28,10 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
+        MaterialPageRoute(
+            builder: (context) => const HomePage(
+                  title: 'Inicio',
+                )),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
