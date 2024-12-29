@@ -15,7 +15,10 @@ class _HomePageState extends State<HomePage> {
   static const TextStyle optionStyle =
       TextStyle(fontSize: 30, fontWeight: FontWeight.bold);
   static const List<Widget> _widgetOptions = <Widget>[
-    Text('home', style: TextStyle(color: Colors.blue)),
+    Text(
+      'Perfil',
+      style: TextStyle(color: Colors.blue),
+    ),
     Text(
       'Index 1: Business',
       style: optionStyle,
@@ -62,18 +65,22 @@ class _HomePageState extends State<HomePage> {
         child: _widgetOptions[_selectedIndex],
       ),
       drawer: Drawer(
-        // Add a ListView to the drawer. This ensures the user can scroll
-        // through the options in the drawer if there isn't enough vertical
-        // space to fit everything.
         child: ListView(
-          // Important: Remove any padding from the ListView.
           padding: EdgeInsets.zero,
           children: [
             const DrawerHeader(
+                padding: EdgeInsets.fromLTRB(12, 0, 0, 12),
                 decoration: BoxDecoration(
                   color: Colors.blue,
                 ),
-                child: Text("Inicio")),
+                child: Text(
+                  "Inicio",
+                  style: TextStyle(
+                    fontSize: 22,
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )),
             ListTile(
               leading: const Icon(
                 Icons.account_circle_rounded,
