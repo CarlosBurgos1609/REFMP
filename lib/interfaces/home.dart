@@ -70,23 +70,19 @@ class _HomePageState extends State<HomePage> {
           padding: EdgeInsets.zero,
           children: [
             const DrawerHeader(
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                ),
+                child: Text("Inicio")),
+            ListTile(
+              leading: const Icon(
+                Icons.account_circle_rounded,
                 color: Colors.blue,
               ),
-              child: Text('Drawer Header'),
-            ),
-            ListTile(
-              title: const Text('Home'),
-              selected: _selectedIndex == 0,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(0);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('Business'),
+              title: const Text('Perfil',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
               selected: _selectedIndex == 1,
               onTap: () {
                 // Update the state of the app
@@ -96,11 +92,137 @@ class _HomePageState extends State<HomePage> {
               },
             ),
             ListTile(
-              title: const Text('School'),
-              selected: _selectedIndex == 2,
+              leading: const Icon(
+                Icons.home,
+                color: Colors.blue,
+              ),
+              title: const Text(
+                'Inicio',
+                style: TextStyle(color: Colors.blue),
+              ),
+              selected: _selectedIndex == 0,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(2);
+                _onItemTapped(0);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.business_rounded,
+                color: Colors.blue,
+              ),
+              title: const Text('Sedes',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.circle_notifications,
+                color: Colors.blue,
+              ),
+              title: const Text('Notificaciones',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.piano_rounded,
+                color: Colors.blue,
+              ),
+              title: const Text('Instrumento',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.calendar_month_rounded,
+                color: Colors.blue,
+              ),
+              title: const Text('Eventos',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.contacts_rounded,
+                color: Colors.blue,
+              ),
+              title: const Text('Contactos',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.map_outlined,
+                color: Colors.blue,
+              ),
+              title: const Text('Ubicaciones',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
+                // Then close the drawer
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.settings,
+                color: Colors.blue,
+              ),
+              title: const Text('Configuración',
+                  style: TextStyle(
+                    color: Colors.blue,
+                  )),
+              selected: _selectedIndex == 1,
+              onTap: () {
+                // Update the state of the app
+                _onItemTapped(1);
                 // Then close the drawer
                 Navigator.pop(context);
               },
