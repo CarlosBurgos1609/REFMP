@@ -51,6 +51,10 @@ class _HomePageState extends State<HomePage> {
       'Index 8: Configuraciones',
       style: optionStyle,
     ),
+    Text(
+      'Index 9: Descargas',
+      style: optionStyle,
+    ),
   ];
 
   void _onItemTapped(int index) {
