@@ -16,15 +16,31 @@ class _HomePageState extends State<HomePage> {
       TextStyle(fontSize: 30, fontWeight: FontWeight.bold);
   static const List<Widget> _widgetOptions = <Widget>[
     Text(
-      'Perfil',
+      'Home',
       style: TextStyle(color: Colors.blue),
     ),
     Text(
-      'Index 1: Business',
+      'Index 1: Perfil',
       style: optionStyle,
     ),
     Text(
-      'Index 2: School',
+      'Index 2: Sedes',
+      style: optionStyle,
+    ),
+    Text(
+      'Index 3: Notificaciones',
+      style: optionStyle,
+    ),
+    Text(
+      'Index 4: Intrumento',
+      style: optionStyle,
+    ),
+    Text(
+      'Index 5: Eventos',
+      style: optionStyle,
+    ),
+    Text(
+      'Index 6: contactos',
       style: optionStyle,
     ),
   ];
@@ -124,10 +140,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 2,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(2);
                 // Then close the drawer
                 Navigator.pop(context);
               },
@@ -141,10 +157,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 3,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(3);
                 // Then close the drawer
                 Navigator.pop(context);
               },
