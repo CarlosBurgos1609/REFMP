@@ -43,6 +43,14 @@ class _HomePageState extends State<HomePage> {
       'Index 6: contactos',
       style: optionStyle,
     ),
+    Text(
+      'Index 7: Ubicaciones',
+      style: optionStyle,
+    ),
+    Text(
+      'Index 8: Configuraciones',
+      style: optionStyle,
+    ),
   ];
 
   void _onItemTapped(int index) {
@@ -174,10 +182,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 4,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(4);
                 // Then close the drawer
                 Navigator.pop(context);
               },
@@ -191,10 +199,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 5,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(5);
                 // Then close the drawer
                 Navigator.pop(context);
               },
@@ -208,10 +216,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 6,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(6);
                 // Then close the drawer
                 Navigator.pop(context);
               },
@@ -225,10 +233,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 7,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(7);
                 // Then close the drawer
                 Navigator.pop(context);
               },
@@ -242,10 +250,10 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(
                     color: Colors.blue,
                   )),
-              selected: _selectedIndex == 1,
+              selected: _selectedIndex == 8,
               onTap: () {
                 // Update the state of the app
-                _onItemTapped(1);
+                _onItemTapped(8);
                 // Then close the drawer
                 Navigator.pop(context);
               },
