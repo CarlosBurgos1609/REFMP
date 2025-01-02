@@ -1,4 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/interfaces/menu/settings.dart';
+import 'package:refmp/interfaces/menu/contacts.dart';
+import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/interfaces/menu/headquarters.dart';
+import 'package:refmp/interfaces/menu/instruments.dart';
+import 'package:refmp/interfaces/menu/locations.dart';
+import 'package:refmp/interfaces/menu/notification.dart';
+import 'package:refmp/interfaces/menu/profile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -10,53 +18,71 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0;
+  final Map<int, String> _titles = {
+    0: 'Inicio',
+    1: 'Perfil',
+    2: 'Sedes',
+    3: 'Notificaciones',
+    4: 'Instrumento',
+    5: 'Eventos',
+    6: 'Contactos',
+    7: 'Ubicaciones',
+    8: 'Configuración'
+  };
 
-  static const TextStyle optionStyle =
-      TextStyle(fontSize: 30, color: Colors.blue, fontWeight: FontWeight.bold);
-  static const List<Widget> _widgetOptions = <Widget>[
-    Text(
-      'Home',
-      style: TextStyle(color: Colors.blue),
-    ),
-    Text(
-      'Index 1: Perfil',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 2: Sedes',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 3: Notificaciones',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 4: Intrumento',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 5: Eventos',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 6: contactos',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 7: Ubicaciones',
-      style: optionStyle,
-    ),
-    Text(
-      'Index 8: Configuraciones',
-      style: optionStyle,
-    ),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+  void _navigateToPage(BuildContext context, int index) {
+    switch (index) {
+      case 1:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfilePage()),
+        );
+        break;
+      case 2:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const HeadquartersPage()),
+        );
+        break;
+      case 3:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationPage()),
+        );
+        break;
+      case 4:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const InstrumentsPage()),
+        );
+        break;
+      case 5:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const EventsPage()),
+        );
+        break;
+      case 6:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ContactsPage()),
+        );
+        break;
+      case 7:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const LocationsPage()),
+        );
+        break;
+      case 8:
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SettingsPage()),
+        );
+        break;
+      default:
+        break;
+    }
   }
 
   @override
@@ -65,7 +91,7 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Text(
           widget.title,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 22,
             color: Colors.blue,
             fontWeight: FontWeight.bold,
@@ -85,9 +111,6 @@ class _HomePageState extends State<HomePage> {
           },
         ),
       ),
-      body: Center(
-        child: _widgetOptions[_selectedIndex],
-      ),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -97,183 +120,72 @@ class _HomePageState extends State<HomePage> {
               decoration: const BoxDecoration(
                 color: Colors.blue,
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  Container(
-                    height: 80,
-                    width: 80,
-                    margin: const EdgeInsets.fromLTRB(0, 20, 0, 10),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/refmmp.png',
-                        width: MediaQuery.of(context).size.width * 0.5,
-                        height: MediaQuery.of(context).size.width * 0.5,
-                        fit: BoxFit.cover,
-                      ),
+                  ClipOval(
+                    child: Image.asset(
+                      'assets/images/refmmp.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
                     ),
                   ),
-                  Container(
-                    child: Text("Nombre del perfil"),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "Nombre del perfil",
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   )
                 ],
               ),
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.account_circle_rounded,
-                color: Colors.blue,
-              ),
-              title: const Text('Perfil',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 1,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(1);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.home,
-                color: Colors.blue,
-              ),
-              title: const Text(
-                'Inicio',
-                style: TextStyle(color: Colors.blue),
-              ),
-              selected: _selectedIndex == 0,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(0);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.business_rounded,
-                color: Colors.blue,
-              ),
-              title: const Text('Sedes',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 2,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(2);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.circle_notifications,
-                color: Colors.blue,
-              ),
-              title: const Text('Notificaciones',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 3,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(3);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.piano_rounded,
-                color: Colors.blue,
-              ),
-              title: const Text('Instrumento',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 4,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(4);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.calendar_month_rounded,
-                color: Colors.blue,
-              ),
-              title: const Text('Eventos',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 5,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(5);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.contacts_rounded,
-                color: Colors.blue,
-              ),
-              title: const Text('Contactos',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 6,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(6);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.map_outlined,
-                color: Colors.blue,
-              ),
-              title: const Text('Ubicaciones',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 7,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(7);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.settings,
-                color: Colors.blue,
-              ),
-              title: const Text('Configuración',
-                  style: TextStyle(
-                    color: Colors.blue,
-                  )),
-              selected: _selectedIndex == 8,
-              onTap: () {
-                // Update the state of the app
-                _onItemTapped(8);
-                // Then close the drawer
-                Navigator.pop(context);
-              },
-            ),
+            ...List.generate(_titles.length, (index) {
+              return ListTile(
+                leading: Icon(
+                  _getIcon(index),
+                  color: Colors.blue,
+                ),
+                title: Text(
+                  _titles[index]!,
+                  style: const TextStyle(color: Colors.blue),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToPage(context, index);
+                },
+              );
+            })
           ],
         ),
       ),
     );
+  }
+
+  IconData _getIcon(int index) {
+    switch (index) {
+      case 0:
+        return Icons.home;
+      case 1:
+        return Icons.account_circle_rounded;
+      case 2:
+        return Icons.business_rounded;
+      case 3:
+        return Icons.circle_notifications;
+      case 4:
+        return Icons.piano_rounded;
+      case 5:
+        return Icons.calendar_month_rounded;
+      case 6:
+        return Icons.contacts_rounded;
+      case 7:
+        return Icons.map_outlined;
+      case 8:
+        return Icons.settings;
+      default:
+        return Icons.error;
+    }
   }
 }
