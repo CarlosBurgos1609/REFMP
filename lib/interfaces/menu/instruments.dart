@@ -14,8 +14,7 @@ class _ProfilePageState extends State<InstrumentsPage> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () => showExitConfirmationDialog(
-          context), // Llama a la función del controlador
+      onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
         appBar: AppBar(
           title: Text(
@@ -38,7 +37,7 @@ class _ProfilePageState extends State<InstrumentsPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Perfil",
+            "Contenido de la página Intrumentos",
             style: TextStyle(fontSize: 18),
           ),
         ),

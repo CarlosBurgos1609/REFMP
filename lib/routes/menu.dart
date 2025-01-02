@@ -61,12 +61,17 @@ class Menu {
                 builder: (context) => const ProfilePage(title: "Perfil")));
         break;
       case 2:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const HeadquartersPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const HeadquartersPage(title: "Sedes")));
         break;
       case 3:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const NotificationPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    const NotificationPage(title: "Notificaciones")));
         break;
       case 4:
         Navigator.push(
@@ -77,20 +82,30 @@ class Menu {
                     )));
         break;
       case 5:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const EventsPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const EventsPage(title: "Eventos")));
         break;
       case 6:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const ContactsPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const ContactsPage(title: "Contactos")));
         break;
       case 7:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const LocationsPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    const LocationsPage(title: "Ubicaciones")));
         break;
       case 8:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const SettingsPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    const SettingsPage(title: "Configuración")));
         break;
       default:
         break;

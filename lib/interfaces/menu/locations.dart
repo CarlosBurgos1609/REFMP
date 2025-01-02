@@ -1,18 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 
-class LocationsPage extends StatelessWidget {
-  const LocationsPage({super.key});
+class LocationsPage extends StatefulWidget {
+  const LocationsPage({super.key, required this.title});
+  final String title;
 
   @override
+  State<LocationsPage> createState() => _LocationsPage();
+}
+
+class _LocationsPage extends State<LocationsPage> {
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ubicación'),
-      ),
-      drawer: Menu.buildDrawer(context),
-      body: const Center(
-        child: Text('Contenido de la página de Ubicación'),
+    return WillPopScope(
+      onWillPop: () => showExitConfirmationDialog(context),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.title,
+            style: const TextStyle(
+              fontSize: 22,
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.blue),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
+          ),
+        ),
+        drawer: Menu.buildDrawer(context),
+        body: const Center(
+          child: Text(
+            "Contenido de la página Intrumentos",
+            style: TextStyle(fontSize: 18),
+          ),
+        ),
       ),
     );
   }
