@@ -38,7 +38,7 @@ class _ProfilePageState extends State<ProfilePage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página principal",
+            "Contenido de la página Perfil",
             style: TextStyle(fontSize: 18),
           ),
         ),

@@ -69,8 +69,12 @@ class Menu {
             MaterialPageRoute(builder: (context) => const NotificationPage()));
         break;
       case 4:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const InstrumentsPage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const InstrumentsPage(
+                      title: "Intrumentos",
+                    )));
         break;
       case 5:
         Navigator.push(context,
