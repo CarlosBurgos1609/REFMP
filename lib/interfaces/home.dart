@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:refmp/routes/menu.dart'; // Importa la clase Menu
+import 'package:refmp/routes/menu.dart';
+import 'package:refmp/controllers/exit.dart'; // Importa el controlador
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -12,25 +13,35 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title,
+    return WillPopScope(
+      onWillPop: () => showExitConfirmationDialog(
+          context), // Llama a la función del controlador
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.title,
             style: const TextStyle(
-                fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold)),
-        leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu, color: Colors.blue),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            );
-          },
+              fontSize: 22,
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.blue),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
+          ),
         ),
-      ),
-      drawer: Menu.buildDrawer(
-          context), // Usa la clase Menu para construir el Drawer
-      body: const Center(
-        // Agregué un body de ejemplo
-        child: Text("Contenido de la página principal"),
+        drawer: Menu.buildDrawer(context),
+        body: const Center(
+          child: Text(
+            "Contenido de la página principal",
+            style: TextStyle(fontSize: 18),
+          ),
+        ),
       ),
     );
   }

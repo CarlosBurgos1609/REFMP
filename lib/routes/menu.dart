@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/menu/settings.dart';
 import 'package:refmp/interfaces/menu/contacts.dart';
 import 'package:refmp/interfaces/menu/events.dart';
@@ -48,9 +49,16 @@ class Menu {
 
   static void _navigateToPage(BuildContext context, int index) {
     switch (index) {
+      case 0:
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const HomePage(title: "Inicio")));
       case 1:
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const ProfilePage()));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const ProfilePage(title: "Perfil")));
         break;
       case 2:
         Navigator.push(context,
