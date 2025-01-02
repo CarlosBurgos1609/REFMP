@@ -37,7 +37,7 @@ class _NotificationPage extends State<NotificationPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Intrumentos",
+            "Contenido de la página Notificaciones",
             style: TextStyle(fontSize: 18),
           ),
         ),

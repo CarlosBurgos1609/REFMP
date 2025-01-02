@@ -37,7 +37,7 @@ class _HeadquartersPage extends State<HeadquartersPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Intrumentos",
+            "Contenido de la página Sedes",
             style: TextStyle(fontSize: 18),
           ),
         ),

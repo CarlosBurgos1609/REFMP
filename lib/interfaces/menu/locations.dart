@@ -37,7 +37,7 @@ class _LocationsPage extends State<LocationsPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Intrumentos",
+            "Contenido de la página Ubicaciones",
             style: TextStyle(fontSize: 18),
           ),
         ),

@@ -37,7 +37,7 @@ class _EventsPage extends State<EventsPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Intrumentos",
+            "Contenido de la página Eventos",
             style: TextStyle(fontSize: 18),
           ),
         ),

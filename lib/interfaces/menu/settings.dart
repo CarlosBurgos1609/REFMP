@@ -37,7 +37,7 @@ class _SettingsPage extends State<SettingsPage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página Intrumentos",
+            "Contenido de la página Configuración",
             style: TextStyle(fontSize: 18),
           ),
         ),
