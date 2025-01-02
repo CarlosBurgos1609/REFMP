@@ -20,12 +20,9 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Inicio de sesión correctamente')),
       );
-      Navigator.push(
+      Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-            builder: (context) => const HomePage(
-                  title: 'Inicio',
-                )),
+        MaterialPageRoute(builder: (_) => const HomePage(title: 'Inicio')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,7 +122,7 @@ class _LoginPageState extends State<LoginPage> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const RegisterPage()),
+                  MaterialPageRoute(builder: (_) => const RegisterPage()),
                 );
               },
               style: ElevatedButton.styleFrom(

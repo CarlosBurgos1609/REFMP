@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/routes/menu.dart';
 
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<SettingsPage> {
-  @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Configuración'),
+      ),
+      drawer: Menu.buildDrawer(context),
+      body: const Center(
+        child: Text('Contenido de la página de Configuración'),
+      ),
+    );
   }
 }

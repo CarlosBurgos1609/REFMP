@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/routes/menu.dart';
 
-class InstrumentsPage extends StatefulWidget {
+class InstrumentsPage extends StatelessWidget {
   const InstrumentsPage({super.key});
 
   @override
-  State<InstrumentsPage> createState() => _InstrumentsPageState();
-}
-
-class _InstrumentsPageState extends State<InstrumentsPage> {
-  @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Intrumentos'),
+      ),
+      drawer: Menu.buildDrawer(context),
+      body: const Center(
+        child: Text('Contenido de la página de Intrumentos'),
+      ),
+    );
   }
 }

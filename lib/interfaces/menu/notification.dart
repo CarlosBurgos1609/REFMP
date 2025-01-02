@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/routes/menu.dart';
 
-class NotificationPage extends StatefulWidget {
+class NotificationPage extends StatelessWidget {
   const NotificationPage({super.key});
 
   @override
-  State<NotificationPage> createState() => _NotificationPageState();
-}
-
-class _NotificationPageState extends State<NotificationPage> {
-  @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notificaciones'),
+      ),
+      drawer: Menu.buildDrawer(context),
+      body: const Center(
+        child: Text('Contenido de la página de Notificaciones'),
+      ),
+    );
   }
 }

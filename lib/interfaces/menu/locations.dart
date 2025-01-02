@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/routes/menu.dart';
 
-class LocationsPage extends StatefulWidget {
+class LocationsPage extends StatelessWidget {
   const LocationsPage({super.key});
 
   @override
-  State<LocationsPage> createState() => _LocationsPageState();
-}
-
-class _LocationsPageState extends State<LocationsPage> {
-  @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ubicación'),
+      ),
+      drawer: Menu.buildDrawer(context),
+      body: const Center(
+        child: Text('Contenido de la página de Ubicación'),
+      ),
+    );
   }
 }

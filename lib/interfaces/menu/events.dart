@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/routes/menu.dart';
 
-class EventsPage extends StatefulWidget {
+class EventsPage extends StatelessWidget {
   const EventsPage({super.key});
 
   @override
-  State<EventsPage> createState() => _EventsPageState();
-}
-
-class _EventsPageState extends State<EventsPage> {
-  @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Eventos'),
+      ),
+      drawer: Menu.buildDrawer(context),
+      body: const Center(
+        child: Text('Contenido de la página de Eventos'),
+      ),
+    );
   }
 }

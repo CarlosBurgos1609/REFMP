@@ -37,9 +37,9 @@ class Init extends StatelessWidget {
               const SizedBox(height: 40),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const LoginPage()),
+                    MaterialPageRoute(builder: (_) => const LoginPage()),
                   );
                 },
                 style: ElevatedButton.styleFrom(
