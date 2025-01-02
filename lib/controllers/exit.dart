@@ -28,6 +28,7 @@ Future<bool> showExitConfirmationDialog(BuildContext context) async {
           child: const Text(
             'Sí',
             style: TextStyle(color: Colors.blue),
+            textAlign: TextAlign.center,
           ),
         ),
       ],
