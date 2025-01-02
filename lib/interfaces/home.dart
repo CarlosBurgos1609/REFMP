@@ -13,7 +13,7 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
   static const TextStyle optionStyle =
-      TextStyle(fontSize: 30, fontWeight: FontWeight.bold);
+      TextStyle(fontSize: 30, color: Colors.blue, fontWeight: FontWeight.bold);
   static const List<Widget> _widgetOptions = <Widget>[
     Text(
       'Home',
@@ -92,19 +92,32 @@ class _HomePageState extends State<HomePage> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            const DrawerHeader(
-                padding: EdgeInsets.fromLTRB(12, 0, 0, 12),
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                ),
-                child: Text(
-                  "Inicio",
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
+            DrawerHeader(
+              padding: const EdgeInsets.fromLTRB(12, 0, 0, 12),
+              decoration: const BoxDecoration(
+                color: Colors.blue,
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    height: 80,
+                    width: 80,
+                    margin: const EdgeInsets.fromLTRB(0, 20, 0, 10),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/refmmp.png',
+                        width: MediaQuery.of(context).size.width * 0.5,
+                        height: MediaQuery.of(context).size.width * 0.5,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
-                )),
+                  Container(
+                    child: Text("Nombre del perfil"),
+                  )
+                ],
+              ),
+            ),
             ListTile(
               leading: const Icon(
                 Icons.account_circle_rounded,
