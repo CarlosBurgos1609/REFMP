@@ -35,10 +35,25 @@ class _ContactsPage extends State<ContactsPage> {
           ),
         ),
         drawer: Menu.buildDrawer(context),
-        body: const Center(
-          child: Text(
-            "Contenido de la página Contactos",
-            style: TextStyle(fontSize: 18),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ElevatedButton(onPressed: () {}, child: const Text("disable")),
+              ElevatedButton.icon(
+                onPressed: () {},
+                label: const Text("data"),
+                icon: Icon(Icons.message),
+              ),
+              const SizedBox(
+                child: Center(
+                  child: Text(
+                    "Pagina de contactos",
+                    style: TextStyle(fontSize: 18),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

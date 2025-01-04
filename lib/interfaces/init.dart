@@ -35,7 +35,7 @@ class Init extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 40),
-              ElevatedButton(
+              ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pushReplacement(
                     context,
@@ -49,10 +49,14 @@ class Init extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text(
+                label: const Text(
                   'Ir al Inicio de Sesión',
                   style: TextStyle(fontSize: 20, color: Colors.blue),
                   textAlign: TextAlign.center,
+                ),
+                icon: Icon(
+                  Icons.person,
+                  color: Colors.blue,
                 ),
               ),
             ],

@@ -13,9 +13,9 @@ class Menu {
   static const Map<int, String> _titles = {
     0: 'Inicio',
     1: 'Perfil',
-    2: 'Sedes',
     3: 'Notificaciones',
-    4: 'Instrumento',
+    2: 'Sedes',
+    4: 'Instrumentos',
     5: 'Eventos',
     6: 'Contactos',
     7: 'Ubicaciones',
@@ -50,58 +50,58 @@ class Menu {
   static void _navigateToPage(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const HomePage(title: "Inicio")));
       case 1:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const ProfilePage(title: "Perfil")));
         break;
       case 2:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const HeadquartersPage(title: "Sedes")));
         break;
       case 3:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) =>
                     const NotificationPage(title: "Notificaciones")));
         break;
       case 4:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const InstrumentsPage(
-                      title: "Intrumentos",
+                      title: "Instrumentos",
                     )));
         break;
       case 5:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const EventsPage(title: "Eventos")));
         break;
       case 6:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) => const ContactsPage(title: "Contactos")));
         break;
       case 7:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) =>
                     const LocationsPage(title: "Ubicaciones")));
         break;
       case 8:
-        Navigator.push(
+        Navigator.pushReplacement(
             context,
             MaterialPageRoute(
                 builder: (context) =>
@@ -133,7 +133,7 @@ class Menu {
                 Text("Nombre del perfil",
                     style: TextStyle(
                         fontSize: 18,
-                        color: Colors.white,
+                        color: Color.fromARGB(255, 255, 255, 255),
                         fontWeight: FontWeight.bold)),
               ],
             ),
@@ -144,7 +144,7 @@ class Menu {
               title: Text(_titles[index]!,
                   style: const TextStyle(color: Colors.blue)),
               onTap: () {
-                Navigator.pop(context); // Cierra el Drawer
+                Navigator.pop(context);
                 Menu._navigateToPage(context, index);
               },
             );
