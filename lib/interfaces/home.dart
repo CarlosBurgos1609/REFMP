@@ -38,7 +38,7 @@ class _HomePageState extends State<HomePage> {
         drawer: Menu.buildDrawer(context),
         body: const Center(
           child: Text(
-            "Contenido de la página principal",
+            "Contenido de la página Principal",
             style: TextStyle(fontSize: 18),
           ),
         ),
