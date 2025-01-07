@@ -130,11 +130,26 @@ class Menu {
                       fit: BoxFit.cover),
                 ),
                 SizedBox(width: 12),
-                Text("Nombre del perfil",
-                    style: TextStyle(
-                        fontSize: 18,
-                        color: Color.fromARGB(255, 255, 255, 255),
-                        fontWeight: FontWeight.bold)),
+                Center(
+                    child: Column(
+                  children: [
+                    Text("Nombre del perfil",
+                        style: TextStyle(
+                            fontSize: 18,
+                            color: Color.fromARGB(255, 255, 255, 255),
+                            fontWeight: FontWeight.bold)),
+                    Column(children: [
+                      Text(
+                        "Admin",
+                        style: TextStyle(
+                            fontSize: 15,
+                            backgroundColor: Colors.amber,
+                            color: Color.fromARGB(255, 255, 255, 255),
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ])
+                  ],
+                ))
               ],
             ),
           ),
