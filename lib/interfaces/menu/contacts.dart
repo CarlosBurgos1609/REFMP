@@ -46,7 +46,7 @@ class _ContactsPage extends State<ContactsPage> {
                   style: TextStyle(color: Colors.blue),
                 ),
                 icon: Icon(
-                  Icons.videogame_asset,
+                  Icons.videogame_asset_rounded,
                   color: Colors.blue,
                 ),
               ),
