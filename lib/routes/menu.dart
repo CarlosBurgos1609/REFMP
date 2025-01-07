@@ -150,15 +150,14 @@ class Menu {
                                   borderRadius: BorderRadius.all(
                                     Radius.circular(8),
                                   ),
-                                  gradient: LinearGradient(colors: [
-                                    Colors.amber,
-                                    Colors.cyan,
-                                    Colors.purple
-                                  ], stops: [
-                                    0.1,
-                                    0.3,
-                                    0.9
-                                  ]),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.amber,
+                                      Colors.cyan,
+                                      Colors.purple
+                                    ],
+                                    stops: [0.1, 0.3, 0.9],
+                                  ),
                                 ),
                                 child: Center(
                                   child: Text(
