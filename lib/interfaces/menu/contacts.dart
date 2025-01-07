@@ -39,17 +39,31 @@ class _ContactsPage extends State<ContactsPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              ElevatedButton(onPressed: () {}, child: const Text("disable")),
               ElevatedButton.icon(
                 onPressed: () {},
-                label: const Text("data"),
-                icon: Icon(Icons.message),
+                label: const Text(
+                  "Noticicaciones de Intrumentos",
+                  style: TextStyle(color: Colors.blue),
+                ),
+                icon: Icon(
+                  Icons.videogame_asset,
+                  color: Colors.blue,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {},
+                label: const Text("Notificaciones de eventos",
+                    style: TextStyle(color: Colors.blue)),
+                icon: Icon(
+                  Icons.calendar_month,
+                  color: Colors.blue,
+                ),
               ),
               const SizedBox(
                 child: Center(
                   child: Text(
                     "Pagina de contactos",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 20, color: Colors.blue),
                   ),
                 ),
               ),
