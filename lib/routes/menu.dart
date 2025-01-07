@@ -117,39 +117,67 @@ class Menu {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(
-            padding: EdgeInsets.fromLTRB(12, 0, 0, 12),
-            decoration: BoxDecoration(color: Colors.blue),
+          DrawerHeader(
+            padding: const EdgeInsets.fromLTRB(12, 0, 0, 12),
+            decoration: const BoxDecoration(color: Colors.blue),
             child: Row(
               children: [
-                ClipOval(
+                const ClipOval(
                   child: Image(
                       image: AssetImage('assets/images/refmmp.png'),
                       width: 80,
                       height: 80,
                       fit: BoxFit.cover),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Center(
-                    child: Column(
-                  children: [
-                    Text("Nombre del perfil",
-                        style: TextStyle(
-                            fontSize: 18,
-                            color: Color.fromARGB(255, 255, 255, 255),
-                            fontWeight: FontWeight.bold)),
-                    Column(children: [
-                      Text(
-                        "Admin",
-                        style: TextStyle(
-                            fontSize: 15,
-                            backgroundColor: Colors.amber,
-                            color: Color.fromARGB(255, 255, 255, 255),
-                            fontWeight: FontWeight.bold),
+                  child: SizedBox(
+                    height: 50,
+                    width: 180,
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Column(
+                        children: [
+                          Text("Nombre del perfil",
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  color: Color.fromARGB(255, 255, 255, 255),
+                                  fontWeight: FontWeight.bold)),
+                          Column(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(8),
+                                  ),
+                                  gradient: LinearGradient(colors: [
+                                    Colors.amber,
+                                    Colors.cyan,
+                                    Colors.purple
+                                  ], stops: [
+                                    0.1,
+                                    0.3,
+                                    0.9
+                                  ]),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    "Admin",
+                                    style: TextStyle(
+                                        fontSize: 15,
+                                        color:
+                                            Color.fromARGB(255, 255, 255, 255),
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
                       ),
-                    ])
-                  ],
-                ))
+                    ),
+                  ),
+                )
               ],
             ),
           ),
