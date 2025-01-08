@@ -32,15 +32,17 @@ dependencies:
   # firebase_auth: ^5.7.0
   flutter:
     sdk: flutter
-
   cupertino_icons: ^1.0.8
-
+  
+  # Dependencias de firebase
   firebase_core: ^3.8.1
+  cloud_firestore: ^5.6.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  
 
 flutter:
   uses-material-design: true
