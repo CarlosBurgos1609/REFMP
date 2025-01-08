@@ -57,15 +57,22 @@ class _ProfilePageState extends State<ProfilePage> {
                       user['name'] as String? ?? "No se encontro ningun nombre";
                   final midle_name = user['midle_name'] as String? ??
                       "No se encontro segundo nombre";
-                  return Column(
-                    children: [
-                      ListTile(
-                        title: Text(name),
-                      ),
-                      ListTile(
-                        title: Text(midle_name),
-                      ),
-                    ],
+                  final email =
+                      user['email'] as String? ?? "No se encontro el email";
+                  return Center(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          title: Text(name),
+                        ),
+                        ListTile(
+                          title: Text(midle_name),
+                        ),
+                        ListTile(
+                          title: Text(email),
+                        ),
+                      ],
+                    ),
                   );
                 },
               );
