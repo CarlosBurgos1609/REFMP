@@ -8,6 +8,7 @@ import 'package:refmp/interfaces/menu/instruments.dart';
 import 'package:refmp/interfaces/menu/locations.dart';
 import 'package:refmp/interfaces/menu/notification.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
+import 'package:refmp/interfaces/menu/students.dart';
 
 class Menu {
   static const Map<int, String> _titles = {
@@ -19,7 +20,8 @@ class Menu {
     5: 'Eventos',
     6: 'Contactos',
     7: 'Ubicaciones',
-    8: 'Configuración'
+    8: 'Configuración',
+    9: 'Estudiantes'
   };
 
   static IconData _getIcon(int index) {
@@ -42,6 +44,8 @@ class Menu {
         return Icons.map_outlined;
       case 8:
         return Icons.settings;
+      case 9:
+        return Icons.supervised_user_circle;
       default:
         return Icons.error;
     }
@@ -106,6 +110,13 @@ class Menu {
             MaterialPageRoute(
                 builder: (context) =>
                     const SettingsPage(title: "Configuración")));
+        break;
+      case 9:
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    const StudentsPage(title: "Estudiantes")));
         break;
       default:
         break;

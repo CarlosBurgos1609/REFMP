@@ -4,15 +4,15 @@ import 'package:refmp/routes/menu.dart';
 //firebase
 import 'package:refmp/services/firebase_services.dart';
 
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key, required this.title});
+class StudentsPage extends StatefulWidget {
+  const StudentsPage({super.key, required this.title});
   final String title;
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<StudentsPage> createState() => _StudentsPageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _StudentsPageState extends State<StudentsPage> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
