@@ -35,10 +35,39 @@ class _NotificationPage extends State<NotificationPage> {
           ),
         ),
         drawer: Menu.buildDrawer(context),
-        body: const Center(
-          child: Text(
-            "Contenido de la página Notificaciones",
-            style: TextStyle(fontSize: 18),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ElevatedButton.icon(
+                onPressed: () {},
+                label: const Text(
+                  "Noticicaciones de Intrumentos",
+                  style: TextStyle(color: Colors.blue),
+                ),
+                icon: Icon(
+                  Icons.videogame_asset_rounded,
+                  color: Colors.blue,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {},
+                label: const Text("Notificaciones de eventos",
+                    style: TextStyle(color: Colors.blue)),
+                icon: Icon(
+                  Icons.calendar_month,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(
+                child: Center(
+                  child: Text(
+                    "Pagina de Notificaciones",
+                    style: TextStyle(fontSize: 20, color: Colors.blue),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
