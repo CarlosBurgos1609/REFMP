@@ -129,68 +129,41 @@ class Menu {
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            padding: const EdgeInsets.fromLTRB(12, 0, 0, 12),
-            decoration: const BoxDecoration(color: Colors.blue),
-            child: Row(
-              children: [
-                const ClipOval(
-                  child: Image(
-                      image: AssetImage('assets/images/refmmp.png'),
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover),
+              padding: const EdgeInsets.fromLTRB(2, 0, 0, 2),
+              child: Center(
+                child: ListView(
+                  children: <Widget>[
+                    UserAccountsDrawerHeader(
+                        decoration: const BoxDecoration(
+                            image: DecorationImage(
+                                fit: BoxFit.cover,
+                                image: NetworkImage(
+                                    "https://upload.wikimedia.org/wikipedia/commons/8/83/San_Juan_de_Pasto_de_noche.jpg"))),
+                        accountName: Text(
+                          "Carlos Alexander Burgos J.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 18,
+                              color: Color.fromARGB(255, 255, 255, 255),
+                              fontWeight: FontWeight.bold),
+                        ),
+                        accountEmail: Text(
+                          "Admin",
+                          style: TextStyle(
+                              fontSize: 15,
+                              color: Color.fromARGB(255, 255, 255, 255),
+                              fontWeight: FontWeight.bold),
+                        ),
+                        currentAccountPicture: GestureDetector(
+                          onTap: () => ProfilePage,
+                          child: CircleAvatar(
+                            backgroundColor: Colors.white,
+                            child: Image.asset("assets/images/logofn.png"),
+                          ),
+                        )),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Center(
-                  child: SizedBox(
-                    height: 50,
-                    width: 180,
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: Column(
-                        children: [
-                          Text("Nombre del perfil",
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  color: Color.fromARGB(255, 255, 255, 255),
-                                  fontWeight: FontWeight.bold)),
-                          Column(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(8),
-                                  ),
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.amber,
-                                      Colors.cyan,
-                                      Colors.purple
-                                    ],
-                                    stops: [0.1, 0.3, 0.9],
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    "Admin",
-                                    style: TextStyle(
-                                        fontSize: 15,
-                                        color:
-                                            Color.fromARGB(255, 255, 255, 255),
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                )
-              ],
-            ),
-          ),
+              )),
           ...List.generate(_titles.length, (index) {
             return ListTile(
               leading: Icon(Menu._getIcon(index), color: Colors.blue),
