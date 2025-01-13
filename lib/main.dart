@@ -15,7 +15,6 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Red de Escuelas de Formación Musical de Pasto',
       home: const Init(),
       debugShowCheckedModeBanner: false,
     );
