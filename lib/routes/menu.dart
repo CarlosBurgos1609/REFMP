@@ -58,6 +58,7 @@ class Menu {
             context,
             MaterialPageRoute(
                 builder: (context) => const HomePage(title: "Inicio")));
+        break;
       case 1:
         Navigator.pushReplacement(
             context,
@@ -129,42 +130,58 @@ class Menu {
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-              padding: const EdgeInsets.fromLTRB(2, 0, 0, 2),
-              child: Center(
-                child: ListView(
-                  children: <Widget>[
-                    UserAccountsDrawerHeader(
-                        decoration: const BoxDecoration(
-                            color: Colors.blue,
-                            image: DecorationImage(
-                                fit: BoxFit.cover,
-                                image: NetworkImage(
-                                    "https://upload.wikimedia.org/wikipedia/commons/8/83/San_Juan_de_Pasto_de_noche.jpg"))),
-                        accountName: Text(
-                          "Carlos Alexander Burgos J.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 18,
-                              color: Color.fromARGB(255, 255, 255, 255),
-                              fontWeight: FontWeight.bold),
-                        ),
-                        accountEmail: Text(
-                          "Admin",
-                          style: TextStyle(
-                              fontSize: 15,
-                              color: Color.fromARGB(255, 255, 255, 255),
-                              fontWeight: FontWeight.bold),
-                        ),
-                        currentAccountPicture: GestureDetector(
-                          onTap: () => ProfilePage,
-                          child: CircleAvatar(
-                            backgroundColor: Colors.white,
-                            child: Image.asset("assets/images/refmmp.png"),
-                          ),
-                        )),
-                  ],
+            padding: const EdgeInsets.all(0),
+            decoration: BoxDecoration(color: Colors.white),
+            child: Container(
+              decoration: const BoxDecoration(
+                image: DecorationImage(
+                  // fit: BoxFit.cover,
+                  image: AssetImage("assets/images/appbar.png"),
                 ),
-              )),
+              ),
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: UserAccountsDrawerHeader(
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  accountName: const Text(
+                    "Carlos Alexander Burgos J.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 18,
+                        color: Color.fromARGB(255, 0, 9, 14),
+                        fontWeight: FontWeight.bold),
+                  ),
+                  accountEmail: const Text(
+                    "Admin",
+                    style: TextStyle(
+                        fontSize: 15,
+                        color: Color.fromARGB(255, 24, 160, 179),
+                        fontWeight: FontWeight.bold),
+                  ),
+                  currentAccountPicture: GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const ProfilePage(title: "Perfil"),
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      backgroundColor: Colors.white,
+                      child: ClipOval(
+                        child: Image.asset(
+                          "assets/images/refmmp.png",
+                          fit: BoxFit.cover,
+                          width: 72,
+                          height: 72,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           ...List.generate(_titles.length, (index) {
             return ListTile(
               leading: Icon(Menu._getIcon(index), color: Colors.blue),

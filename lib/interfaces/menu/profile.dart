@@ -46,7 +46,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Image.asset(
                     'assets/images/refmmp.png',
                     width: MediaQuery.of(context).size.width * 0.3,
-                    height: MediaQuery.of(context).size.width * 0.3,
+                    height: MediaQuery.of(context).size.width * 0.4,
                     fit: BoxFit.cover,
                   ),
                 ),
