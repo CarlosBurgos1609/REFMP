@@ -135,6 +135,7 @@ class Menu {
                   children: <Widget>[
                     UserAccountsDrawerHeader(
                         decoration: const BoxDecoration(
+                            color: Colors.blue,
                             image: DecorationImage(
                                 fit: BoxFit.cover,
                                 image: NetworkImage(
@@ -158,7 +159,7 @@ class Menu {
                           onTap: () => ProfilePage,
                           child: CircleAvatar(
                             backgroundColor: Colors.white,
-                            child: Image.asset("assets/images/logofn.png"),
+                            child: Image.asset("assets/images/refmmp.png"),
                           ),
                         )),
                   ],

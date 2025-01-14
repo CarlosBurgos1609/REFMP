@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 //firebase
-import 'package:refmp/services/firebase_services.dart';
+// import 'package:refmp/services/firebase_services.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.title});
@@ -16,72 +16,103 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-        onWillPop: () => showExitConfirmationDialog(context),
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(
-              widget.title,
-              style: const TextStyle(
-                fontSize: 22,
-                color: Colors.blue,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            leading: Builder(
-              builder: (context) {
-                return IconButton(
-                  icon: const Icon(Icons.menu, color: Colors.blue),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                );
-              },
+      onWillPop: () => showExitConfirmationDialog(context),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.title,
+            style: const TextStyle(
+              fontSize: 22,
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
             ),
           ),
-          drawer: Menu.buildDrawer(context),
-          body: FutureBuilder<List>(
-            future: getUsers(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                    child: CircularProgressIndicator(
-                  color: Colors.blue,
-                ));
-              } else if (snapshot.hasError) {
-                return Center(child: Text("Error: ${snapshot.error}"));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No users found."));
-              }
-
-              final users = snapshot.data!;
-              return ListView.builder(
-                itemCount: users.length,
-                itemBuilder: (context, index) {
-                  final user = users[index] as Map<String, dynamic>;
-                  final name =
-                      user['name'] as String? ?? "No se encontro ningun nombre";
-                  final last_name =
-                      user['last_name'] as String? ?? "No se encontro Apellido";
-                  final email =
-                      user['email'] as String? ?? "No se encontro el email";
-                  return Center(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          title: Text(name),
-                        ),
-                        ListTile(
-                          title: Text(last_name),
-                          textColor: Colors.blue,
-                        ),
-                        ListTile(
-                          title: Text(email),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.blue),
+                onPressed: () => Scaffold.of(context).openDrawer(),
               );
             },
           ),
-        ));
+        ),
+        drawer: Menu.buildDrawer(context),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              Padding(padding: EdgeInsets.all(6)),
+              Center(
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/refmmp.png',
+                    width: MediaQuery.of(context).size.width * 0.3,
+                    height: MediaQuery.of(context).size.width * 0.3,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Center(
+                  child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(16, 16, 16, 0),
+                child: Container(
+                  width: double.infinity,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    // color: FlutterFlowTheme.of(context).primaryBackground,
+                    color: const Color.fromARGB(255, 234, 245, 255),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  alignment: AlignmentDirectional(0, 0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(4, 0, 4, 0),
+                          child: TextFormField(
+                            textAlign: TextAlign.center,
+                            obscureText: false,
+                            decoration: InputDecoration(
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Color(0x00000000),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Color(0x00000000),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              errorBorder: OutlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Color(0x00000000),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              focusedErrorBorder: OutlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: Color(0x00000000),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ))
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
