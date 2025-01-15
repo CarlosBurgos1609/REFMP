@@ -127,6 +127,8 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 Checkbox(
                   value: rememberMe,
+                  hoverColor: Colors.blue,
+                  activeColor: Colors.blue,
                   onChanged: (value) {
                     setState(() {
                       rememberMe = value!;
@@ -141,7 +143,10 @@ class _LoginPageState extends State<LoginPage> {
             ),
             const SizedBox(height: 10),
             isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: CircularProgressIndicator(
+                    color: Colors.blue,
+                  ))
                 : ElevatedButton(
                     onPressed: loginUser,
                     style: ElevatedButton.styleFrom(

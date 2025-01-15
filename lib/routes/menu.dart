@@ -142,7 +142,9 @@ class Menu {
               child: Align(
                 alignment: Alignment.bottomLeft,
                 child: UserAccountsDrawerHeader(
-                  decoration: const BoxDecoration(color: Colors.transparent),
+                  decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(8)),
                   accountName: const Text(
                     "Carlos Alexander Burgos J.",
                     textAlign: TextAlign.center,

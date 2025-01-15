@@ -46,7 +46,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Image.asset(
                     'assets/images/refmmp.png',
                     width: MediaQuery.of(context).size.width * 0.3,
-                    height: MediaQuery.of(context).size.width * 0.4,
+                    height: MediaQuery.of(context).size.width * 0.3,
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -59,7 +59,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   height: 60,
                   decoration: BoxDecoration(
                     // color: FlutterFlowTheme.of(context).primaryBackground,
-                    color: const Color.fromARGB(255, 234, 245, 255),
+                    color: const Color.fromARGB(255, 119, 128, 136),
                     borderRadius: BorderRadius.circular(30),
                   ),
                   alignment: AlignmentDirectional(0, 0),
