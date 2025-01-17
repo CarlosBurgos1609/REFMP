@@ -55,7 +55,7 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       // Borrar datos si el login falla
-      emailController.clear();
+      // emailController.clear();
       passwordController.clear();
     }
   }

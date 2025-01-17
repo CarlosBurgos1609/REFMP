@@ -131,13 +131,15 @@ class Menu {
         children: [
           DrawerHeader(
             padding: const EdgeInsets.all(0),
-            decoration: BoxDecoration(color: Colors.white),
+            decoration: BoxDecoration(color: Colors.blue),
             child: Container(
               decoration: const BoxDecoration(
                 image: DecorationImage(
-                  // fit: BoxFit.cover,
-                  image: AssetImage("assets/images/appbar.png"),
-                ),
+                    fit: BoxFit.fill,
+                    // fit: BoxFit.cover,
+                    image: AssetImage("assets/images/pasto.png")
+                    // image: AssetImage("assets/images/appbar.png"),
+                    ),
               ),
               child: Align(
                 alignment: Alignment.bottomLeft,
