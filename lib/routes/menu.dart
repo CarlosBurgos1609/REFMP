@@ -150,14 +150,14 @@ class Menu {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 18,
-                        color: Color.fromARGB(255, 0, 9, 14),
+                        color: Colors.blue,
                         fontWeight: FontWeight.bold),
                   ),
                   accountEmail: const Text(
                     "Admin",
                     style: TextStyle(
                         fontSize: 15,
-                        color: Color.fromARGB(255, 24, 160, 179),
+                        color: Colors.blue,
                         fontWeight: FontWeight.bold),
                   ),
                   currentAccountPicture: GestureDetector(
