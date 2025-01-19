@@ -151,14 +151,14 @@ class Menu {
                     "Carlos Alexander Burgos J.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.blue,
+                        fontSize: 15,
+                        color: Colors.white,
                         fontWeight: FontWeight.bold),
                   ),
                   accountEmail: const Text(
                     "Admin",
                     style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 13,
                         color: Colors.blue,
                         fontWeight: FontWeight.bold),
                   ),
