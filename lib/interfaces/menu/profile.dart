@@ -59,7 +59,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 60,
                     decoration: BoxDecoration(
                       // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 119, 128, 136),
+                      color: const Color.fromARGB(255, 255, 255, 255),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     alignment: AlignmentDirectional(0, 0),
