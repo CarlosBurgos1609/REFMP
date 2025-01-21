@@ -118,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 60,
                     decoration: BoxDecoration(
                       // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 119, 128, 136),
+                      color: const Color.fromARGB(255, 255, 255, 255),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     alignment: AlignmentDirectional(0, 0),
@@ -177,7 +177,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 60,
                     decoration: BoxDecoration(
                       // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 119, 128, 136),
+                      color: const Color.fromARGB(255, 255, 255, 255),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     alignment: AlignmentDirectional(0, 0),
@@ -236,7 +236,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 60,
                     decoration: BoxDecoration(
                       // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 119, 128, 136),
+                      color: const Color.fromARGB(255, 255, 255, 255),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     alignment: AlignmentDirectional(0, 0),
@@ -252,7 +252,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               decoration: InputDecoration(
                                 enabledBorder: OutlineInputBorder(
                                   borderSide: BorderSide(
-                                    color: Color.fromARGB(0, 138, 4, 4),
+                                    color: Color.fromARGB(255, 255, 255, 255),
                                     width: 2,
                                   ),
                                   borderRadius: BorderRadius.circular(8),
