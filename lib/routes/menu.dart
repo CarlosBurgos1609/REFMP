@@ -14,14 +14,14 @@ class Menu {
   static const Map<int, String> _titles = {
     0: 'Inicio',
     1: 'Perfil',
-    3: 'Notificaciones',
     2: 'Sedes',
     4: 'Instrumentos',
-    5: 'Eventos',
     6: 'Contactos',
     7: 'Ubicaciones',
-    8: 'Configuración',
-    9: 'Estudiantes'
+    9: 'Estudiantes',
+    3: 'Notificaciones',
+    5: 'Eventos',
+    8: 'Configuración'
   };
 
   static IconData _getIcon(int index) {
@@ -51,77 +51,50 @@ class Menu {
     }
   }
 
+  // Inicia la ruta activa en la página "Inicio" (índice 0)
+  static int _currentIndex = 0;
+
   static void _navigateToPage(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const HomePage(title: "Inicio")));
-        break;
-      case 1:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const ProfilePage(title: "Perfil")));
-        break;
-      case 2:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const HeadquartersPage(title: "Sedes")));
-        break;
-      case 3:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    const NotificationPage(title: "Notificaciones")));
-        break;
-      case 4:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const InstrumentsPage(
-                      title: "Instrumentos",
-                    )));
-        break;
-      case 5:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const EventsPage(title: "Eventos")));
-        break;
-      case 6:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const ContactsPage(title: "Contactos")));
-        break;
-      case 7:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    const LocationsPage(title: "Ubicaciones")));
-        break;
-      case 8:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    const SettingsPage(title: "Configuración")));
-        break;
-      case 9:
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    const StudentsPage(title: "Estudiantes")));
-        break;
-      default:
-        break;
-    }
+    final routes = {
+      0: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Inicio'),
+          builder: (context) => const HomePage(title: "Inicio")),
+      1: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Perfil'),
+          builder: (context) => const ProfilePage(title: "Perfil")),
+      2: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Sedes'),
+          builder: (context) => const HeadquartersPage(title: "Sedes")),
+      3: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Notificaciones'),
+          builder: (context) =>
+              const NotificationPage(title: "Notificaciones")),
+      4: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Instrumentos'),
+          builder: (context) => const InstrumentsPage(
+                title: "Instrumentos",
+              )),
+      5: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Eventos'),
+          builder: (context) => const EventsPage(title: "Eventos")),
+      6: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Contactos'),
+          builder: (context) => const ContactsPage(title: "Contactos")),
+      7: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Ubicaciones'),
+          builder: (context) => const LocationsPage(title: "Ubicaciones")),
+      8: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Configuración'),
+          builder: (context) => const SettingsPage(title: "Configuración")),
+      9: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Estudiantes'),
+          builder: (context) => const StudentsPage(title: "Estudiantes")),
+    };
+
+    // Actualiza el índice de la página actual
+    _currentIndex = index;
+
+    Navigator.pushReplacement(context, routes[index]!);
   }
 
   static Drawer buildDrawer(BuildContext context) {
@@ -136,10 +109,7 @@ class Menu {
               decoration: const BoxDecoration(
                 image: DecorationImage(
                     fit: BoxFit.fill,
-                    // fit: BoxFit.cover,
-                    image: AssetImage("assets/images/pasto.png")
-                    // image: AssetImage("assets/images/appbar.png"),
-                    ),
+                    image: AssetImage("assets/images/pasto.png")),
               ),
               child: Align(
                 alignment: Alignment.bottomLeft,
@@ -163,13 +133,17 @@ class Menu {
                         fontWeight: FontWeight.bold),
                   ),
                   currentAccountPicture: GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const ProfilePage(title: "Perfil"),
-                      ),
-                    ),
+                    onTap: () {
+                      // Actualiza el índice a "Perfil" cuando se toque la imagen
+                      _currentIndex = 1; // Cambiar al perfil
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const ProfilePage(title: "Perfil"),
+                        ),
+                      );
+                    },
                     child: CircleAvatar(
                       backgroundColor: Colors.white,
                       child: ClipOval(
@@ -186,24 +160,67 @@ class Menu {
               ),
             ),
           ),
-          ...List.generate(_titles.length, (index) {
-            return Column(
-              children: [
-                ListTile(
-                  leading: Icon(Menu._getIcon(index), color: Colors.blue),
-                  title: Text(
-                    _titles[index]!,
-                    style: const TextStyle(color: Colors.blue),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Menu._navigateToPage(context, index);
-                  },
+          // Resto del menú
+          ...[0, 1, 2, 4, 6, 7].map((index) {
+            return ListTile(
+              leading: Icon(Menu._getIcon(index),
+                  color: _currentIndex == index ? Colors.blue : Colors.grey),
+              title: Text(
+                _titles[index]!,
+                style: TextStyle(
+                  color: _currentIndex == index ? Colors.blue : Colors.grey,
                 ),
-                Divider(),
-              ],
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, index);
+              },
             );
-          }),
+          }).toList(),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              "Solo profesores",
+              style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16),
+            ),
+          ),
+          // Estudiantes
+          ListTile(
+            leading: Icon(Menu._getIcon(9),
+                color: _currentIndex == 9 ? Colors.blue : Colors.grey),
+            title: Text(
+              _titles[9]!,
+              style: TextStyle(
+                color: _currentIndex == 9 ? Colors.blue : Colors.grey,
+              ),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Menu._navigateToPage(context, 9);
+            },
+          ),
+          const Divider(),
+          // Notificaciones, eventos y configuración
+          ...[3, 5, 8].map((index) {
+            return ListTile(
+              leading: Icon(Menu._getIcon(index),
+                  color: _currentIndex == index ? Colors.blue : Colors.grey),
+              title: Text(
+                _titles[index]!,
+                style: TextStyle(
+                  color: _currentIndex == index ? Colors.blue : Colors.grey,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, index);
+              },
+            );
+          }).toList(),
         ],
       ),
     );
