@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/controllers/exit.dart'; // Importa el controlador
 
@@ -26,6 +27,7 @@ class _HomePageState extends State<HomePage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
           leading: Builder(
             builder: (context) {
               return IconButton(
@@ -34,6 +36,27 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
+          actions: [
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ProfilePage(title: "Perfil"),
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(right: 24),
+                child: ClipOval(
+                  child: Image.asset(
+                    "assets/images/refmmp.png",
+                    fit: BoxFit.cover,
+                    width: 45,
+                    height: 45,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
         drawer: Menu.buildDrawer(context),
         body: const Center(
