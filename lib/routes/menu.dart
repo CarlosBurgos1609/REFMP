@@ -51,8 +51,8 @@ class Menu {
     }
   }
 
-  // Inicia la ruta activa en la página "Inicio" (índice 0)
-  static int _currentIndex = 0;
+  // Usamos ValueNotifier para manejar el índice actual de la página
+  static ValueNotifier<int> currentIndexNotifier = ValueNotifier<int>(0);
 
   static void _navigateToPage(BuildContext context, int index) {
     final routes = {
@@ -92,137 +92,142 @@ class Menu {
     };
 
     // Actualiza el índice de la página actual
-    _currentIndex = index;
+    currentIndexNotifier.value = index;
 
     Navigator.pushReplacement(context, routes[index]!);
   }
 
-  static Drawer buildDrawer(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            padding: const EdgeInsets.all(0),
-            decoration: BoxDecoration(color: Colors.blue),
-            child: Container(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                    fit: BoxFit.fill,
-                    image: AssetImage("assets/images/pasto.png")),
-              ),
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: UserAccountsDrawerHeader(
-                  decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(8)),
-                  accountName: const Text(
-                    "Carlos Alexander Burgos J.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold),
+  static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: currentIndexNotifier,
+      builder: (context, currentIndex, _) {
+        return Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                padding: const EdgeInsets.all(0),
+                decoration: BoxDecoration(color: Colors.blue),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                        fit: BoxFit.fill,
+                        image: AssetImage("assets/images/pasto.png")),
                   ),
-                  accountEmail: const Text(
-                    "Admin",
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  currentAccountPicture: GestureDetector(
-                    onTap: () {
-                      // Actualiza el índice a "Perfil" cuando se toque la imagen
-                      _currentIndex = 1; // Cambiar al perfil
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const ProfilePage(title: "Perfil"),
-                        ),
-                      );
-                    },
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: ClipOval(
-                        child: Image.asset(
-                          "assets/images/refmmp.png",
-                          fit: BoxFit.cover,
-                          width: 72,
-                          height: 72,
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: UserAccountsDrawerHeader(
+                      decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8)),
+                      accountName: const Text(
+                        "Carlos Alexander Burgos J.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      accountEmail: const Text(
+                        "Admin",
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      currentAccountPicture: GestureDetector(
+                        onTap: () {
+                          // Actualiza el índice a "Perfil" cuando se toque la imagen
+                          currentIndexNotifier.value = 1; // Cambiar al perfil
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ProfilePage(title: "Perfil"),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          backgroundColor: Colors.white,
+                          child: ClipOval(
+                            child: Image.asset(
+                              "assets/images/refmmp.png",
+                              fit: BoxFit.cover,
+                              width: 72,
+                              height: 72,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-          // Resto del menú
-          ...[0, 1, 2, 4, 6, 7].map((index) {
-            return ListTile(
-              leading: Icon(Menu._getIcon(index),
-                  color: _currentIndex == index ? Colors.blue : Colors.grey),
-              title: Text(
-                _titles[index]!,
-                style: TextStyle(
-                  color: _currentIndex == index ? Colors.blue : Colors.grey,
+              // Resto del menú
+              ...[0, 1, 2, 4, 6, 7].map((index) {
+                return ListTile(
+                  leading: Icon(Menu._getIcon(index),
+                      color: currentIndex == index ? Colors.blue : Colors.grey),
+                  title: Text(
+                    _titles[index]!,
+                    style: TextStyle(
+                      color: currentIndex == index ? Colors.blue : Colors.grey,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Menu._navigateToPage(context, index);
+                  },
+                );
+              }).toList(),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  "Solo profesores",
+                  style: TextStyle(
+                      color: Colors.blue,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
                 ),
               ),
-              onTap: () {
-                Navigator.pop(context);
-                Menu._navigateToPage(context, index);
-              },
-            );
-          }).toList(),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              "Solo profesores",
-              style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16),
-            ),
-          ),
-          // Estudiantes
-          ListTile(
-            leading: Icon(Menu._getIcon(9),
-                color: _currentIndex == 9 ? Colors.blue : Colors.grey),
-            title: Text(
-              _titles[9]!,
-              style: TextStyle(
-                color: _currentIndex == 9 ? Colors.blue : Colors.grey,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Menu._navigateToPage(context, 9);
-            },
-          ),
-          const Divider(),
-          // Notificaciones, eventos y configuración
-          ...[3, 5, 8].map((index) {
-            return ListTile(
-              leading: Icon(Menu._getIcon(index),
-                  color: _currentIndex == index ? Colors.blue : Colors.grey),
-              title: Text(
-                _titles[index]!,
-                style: TextStyle(
-                  color: _currentIndex == index ? Colors.blue : Colors.grey,
+              // Estudiantes
+              ListTile(
+                leading: Icon(Menu._getIcon(9),
+                    color: currentIndex == 9 ? Colors.blue : Colors.grey),
+                title: Text(
+                  _titles[9]!,
+                  style: TextStyle(
+                    color: currentIndex == 9 ? Colors.blue : Colors.grey,
+                  ),
                 ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Menu._navigateToPage(context, 9);
+                },
               ),
-              onTap: () {
-                Navigator.pop(context);
-                Menu._navigateToPage(context, index);
-              },
-            );
-          }).toList(),
-        ],
-      ),
+              const Divider(),
+              // Notificaciones, eventos y configuración
+              ...[3, 5, 8].map((index) {
+                return ListTile(
+                  leading: Icon(Menu._getIcon(index),
+                      color: currentIndex == index ? Colors.blue : Colors.grey),
+                  title: Text(
+                    _titles[index]!,
+                    style: TextStyle(
+                      color: currentIndex == index ? Colors.blue : Colors.grey,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Menu._navigateToPage(context, index);
+                  },
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
-import 'package:refmp/routes/menu.dart';
-import 'package:refmp/controllers/exit.dart'; // Importa el controlador
+import 'package:refmp/routes/menu.dart'; // Importa el controlador
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -38,12 +38,17 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfilePage(title: "Perfil"),
-                ),
-              ),
+              onTap: () {
+                // Actualizamos el índice en el ValueNotifier
+                Menu.currentIndexNotifier.value =
+                    1; // Cambiar al índice de Perfil
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfilePage(title: "Perfil"),
+                  ),
+                );
+              },
               child: Padding(
                 padding: EdgeInsets.only(right: 24),
                 child: ClipOval(
