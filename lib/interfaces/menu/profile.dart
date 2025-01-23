@@ -27,6 +27,8 @@ class _ProfilePageState extends State<ProfilePage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
+          elevation: 0,
           leading: Builder(
             builder: (context) {
               return IconButton(

@@ -189,8 +189,10 @@ class Menu {
           ...List.generate(_titles.length, (index) {
             return ListTile(
               leading: Icon(Menu._getIcon(index), color: Colors.blue),
-              title: Text(_titles[index]!,
-                  style: const TextStyle(color: Colors.blue)),
+              title: Text(
+                _titles[index]!,
+                style: const TextStyle(color: Colors.blue),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 Menu._navigateToPage(context, index);
