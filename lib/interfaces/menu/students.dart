@@ -38,7 +38,7 @@ class _StudentsPageState extends State<StudentsPage> {
           ),
           drawer: Menu.buildDrawer(context),
           body: FutureBuilder<List>(
-            future: getUsers(),
+            future: getStudents(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
@@ -48,20 +48,20 @@ class _StudentsPageState extends State<StudentsPage> {
               } else if (snapshot.hasError) {
                 return Center(child: Text("Error: ${snapshot.error}"));
               } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No users found."));
+                return const Center(child: Text("No students found."));
               }
 
-              final users = snapshot.data!;
+              final students = snapshot.data!;
               return ListView.builder(
-                itemCount: users.length,
+                itemCount: students.length,
                 itemBuilder: (context, index) {
-                  final user = users[index] as Map<String, dynamic>;
-                  final name =
-                      user['name'] as String? ?? "No se encontro ningun nombre";
-                  final last_name =
-                      user['last_name'] as String? ?? "No se encontro Apellido";
+                  final student = students[index] as Map<String, dynamic>;
+                  final name = student['name'] as String? ??
+                      "No se encontro ningun nombre";
+                  final last_name = student['last_name'] as String? ??
+                      "No se encontro Apellido";
                   final email =
-                      user['email'] as String? ?? "No se encontro el email";
+                      student['email'] as String? ?? "No se encontro el email";
                   return Center(
                     child: Column(
                       children: [

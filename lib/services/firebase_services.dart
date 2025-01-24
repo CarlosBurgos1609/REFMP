@@ -14,3 +14,19 @@ Future<List> getUsers() async {
   });
   return users;
 }
+
+Future<List<Map<String, dynamic>>> getStudents() async {
+  List<Map<String, dynamic>> students = [];
+  CollectionReference collectionReferenceStudent = db.collection('students');
+
+  QuerySnapshot queryStudents = await collectionReferenceStudent.get();
+
+  queryStudents.docs.forEach((documento) {
+    students.add({
+      "id": documento.id, // Agregar el ID del documento
+      ...documento.data() as Map<String, dynamic>, // Convertir los datos
+    });
+  });
+
+  return students;
+}
