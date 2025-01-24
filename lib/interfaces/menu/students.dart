@@ -63,6 +63,8 @@ class _StudentsPageState extends State<StudentsPage> {
                 final lastName = student['last_name'] ?? "Sin apellido";
                 final email = student['email'] ?? "Sin email";
                 final position = student['position'] ?? "Sin posición";
+                final instrument = student['instrument'] ?? "Sin posición";
+                final instrument2 = student['instrument2'] ?? " ";
 
                 return Card(
                   margin:
@@ -85,6 +87,13 @@ class _StudentsPageState extends State<StudentsPage> {
                         Text(email),
                         Text(
                           position,
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          "$instrument $instrument2",
                           style: const TextStyle(
                             color: Colors.blue,
                             fontWeight: FontWeight.bold,
