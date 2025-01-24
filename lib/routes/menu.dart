@@ -16,11 +16,11 @@ class Menu {
     1: 'Perfil',
     2: 'Sedes',
     4: 'Instrumentos',
-    6: 'Contactos',
+    5: 'Eventos',
     7: 'Ubicaciones',
     9: 'Estudiantes',
     3: 'Notificaciones',
-    5: 'Eventos',
+    6: 'Contactos',
     8: 'Configuración'
   };
 
@@ -164,7 +164,7 @@ class Menu {
                 ),
               ),
               // Resto del menú
-              ...[0, 1, 2, 4, 6, 7].map((index) {
+              ...[0, 1, 2, 4, 5, 7].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
@@ -208,7 +208,7 @@ class Menu {
               ),
               const Divider(),
               // Notificaciones, eventos y configuración
-              ...[3, 5, 8].map((index) {
+              ...[3, 6, 8].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
