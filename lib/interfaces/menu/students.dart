@@ -71,14 +71,14 @@ class _StudentsPageState extends State<StudentsPage> {
                       const EdgeInsets.symmetric(vertical: 3, horizontal: 16),
                   child: ListTile(
                     leading: CircleAvatar(
-                      radius: 30,
+                      radius: 25,
                       backgroundImage: AssetImage("assets/images/refmmp.png"),
                     ),
                     title: Text(
                       "$name $lastName",
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 20,
+                        fontSize: 18,
                       ),
                     ),
                     subtitle: Column(
