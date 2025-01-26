@@ -148,7 +148,7 @@ class Menu {
                           );
                         },
                         child: CircleAvatar(
-                          backgroundColor: Colors.white,
+                          backgroundColor: Colors.blue,
                           child: ClipOval(
                             child: Image.asset(
                               "assets/images/refmmp.png",

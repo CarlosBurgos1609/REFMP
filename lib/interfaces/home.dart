@@ -23,15 +23,16 @@ class _HomePageState extends State<HomePage> {
             widget.title,
             style: const TextStyle(
               fontSize: 22,
-              color: Colors.blue,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
+          backgroundColor: Colors.blue,
           centerTitle: true,
           leading: Builder(
             builder: (context) {
               return IconButton(
-                icon: const Icon(Icons.menu, color: Colors.blue),
+                icon: const Icon(Icons.menu, color: Colors.white),
                 onPressed: () => Scaffold.of(context).openDrawer(),
               );
             },
