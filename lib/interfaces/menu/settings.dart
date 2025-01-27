@@ -20,7 +20,7 @@ class _SettingsPage extends State<SettingsPage> {
           title: Text(
             widget.title,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 23,
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
