@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
-//firebase
-// import 'package:refmp/services/firebase_services.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.title});
@@ -13,6 +13,45 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  Map<String, dynamic> userProfile = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  // Cargar el perfil del usuario desde Firestore
+  Future<void> _loadUserProfile() async {
+    try {
+      // Obtén el UID del usuario autenticado
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final String uid = user.uid;
+
+        // Realiza una consulta en Firestore para obtener los datos del perfil
+        final docSnapshot = await FirebaseFirestore.instance
+            .collection('users') // O la colección que prefieras
+            .doc(uid) // Aquí usamos el UID como documento
+            .get();
+
+        if (docSnapshot.exists) {
+          setState(() {
+            userProfile = docSnapshot.data() as Map<String, dynamic>;
+          });
+        } else {
+          setState(() {
+            userProfile = {'error': 'Perfil no encontrado'};
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        userProfile = {'error': 'Error al cargar el perfil: ${e.toString()}'};
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -54,181 +93,83 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
-              Center(
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16, 16, 16, 0),
+              if (userProfile.isNotEmpty &&
+                  !userProfile.containsKey('error')) ...[
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Container(
                     width: double.infinity,
-                    height: 60,
                     decoration: BoxDecoration(
-                      // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 255, 255, 255),
-                      borderRadius: BorderRadius.circular(30),
+                      color: Colors.blue, // Color de fondo
+                      borderRadius:
+                          BorderRadius.circular(30), // Bordes redondeados
                     ),
-                    alignment: AlignmentDirectional(0, 0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(4, 0, 4, 0),
-                            child: TextFormField(
-                              textAlign: TextAlign.center,
-                              obscureText: false,
-                              decoration: InputDecoration(
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedErrorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10.0),
+                      child: Column(
+                        children: [
+                          // Nombre y apellido
+                          Text(
+                            '${userProfile['name']} ${userProfile['last_name']}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          // Correo electrónico
+                          _buildProfileField(
+                              'Correo electrónico', userProfile['email']),
+                          const SizedBox(height: 16),
+                          // Posición
+                          _buildProfileField(
+                              'Posición', userProfile['position']),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Center(
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16, 16, 16, 0),
-                  child: Container(
-                    width: double.infinity,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 255, 255, 255),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    alignment: AlignmentDirectional(0, 0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(4, 0, 4, 0),
-                            child: TextFormField(
-                              textAlign: TextAlign.center,
-                              obscureText: false,
-                              decoration: InputDecoration(
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedErrorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              ] else if (userProfile.containsKey('error')) ...[
+                Text(
+                  userProfile['error'],
+                  style: TextStyle(fontSize: 18, color: Colors.red),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Método para construir un campo de perfil (solo lectura)
+  Widget _buildProfileField(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.blue, // Color de fondo
+          borderRadius: BorderRadius.circular(30), // Bordes redondeados
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              Center(
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16, 16, 16, 0),
-                  child: Container(
-                    width: double.infinity,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      // color: FlutterFlowTheme.of(context).primaryBackground,
-                      color: const Color.fromARGB(255, 255, 255, 255),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    alignment: AlignmentDirectional(0, 0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(4, 0, 4, 0),
-                            child: TextFormField(
-                              textAlign: TextAlign.center,
-                              obscureText: false,
-                              decoration: InputDecoration(
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color.fromARGB(255, 255, 255, 255),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedErrorBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Color(0x00000000),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
                 ),
               ),
             ],

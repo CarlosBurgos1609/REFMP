@@ -1,32 +1,67 @@
-// import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
-FirebaseFirestore db = FirebaseFirestore.instance;
+class FirebaseServices {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-Future<List> getUsers() async {
-  List users = [];
-  CollectionReference collectionReferenceUser = db.collection('users');
+  // Iniciar sesión de usuario
+  Future<User?> signInWithEmailPassword(String email, String password) async {
+    try {
+      final UserCredential userCredential =
+          await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return userCredential.user;
+    } catch (e) {
+      print("Error en login: $e");
+      return null;
+    }
+  }
 
-  QuerySnapshot queryUsers = await collectionReferenceUser.get();
+  // Obtener estudiantes
+  Future<List<Map<String, dynamic>>> getStudents() async {
+    try {
+      QuerySnapshot snapshot = await _firestore.collection('students').get();
+      return snapshot.docs
+          .map((doc) => doc.data() as Map<String, dynamic>)
+          .toList();
+    } catch (e) {
+      print("Error al obtener estudiantes: $e");
+      return [];
+    }
+  }
 
-  queryUsers.docs.forEach((documento) {
-    users.add(documento.data());
-  });
-  return users;
-}
+  // Obtener perfil del usuario autenticado
+  Future<Map<String, dynamic>> getUserProfile(String uid) async {
+    try {
+      DocumentSnapshot snapshot =
+          await _firestore.collection('users').doc(uid).get();
+      return snapshot.data() as Map<String, dynamic>;
+    } catch (e) {
+      print("Error al obtener perfil: $e");
+      return {};
+    }
+  }
 
-Future<List<Map<String, dynamic>>> getStudents() async {
-  List<Map<String, dynamic>> students = [];
-  CollectionReference collectionReferenceStudent = db.collection('students');
-
-  QuerySnapshot queryStudents = await collectionReferenceStudent.get();
-
-  queryStudents.docs.forEach((documento) {
-    students.add({
-      "id": documento.id, // Agregar el ID del documento
-      ...documento.data() as Map<String, dynamic>, // Convertir los datos
-    });
-  });
-
-  return students;
+  // Subir una imagen a Firebase Storage
+  Future<String> uploadImage(XFile image) async {
+    try {
+      File file = File(image.path);
+      String fileName =
+          'profile_images/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      UploadTask uploadTask = _storage.ref(fileName).putFile(file);
+      TaskSnapshot snapshot = await uploadTask;
+      String imageUrl = await snapshot.ref.getDownloadURL();
+      return imageUrl;
+    } catch (e) {
+      print("Error al subir imagen: $e");
+      return "";
+    }
+  }
 }

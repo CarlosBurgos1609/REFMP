@@ -16,6 +16,8 @@ class _StudentsPageState extends State<StudentsPage> {
   String searchQuery = ""; // Almacena la búsqueda
   List<dynamic> allStudents = [];
   Map<String, List<Map<String, dynamic>>> groupedStudents = {};
+  final FirebaseServices _firebaseServices =
+      FirebaseServices(); // Instancia de FirebaseServices
 
   @override
   void initState() {
@@ -23,8 +25,10 @@ class _StudentsPageState extends State<StudentsPage> {
     fetchStudents();
   }
 
+  // Función para obtener estudiantes
   Future<void> fetchStudents() async {
-    final students = await getStudents();
+    final students =
+        await _firebaseServices.getStudents(); // Llamada a FirebaseServices
     setState(() {
       allStudents = students;
       groupStudentsByInstrument(students);
