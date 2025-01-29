@@ -29,6 +29,8 @@ class _ProfilePageState extends State<ProfilePage> {
       if (user != null) {
         final String uid = user.uid;
 
+        print("UID del usuario autenticado: $uid"); // Depuración
+
         // Realiza una consulta en Firestore para obtener los datos del perfil
         final docSnapshot = await FirebaseFirestore.instance
             .collection('users') // O la colección que prefieras
@@ -39,6 +41,7 @@ class _ProfilePageState extends State<ProfilePage> {
           setState(() {
             userProfile = docSnapshot.data() as Map<String, dynamic>;
           });
+          print("Datos del perfil cargados: ${userProfile}"); // Depuración
         } else {
           setState(() {
             userProfile = {'error': 'Perfil no encontrado'};
@@ -49,6 +52,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         userProfile = {'error': 'Error al cargar el perfil: ${e.toString()}'};
       });
+      print("Error al cargar el perfil: ${e.toString()}"); // Depuración
     }
   }
 
@@ -135,6 +139,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   userProfile['error'],
                   style: TextStyle(fontSize: 18, color: Colors.red),
                 ),
+              ] else ...[
+                // Si aún no se han cargado los datos
+                CircularProgressIndicator(color: Colors.blue),
               ],
             ],
           ),
