@@ -106,7 +106,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     decoration: BoxDecoration(
                       color: Colors.blue, // Color de fondo
                       borderRadius:
-                          BorderRadius.circular(30), // Bordes redondeados
+                          BorderRadius.circular(40), // Bordes redondeados
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10.0),
