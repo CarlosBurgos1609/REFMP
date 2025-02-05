@@ -17,9 +17,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       home: const Init(),
       debugShowCheckedModeBanner: false,
-      // theme: ThemeData(
-      //   primarySwatch: Colors.blue,
-      // ),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
     );
   }
 }
