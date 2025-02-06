@@ -21,7 +21,8 @@ class Menu {
     9: 'Estudiantes',
     3: 'Notificaciones',
     6: 'Contactos',
-    8: 'Configuración'
+    8: 'Configuración',
+    10: 'Egresados'
   };
 
   static IconData _getIcon(int index) {
@@ -46,6 +47,8 @@ class Menu {
         return Icons.settings;
       case 9:
         return Icons.supervised_user_circle;
+      case 10:
+        return Icons.supervised_user_circle_sharp;
       default:
         return Icons.error;
     }
@@ -89,6 +92,9 @@ class Menu {
       9: MaterialPageRoute(
           settings: const RouteSettings(name: 'Estudiantes'),
           builder: (context) => const StudentsPage(title: "Estudiantes")),
+      10: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Egresados'),
+          builder: (context) => const SettingsPage(title: "Egresados")),
     };
 
     // Actualiza el índice de la página actual
@@ -192,20 +198,22 @@ class Menu {
                 ),
               ),
               // Estudiantes
-              ListTile(
-                leading: Icon(Menu._getIcon(9),
-                    color: currentIndex == 9 ? Colors.blue : Colors.grey),
-                title: Text(
-                  _titles[9]!,
-                  style: TextStyle(
-                    color: currentIndex == 9 ? Colors.blue : Colors.grey,
+              ...[9, 10].map((index) {
+                return ListTile(
+                  leading: Icon(Menu._getIcon(index),
+                      color: currentIndex == index ? Colors.blue : Colors.grey),
+                  title: Text(
+                    _titles[index]!,
+                    style: TextStyle(
+                      color: currentIndex == index ? Colors.blue : Colors.grey,
+                    ),
                   ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Menu._navigateToPage(context, 9);
-                },
-              ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Menu._navigateToPage(context, index);
+                  },
+                );
+              }).toList(),
               const Divider(),
               // Notificaciones, eventos y configuración
               ...[3, 6, 8].map((index) {
