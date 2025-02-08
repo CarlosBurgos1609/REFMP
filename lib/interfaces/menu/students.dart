@@ -1,23 +1,27 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:refmp/controllers/exit.dart';
-import 'package:refmp/routes/menu.dart';
-// Firebase
-import 'package:refmp/services/firebase_services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StudentsPage extends StatefulWidget {
   const StudentsPage({super.key, required this.title});
   final String title;
 
   @override
-  State<StudentsPage> createState() => _StudentsPageState();
+  _StudentsPageState createState() => _StudentsPageState();
 }
 
 class _StudentsPageState extends State<StudentsPage> {
-  String searchQuery = ""; // Almacena la búsqueda
-  List<dynamic> allStudents = [];
-  Map<String, List<Map<String, dynamic>>> groupedStudents = {};
-  final FirebaseServices _firebaseServices =
-      FirebaseServices(); // Instancia de FirebaseServices
+  final _formKey = GlobalKey<FormState>();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _idNumberController = TextEditingController();
+  final _passwordController = TextEditingController();
+  File? profileImage;
+
+  final ImagePicker _picker = ImagePicker();
+  List<Map<String, dynamic>> students = [];
 
   @override
   void initState() {
@@ -25,183 +29,182 @@ class _StudentsPageState extends State<StudentsPage> {
     fetchStudents();
   }
 
-  // Función para obtener estudiantes
+  Future<void> pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        profileImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> uploadImage(File imageFile) async {
+    try {
+      final fileName =
+          'students/profile_${DateTime.now().millisecondsSinceEpoch}.png';
+      await Supabase.instance.client.storage
+          .from('students')
+          .upload(fileName, imageFile);
+      return Supabase.instance.client.storage
+          .from('students')
+          .getPublicUrl(fileName);
+    } catch (error) {
+      print('Error al subir la imagen: $error');
+      return null;
+    }
+  }
+
+  Future<void> addStudent() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    String? imageUrl;
+    if (profileImage != null) {
+      imageUrl = await uploadImage(profileImage!);
+    }
+    await Supabase.instance.client.from('students').insert({
+      'first_name': _firstNameController.text,
+      'last_name': _lastNameController.text,
+      'email': _emailController.text,
+      'identification_number': _idNumberController.text,
+      'password': _passwordController.text,
+      'profile_image': imageUrl,
+    });
+    fetchStudents();
+    Navigator.pop(context);
+  }
+
   Future<void> fetchStudents() async {
-    final students =
-        await _firebaseServices.getStudents(); // Llamada a FirebaseServices
+    final response =
+        await Supabase.instance.client.from('students').select('*');
     setState(() {
-      allStudents = students;
-      groupStudentsByInstrument(students);
+      students = List<Map<String, dynamic>>.from(response);
     });
   }
 
-  void groupStudentsByInstrument(List students) {
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
+  Future<void> deleteStudent(int studentId) async {
+    await Supabase.instance.client
+        .from('students')
+        .delete()
+        .eq('id', studentId);
+    fetchStudents();
+  }
 
-    for (var student in students) {
-      final instrument1 = student['instrument'] ?? "Sin instrumento";
-      final instrument2 = student['instrument2'] ?? "";
+  void showStudentOptions(BuildContext context, Map<String, dynamic> student) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Wrap(
+          children: [
+            ListTile(
+              leading: Icon(Icons.info),
+              title: Text('Más información'),
+              onTap: () {
+                Navigator.pop(context);
+                showStudentDetails(student);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete, color: Colors.red),
+              title: Text('Eliminar estudiante',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                showDeleteConfirmation(student['id']);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-      // Agrupar por el primer instrumento
-      grouped.putIfAbsent(instrument1, () => []).add(student);
+  void showDeleteConfirmation(int studentId) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Eliminar estudiante'),
+          content:
+              Text('¿Estás seguro de que deseas eliminar a este estudiante?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                deleteStudent(studentId);
+                Navigator.pop(context);
+              },
+              child: Text('Eliminar', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-      // Si hay un segundo instrumento, agrupar también por este
-      if (instrument2.isNotEmpty) {
-        grouped.putIfAbsent(instrument2, () => []).add(student);
-      }
-    }
-
-    // Ordenar las claves alfabéticamente
-    final sortedKeys = grouped.keys.toList()..sort();
-
-    setState(() {
-      groupedStudents = {for (var key in sortedKeys) key: grouped[key]!};
-    });
+  void showStudentDetails(Map<String, dynamic> student) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('${student['first_name']} ${student['last_name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(50),
+                child: student['profile_image'] != null &&
+                        student['profile_image'].isNotEmpty
+                    ? Image.network(student['profile_image'], height: 100)
+                    : Image.asset('assets/images/refmmp.png', height: 100),
+              ),
+              SizedBox(height: 10),
+              Text('Email: ${student['email']}'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () => showExitConfirmationDialog(context),
-      child: Scaffold(
-        appBar: AppBar(
-          title: TextField(
-            decoration: const InputDecoration(
-              hintText: "Buscar estudiantes...",
-              border: InputBorder.none,
-              hintStyle: TextStyle(color: Colors.white70),
+    return Scaffold(
+      appBar: AppBar(title: Text('Gestión de Estudiantes')),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.add),
+        onPressed: () {},
+      ),
+      body: ListView.builder(
+        itemCount: students.length,
+        itemBuilder: (context, index) {
+          final student = students[index];
+          return ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(25),
+              child: student['profile_image'] != null &&
+                      student['profile_image'].isNotEmpty
+                  ? Image.network(student['profile_image'],
+                      height: 50, width: 50, fit: BoxFit.cover)
+                  : Image.asset('assets/images/refmmp.png',
+                      height: 50, width: 50, fit: BoxFit.cover),
             ),
-            style: const TextStyle(color: Colors.white),
-            onChanged: (query) {
-              setState(() {
-                searchQuery = query.toLowerCase();
-              });
-            },
-          ),
-          backgroundColor: Colors.blue,
-          leading: Builder(
-            builder: (context) {
-              return IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              );
-            },
-          ),
-        ),
-        drawer: Menu.buildDrawer(context),
-        body: allStudents.isEmpty
-            ? const Center(
-                child: CircularProgressIndicator(color: Colors.blue),
-              )
-            : ListView(
-                children: groupedStudents.keys.map((instrument) {
-                  // Filtrar estudiantes según la búsqueda
-                  final filteredStudents = groupedStudents[instrument]!
-                      .where((student) =>
-                          student['name']
-                              .toString()
-                              .toLowerCase()
-                              .contains(searchQuery) ||
-                          student['last_name']
-                              .toString()
-                              .toLowerCase()
-                              .contains(searchQuery))
-                      .toList();
-
-                  // Si no hay estudiantes que coincidan, no mostrar la sección
-                  if (filteredStudents.isEmpty) return const SizedBox.shrink();
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Título del instrumento
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Text(
-                          instrument,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ),
-                      ...filteredStudents.map((student) {
-                        final name = student['name'] ?? "Sin nombre";
-                        final lastName = student['last_name'] ?? "Sin apellido";
-                        final email = student['email'] ?? "Sin email";
-                        final position = student['position'] ?? "Sin posición";
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              vertical: 3, horizontal: 16),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              radius: 25,
-                              backgroundImage: AssetImage(
-                                  "assets/images/refmmp.png"), // Imagen por defecto
-                            ),
-                            title: Text(
-                              "$name $lastName",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(email),
-                                Text(
-                                  position,
-                                  style: const TextStyle(
-                                    color: Colors.blue,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            trailing: PopupMenuButton(
-                              onSelected: (value) {
-                                if (value == 'info') {
-                                  // Mostrar información del estudiante
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: Text(
-                                          "Información de $name $lastName"),
-                                      content: Text(
-                                          "Email: $email\nCargo: $position\nInstrumento: $instrument"),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context),
-                                          child: const Text(
-                                            "Cerrar",
-                                            style:
-                                                TextStyle(color: Colors.blue),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'info',
-                                  child: Text("Más información del estudiante"),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ],
-                  );
-                }).toList(),
-              ),
+            title: Text('${student['first_name']} ${student['last_name']}'),
+            subtitle: Text(student['email']),
+            trailing: IconButton(
+              icon: Icon(Icons.more_vert),
+              onPressed: () => showStudentOptions(context, student),
+            ),
+          );
+        },
       ),
     );
   }
