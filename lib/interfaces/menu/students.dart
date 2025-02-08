@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StudentsPage extends StatefulWidget {
@@ -183,6 +184,7 @@ class _StudentsPageState extends State<StudentsPage> {
         child: Icon(Icons.add),
         onPressed: () {},
       ),
+      drawer: Menu.buildDrawer(context),
       body: ListView.builder(
         itemCount: students.length,
         itemBuilder: (context, index) {
