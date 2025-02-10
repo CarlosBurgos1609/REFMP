@@ -97,7 +97,10 @@ class _StudentsPageState extends State<StudentsPage> {
         return Wrap(
           children: [
             ListTile(
-              leading: Icon(Icons.info),
+              leading: Icon(
+                Icons.info,
+                color: Colors.blue,
+              ),
               title: Text('Más información'),
               onTap: () {
                 Navigator.pop(context);
@@ -179,10 +182,28 @@ class _StudentsPageState extends State<StudentsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Gestión de Estudiantes')),
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        title: Text(
+          'Estudiantes',
+          style: TextStyle(color: Colors.white),
+        ),
+        leading: Builder(
+          builder: (context) {
+            return IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            );
+          },
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.add),
+        child: Icon(
+          Icons.add,
+          color: Colors.white,
+        ),
         onPressed: () => addStudent(),
+        backgroundColor: Colors.blue,
       ),
       drawer: Menu.buildDrawer(context),
       body: RefreshIndicator(
