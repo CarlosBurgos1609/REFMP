@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -70,7 +71,6 @@ class _StudentsPageState extends State<StudentsPage> {
       'password': _passwordController.text,
       'profile_image': imageUrl,
     });
-    fetchStudents();
     Navigator.pop(context);
   }
 
@@ -182,31 +182,34 @@ class _StudentsPageState extends State<StudentsPage> {
       appBar: AppBar(title: Text('Gestión de Estudiantes')),
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.add),
-        onPressed: () {},
+        onPressed: () => addStudent(),
       ),
       drawer: Menu.buildDrawer(context),
-      body: ListView.builder(
-        itemCount: students.length,
-        itemBuilder: (context, index) {
-          final student = students[index];
-          return ListTile(
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(25),
-              child: student['profile_image'] != null &&
-                      student['profile_image'].isNotEmpty
-                  ? Image.network(student['profile_image'],
-                      height: 50, width: 50, fit: BoxFit.cover)
-                  : Image.asset('assets/images/refmmp.png',
-                      height: 50, width: 50, fit: BoxFit.cover),
-            ),
-            title: Text('${student['first_name']} ${student['last_name']}'),
-            subtitle: Text(student['email']),
-            trailing: IconButton(
-              icon: Icon(Icons.more_vert),
-              onPressed: () => showStudentOptions(context, student),
-            ),
-          );
-        },
+      body: RefreshIndicator(
+        onRefresh: fetchStudents, // Llamamos la función al refrescar
+        child: ListView.builder(
+          itemCount: students.length,
+          itemBuilder: (context, index) {
+            final student = students[index];
+            return ListTile(
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(25),
+                child: student['profile_image'] != null &&
+                        student['profile_image'].isNotEmpty
+                    ? Image.network(student['profile_image'],
+                        height: 50, width: 50, fit: BoxFit.cover)
+                    : Image.asset('assets/images/refmmp.png',
+                        height: 50, width: 50, fit: BoxFit.cover),
+              ),
+              title: Text('${student['first_name']} ${student['last_name']}'),
+              subtitle: Text(student['email']),
+              trailing: IconButton(
+                icon: Icon(Icons.more_vert),
+                onPressed: () => showStudentOptions(context, student),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
