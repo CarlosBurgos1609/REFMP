@@ -101,7 +101,10 @@ class _StudentsPageState extends State<StudentsPage> {
                 Icons.info,
                 color: Colors.blue,
               ),
-              title: Text('Más información'),
+              title: Text(
+                'Más información',
+                style: TextStyle(color: Colors.blue),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 showStudentDetails(student);
@@ -153,12 +156,19 @@ class _StudentsPageState extends State<StudentsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('${student['first_name']} ${student['last_name']}'),
+          title: Text(
+            '${student['first_name']} ${student['last_name']}',
+            style: TextStyle(
+              color: Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(50),
+                borderRadius: BorderRadius.circular(80),
                 child: student['profile_image'] != null &&
                         student['profile_image'].isNotEmpty
                     ? Image.network(student['profile_image'], height: 100)
@@ -171,7 +181,10 @@ class _StudentsPageState extends State<StudentsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cerrar'),
+              child: Text(
+                'Cerrar',
+                style: TextStyle(color: Colors.blue),
+              ),
             ),
           ],
         );
