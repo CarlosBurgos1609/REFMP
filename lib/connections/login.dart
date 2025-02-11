@@ -2,11 +2,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginConnections {
   static Future<Map<String, dynamic>> login(
-      String email, String password, bool rememberMe) async {
+      String email, String password) async {
     final supabase = Supabase.instance.client;
 
     try {
-      // Intentar autenticar al usuario con Supabase Auth
       final response = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
@@ -15,32 +14,34 @@ class LoginConnections {
       if (response.user == null) {
         return {
           'success': false,
-          'message': 'Usuario o contraseña incorrectos',
+          'message': 'Usuario o contraseña incorrectos'
         };
       }
 
-      // Listado de las tablas donde se podría encontrar el usuario
+      final userId = response.user!.id;
+
+      // Listado de tablas donde buscar el usuario
       final List<String> tables = [
         'users',
         'students',
         'teachers',
         'advisors',
         'graduates',
-        'parents',
+        'parents'
       ];
 
-      // Buscar el usuario en las tablas
       for (final table in tables) {
         final data = await supabase
             .from(table)
             .select()
-            .eq('email', email)
+            .eq('user_id', userId)
             .maybeSingle();
 
         if (data != null) {
           return {
             'success': true,
             'message': 'Inicio de sesión correcto como $table',
+            'role': table,
             'user': data, // Retorna los datos del usuario
           };
         }
@@ -48,18 +49,10 @@ class LoginConnections {
 
       return {
         'success': false,
-        'message': 'Usuario no encontrado en las tablas.',
-      };
-    } on AuthException catch (e) {
-      return {
-        'success': false,
-        'message': 'Error de autenticación: ${e.message}',
+        'message': 'Usuario autenticado, pero no registrado en ninguna tabla'
       };
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error inesperado: ${e.toString()}',
-      };
+      return {'success': false, 'message': 'Error inesperado: ${e.toString()}'};
     }
   }
 }

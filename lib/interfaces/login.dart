@@ -16,7 +16,6 @@ class _LoginPageState extends State<LoginPage> {
   bool isLoading = false;
   bool rememberMe = false;
 
-  // Llamar a la función de login desde el archivo connections/login.dart
   Future<void> loginUser() async {
     setState(() {
       isLoading = true;
@@ -35,7 +34,7 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    final result = await LoginConnections.login(email, password, rememberMe);
+    final result = await LoginConnections.login(email, password);
 
     setState(() {
       isLoading = false;
@@ -45,17 +44,19 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'])),
       );
+
+      String role = result['role'] ?? 'Usuario';
+
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomePage(title: 'Inicio')),
+        MaterialPageRoute(
+          builder: (_) => HomePage(title: 'Inicio - $role'),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'])),
       );
-
-      // Borrar datos si el login falla
-      // emailController.clear();
       passwordController.clear();
     }
   }
@@ -67,10 +68,7 @@ class _LoginPageState extends State<LoginPage> {
         title: const Text(
           'Iniciar Sesión',
           style: TextStyle(
-            fontSize: 22,
-            color: Colors.blue,
-            fontWeight: FontWeight.bold,
-          ),
+              fontSize: 22, color: Colors.blue, fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         centerTitle: true,
@@ -149,36 +147,29 @@ class _LoginPageState extends State<LoginPage> {
                     child: CircularProgressIndicator(
                     color: Colors.blue,
                   ))
-                : ElevatedButton(
+                : ElevatedButton.icon(
                     onPressed: loginUser,
+                    icon: const Icon(Icons.login, color: Colors.white),
+                    label: const Text(
+                      'Iniciar Sesión',
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
                     style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text(
-                      'Iniciar Sesión',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.blue,
-                      ),
-                    ),
                   ),
             const SizedBox(height: 10),
-            ElevatedButton(
+            TextButton(
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const RegisterPage()),
                 );
               },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
               child: const Text(
                 'Registrarse',
                 style: TextStyle(fontSize: 16, color: Colors.blue),
@@ -191,10 +182,7 @@ class _LoginPageState extends State<LoginPage> {
               },
               child: const Text(
                 '¿Olvidaste tu contraseña?',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.blue,
-                ),
+                style: TextStyle(fontSize: 15, color: Colors.blue),
               ),
             ),
           ],
