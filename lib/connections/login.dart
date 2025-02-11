@@ -1,53 +1,59 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginConnections {
   static Future<Map<String, dynamic>> login(
       String email, String password, bool rememberMe) async {
-    final List<String> collections = [
-      'users',
-      'students',
-      'teachers',
-      'secretary'
-    ];
+    final supabase = Supabase.instance.client;
 
     try {
-      for (final collection in collections) {
-        final QuerySnapshot snapshot = await FirebaseFirestore.instance
-            .collection(collection)
-            .where('email', isEqualTo: email)
-            .where('password', isEqualTo: password)
-            .get();
+      // Intentar autenticar al usuario con Supabase Auth
+      final response = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
 
-        if (snapshot.docs.isNotEmpty) {
-          // Guardar credenciales si se seleccionó "Recuérdame"
-          // if (rememberMe) {
-          //   // final prefs = await SharedPreferences.getInstance();
-          //   await prefs.setString('email', email);
-          //   await prefs.setString('password', password);
-          // }
+      if (response.user == null) {
+        return {
+          'success': false,
+          'message': 'Usuario o contraseña incorrectos',
+        };
+      }
 
+      // Listado de las tablas donde se podría encontrar el usuario
+      final List<String> tables = [
+        'users',
+        'students',
+        'teachers',
+        'advisors',
+        'graduates',
+        'parents',
+      ];
+
+      // Buscar el usuario en las tablas
+      for (final table in tables) {
+        final data = await supabase
+            .from(table)
+            .select()
+            .eq('email', email)
+            .maybeSingle();
+
+        if (data != null) {
           return {
             'success': true,
-            'message': 'Inicio de sesión correcto como $collection',
+            'message': 'Inicio de sesión correcto como $table',
+            'user': data, // Retorna los datos del usuario
           };
         }
       }
 
       return {
         'success': false,
-        'message': 'Usuario o contraseña incorrectos',
+        'message': 'Usuario no encontrado en las tablas.',
       };
-    } on FirebaseException catch (e) {
-      if (e.code == 'permission-denied') {
-        return {
-          'success': false,
-          'message': 'Usuario o contraseña incorrectos',
-        };
-      }
+    } on AuthException catch (e) {
       return {
         'success': false,
-        'message': 'Error: ${e.message}',
+        'message': 'Error de autenticación: ${e.message}',
       };
     } catch (e) {
       return {

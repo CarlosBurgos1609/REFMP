@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:refmp/forms/studentsform.dart';
 
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -215,7 +216,12 @@ class _StudentsPageState extends State<StudentsPage> {
           Icons.add,
           color: Colors.white,
         ),
-        onPressed: () => addStudent(),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => StudentForm()),
+          );
+        },
         backgroundColor: Colors.blue,
       ),
       drawer: Menu.buildDrawer(context),
