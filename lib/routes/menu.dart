@@ -9,6 +9,7 @@ import 'package:refmp/interfaces/menu/locations.dart';
 import 'package:refmp/interfaces/menu/notification.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/interfaces/menu/students.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Menu {
   static const Map<int, String> _titles = {
@@ -103,6 +104,32 @@ class Menu {
     Navigator.pushReplacement(context, routes[index]!);
   }
 
+  static Future<Map<String, dynamic>?> _loadUserProfile() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      final tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+      for (final table in tables) {
+        final response = await supabase
+            .from(table)
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (response != null) {
+          return response;
+        }
+      }
+    }
+    return null;
+  }
+
   static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: currentIndexNotifier,
@@ -117,59 +144,80 @@ class Menu {
                 child: Container(
                   decoration: const BoxDecoration(
                     image: DecorationImage(
-                        fit: BoxFit.fill,
-                        image: AssetImage("assets/images/pasto.png")),
+                      fit: BoxFit.fill,
+                      image: AssetImage("assets/images/pasto.png"),
+                    ),
                   ),
                   child: Align(
                     alignment: Alignment.bottomLeft,
-                    child: UserAccountsDrawerHeader(
-                      decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(8)),
-                      accountName: const Text(
-                        "Carlos Alexander Burgos J.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      accountEmail: const Text(
-                        "Admin",
-                        style: TextStyle(
-                            fontSize: 13,
+                    child: FutureBuilder(
+                      future: _loadUserProfile(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator(
                             color: Colors.blue,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      currentAccountPicture: GestureDetector(
-                        onTap: () {
-                          // Actualiza el índice a "Perfil" cuando se toque la imagen
-                          currentIndexNotifier.value = 1; // Cambiar al perfil
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const ProfilePage(title: "Perfil"),
-                            ),
-                          );
-                        },
-                        child: CircleAvatar(
-                          backgroundColor: Colors.blue,
-                          child: ClipOval(
-                            child: Image.asset(
-                              "assets/images/refmmp.png",
-                              fit: BoxFit.cover,
-                              width: 72,
-                              height: 72,
+                          ));
+                        }
+                        if (snapshot.hasError || snapshot.data == null) {
+                          return const Text("Error al cargar perfil",
+                              style: TextStyle(color: Colors.white));
+                        }
+
+                        final userProfile =
+                            snapshot.data as Map<String, dynamic>;
+
+                        return UserAccountsDrawerHeader(
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          accountName: Text(
+                            "${userProfile['first_name'] ?? 'Usuario'} ${userProfile['last_name'] ?? ''}",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ),
-                      ),
+                          accountEmail: Text(
+                            userProfile['charge'] ?? "Sin cargo",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          currentAccountPicture: GestureDetector(
+                            onTap: () {
+                              currentIndexNotifier.value = 1;
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ProfilePage(title: "Perfil"),
+                                ),
+                              );
+                            },
+                            child: CircleAvatar(
+                              backgroundColor: Colors.blue,
+                              backgroundImage: userProfile['profile_image'] !=
+                                          null &&
+                                      userProfile['profile_image'].isNotEmpty
+                                  ? NetworkImage(userProfile['profile_image'])
+                                      as ImageProvider
+                                  : const AssetImage(
+                                      "assets/images/refmmp.png"),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
-              // Resto del menú
               ...[0, 1, 2, 4, 5, 7].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),

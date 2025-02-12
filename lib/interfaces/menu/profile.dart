@@ -17,25 +17,43 @@ class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic> userProfile = {};
   String profileImageUrl = '';
   bool isLoading = true;
+  String?
+      userTable; // Aquí guardamos la tabla en la que está registrado el usuario
+
+  final List<String> userTables = [
+    'users',
+    'students',
+    'graduates',
+    'teachers',
+    'advisors',
+    'parents'
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadUserProfile();
+    _findUserTable();
   }
 
-  // 🔹 Cargar el perfil del usuario desde Supabase
-  Future<void> _loadUserProfile() async {
-    try {
-      final user = supabase.auth.currentUser;
-      if (user != null) {
-        final response = await supabase
-            .from('users')
-            .select()
-            .eq('user_id', user.id)
-            .single();
+  // 🔹 Buscar en qué tabla está registrado el usuario
+  Future<void> _findUserTable() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
 
+    setState(() {
+      isLoading = true;
+    });
+
+    for (String table in userTables) {
+      final response = await supabase
+          .from(table)
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (response != null) {
         setState(() {
+          userTable = table;
           userProfile = {
             'first_name': response['first_name'] ?? '',
             'last_name': response['last_name'] ?? '',
@@ -45,15 +63,14 @@ class _ProfilePageState extends State<ProfilePage> {
             'profile_image': response['profile_image'] ?? '',
           };
           profileImageUrl = response['profile_image'] ?? '';
-          isLoading = false;
         });
+        break;
       }
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-        userProfile = {'error': 'Error al cargar el perfil: ${e.toString()}'};
-      });
     }
+
+    setState(() {
+      isLoading = false;
+    });
   }
 
   // 🔹 Subir imagen desde la galería
@@ -67,11 +84,11 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // 🔹 Subir imagen a Supabase Storage
+  // 🔹 Subir imagen a Supabase Storage y actualizar en la tabla correcta
   Future<void> _uploadProfileImage(File imageFile) async {
     try {
       final user = supabase.auth.currentUser;
-      if (user == null) return;
+      if (user == null || userTable == null) return;
 
       final fileName = 'profile_${user.id}.png';
       final storagePath = 'profile_pictures/$fileName';
@@ -83,7 +100,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
       // Actualizar URL en la base de datos
       await supabase
-          .from('users')
+          .from(userTable!)
           .update({'profile_image': publicUrl}).eq('user_id', user.id);
 
       setState(() {
@@ -123,13 +140,18 @@ class _ProfilePageState extends State<ProfilePage> {
       drawer: Menu.buildDrawer(context),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.blue))
-          : userProfile.containsKey('error')
-              ? Center(
-                  child: Text(userProfile['error'],
-                      style: const TextStyle(fontSize: 18, color: Colors.red)))
+          : userTable == null
+              ? const Center(
+                  child: Text('Usuario no registrado en ninguna tabla',
+                      style: TextStyle(fontSize: 18, color: Colors.red)))
               : SingleChildScrollView(
                   child: Column(
                     children: [
+                      const SizedBox(height: 20),
+                      // 🔹 Mostrar la tabla donde está el usuario
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      ),
                       const SizedBox(height: 20),
                       GestureDetector(
                         onTap: _pickImage,
@@ -150,8 +172,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      _buildProfileField('Nombre', userProfile['first_name']),
-                      _buildProfileField('Apellido', userProfile['last_name']),
+                      _buildProfileField('Nombres', userProfile['first_name']),
+                      _buildProfileField('Apellidos', userProfile['last_name']),
                       _buildProfileField('Identificación',
                           userProfile['identification_number']),
                       _buildProfileField('Cargo', userProfile['charge']),
