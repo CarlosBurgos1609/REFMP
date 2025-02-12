@@ -138,8 +138,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           backgroundColor: Colors.blue,
                           backgroundImage: profileImageUrl.isNotEmpty
                               ? NetworkImage(profileImageUrl) as ImageProvider
-                              : const AssetImage(
-                                  'assets/images/default_profile.png'),
+                              : const AssetImage('assets/images/refmmp.png'),
                           child: const Align(
                             alignment: Alignment.bottomRight,
                             child: CircleAvatar(
