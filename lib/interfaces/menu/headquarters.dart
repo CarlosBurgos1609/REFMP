@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:supabase_flutter/supabase_flutter.dart';
+// import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 
@@ -11,53 +10,16 @@ class HeadquartersPage extends StatefulWidget {
   final String title;
 
   @override
-  State<HeadquartersPage> createState() => _HeadquartersPage();
+  State<HeadquartersPage> createState() => _HeadquartersPageState();
 }
 
-class _HeadquartersPage extends State<HeadquartersPage> {
-  File? _image;
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  Future<void> _pickImage() async {
-    final pickedFile =
-        await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-      });
-    }
-  }
-
-  Future<void> _uploadImage() async {
-    if (_image == null ||
-        _nameController.text.isEmpty ||
-        _descriptionController.text.isEmpty) {
+class _HeadquartersPageState extends State<HeadquartersPage> {
+  void _openMap(String url) async {
+    if (await canLaunch(url)) {
+      await launch(url);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Todos los campos son obligatorios")),
-      );
-      return;
-    }
-    try {
-      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      Reference ref = _storage.ref().child("headquarters/$fileName.jpg");
-      await ref.putFile(_image!);
-      String imageUrl = await ref.getDownloadURL();
-
-      await _firestore.collection("headquarters").add({
-        "name": _nameController.text,
-        "description": _descriptionController.text,
-        "photo": imageUrl,
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Imagen subida exitosamente")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al subir imagen: $e")),
+        const SnackBar(content: Text("No se pudo abrir el mapa")),
       );
     }
   }
@@ -68,69 +30,113 @@ class _HeadquartersPage extends State<HeadquartersPage> {
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            widget.title,
-            style: const TextStyle(
-              fontSize: 22,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          title: Text(widget.title),
           backgroundColor: Colors.blue,
-          leading: Builder(
-            builder: (context) {
-              return IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              );
-            },
-          ),
         ),
         drawer: Menu.buildDrawer(context),
-        body: Column(
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: "Nombre"),
-            ),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: "Descripción"),
-            ),
-            ElevatedButton(
-              onPressed: _pickImage,
-              child: const Text("Seleccionar Imagen"),
-            ),
-            _image != null ? Image.file(_image!, height: 100) : Container(),
-            ElevatedButton(
-              onPressed: _uploadImage,
-              child: const Text("Subir Imagen"),
-            ),
-            Expanded(
-              child: StreamBuilder(
-                stream: _firestore.collection("headquarters").snapshots(),
-                builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(
-                        child: Text("No hay imágenes disponibles"));
-                  }
-                  return ListView(
-                    children: snapshot.data!.docs.map((doc) {
-                      return ListTile(
-                        leading: Image.network(doc["photo"],
-                            width: 50, height: 50, fit: BoxFit.cover),
-                        title: Text(doc["name"]),
-                        subtitle: Text(doc["description"]),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ),
-          ],
+        body: Builder(
+          builder: (context) {
+            return FutureBuilder(
+              future: Supabase.instance.client.from("sedes").select(),
+              builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text("No hay sedes disponibles"));
+                }
+                return ListView(
+                  children: snapshot.data!.map((doc) {
+                    return Card(
+                      margin: const EdgeInsets.all(10),
+                      elevation: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              doc["photo"] ?? "https://via.placeholder.com/150",
+                              width: double.infinity,
+                              height: 200,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  doc["name"] ?? "Nombre no disponible",
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(doc["description"] ?? "Sin descripción"),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.location_on,
+                                        color: Colors.red),
+                                    const SizedBox(width: 5),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => _openMap(doc["ubication"]),
+                                        child: Text(
+                                          doc["address"] ??
+                                              "Dirección no disponible",
+                                          style: const TextStyle(
+                                              color: Colors.blue,
+                                              decoration:
+                                                  TextDecoration.underline),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.phone,
+                                        color: Colors.green),
+                                    const SizedBox(width: 5),
+                                    Text(doc["contact_number"] ??
+                                        "No disponible"),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text("Agregar Sede"),
+                  content: const Text("Formulario en construcción"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("Cerrar"),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+          child: const Icon(Icons.add),
         ),
       ),
     );

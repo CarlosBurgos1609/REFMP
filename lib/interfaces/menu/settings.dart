@@ -34,7 +34,7 @@ class _SettingsPage extends State<SettingsPage> {
               },
               child: const Text(
                 "Cancelar",
-                style: TextStyle(color: Colors.red),
+                style: TextStyle(color: Colors.blue),
               ),
             ),
             TextButton(
@@ -46,7 +46,7 @@ class _SettingsPage extends State<SettingsPage> {
               },
               child: const Text(
                 "Cerrar",
-                style: TextStyle(color: Colors.blue),
+                style: TextStyle(color: Colors.red),
               ),
             ),
           ],

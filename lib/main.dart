@@ -1,8 +1,8 @@
-// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:image_picker/image_picker.dart';
+import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/init.dart';
+
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -23,13 +23,40 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return MaterialApp(
       theme: themeProvider.currentTheme,
-      home: Init(),
       debugShowCheckedModeBanner: false,
+      home: FutureBuilder<AuthState?>(
+        future: _getInitialScreen(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData && snapshot.data?.session != null) {
+            return const HomePage(
+              title: 'Bienvenido',
+            );
+          } else {
+            return const Init();
+          }
+        },
+      ),
     );
   }
+
+  Future<AuthState?> _getInitialScreen() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    return AuthState(session: session);
+  }
+}
+
+class AuthState {
+  final Session? session;
+  AuthState({required this.session});
 }
