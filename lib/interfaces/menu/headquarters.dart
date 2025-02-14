@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/forms/headquartersforms.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';
@@ -54,14 +55,17 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
           builder: (context) {
             return RefreshIndicator(
               onRefresh: () async {
-                // Forzar la actualización del FutureBuilder
                 setState(() {});
               },
+              color: Colors.blue,
               child: FutureBuilder(
                 future: _fetchData(),
                 builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const Center(
+                        child: CircularProgressIndicator(
+                      color: Colors.blue,
+                    ));
                   }
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(
@@ -163,20 +167,9 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
         floatingActionButton: FloatingActionButton(
           backgroundColor: Colors.blue,
           onPressed: () {
-            showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return AlertDialog(
-                  title: const Text("Agregar Sede"),
-                  content: const Text("Formulario en construcción"),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text("Cerrar"),
-                    ),
-                  ],
-                );
-              },
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HeadquartersForm()),
             );
           },
           child: const Icon(
