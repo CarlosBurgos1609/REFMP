@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
@@ -30,8 +29,19 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.title),
+          title: Text(
+            widget.title,
+            style: TextStyle(color: Colors.white),
+          ),
           backgroundColor: Colors.blue,
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
+          ),
         ),
         drawer: Menu.buildDrawer(context),
         body: Builder(
@@ -43,10 +53,27 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text("No hay sedes disponibles"));
+                  return const Center(
+                      child: Text("No hay sedes disponibles",
+                          style: TextStyle(color: Colors.blue)));
                 }
+
+                // Ordenar alfabéticamente por el campo "name"
+                snapshot.data!.sort(
+                    (a, b) => (a["name"] ?? "").compareTo(b["name"] ?? ""));
+
                 return ListView(
                   children: snapshot.data!.map((doc) {
+                    // Asegurar que todos los campos estén presentes
+                    final name = doc["name"] ?? "Nombre no disponible";
+                    final address = doc["address"] ?? "Dirección no disponible";
+                    final description = doc["description"] ?? "Sin descripción";
+                    final contactNumber =
+                        doc["contact_number"] ?? "No disponible";
+                    final ubication = doc["ubication"] ?? "";
+                    final photo =
+                        doc["photo"] ?? "https://via.placeholder.com/150";
+
                     return Card(
                       margin: const EdgeInsets.all(10),
                       elevation: 5,
@@ -56,7 +83,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: Image.network(
-                              doc["photo"] ?? "https://via.placeholder.com/150",
+                              photo,
                               width: double.infinity,
                               height: 200,
                               fit: BoxFit.cover,
@@ -68,13 +95,13 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  doc["name"] ?? "Nombre no disponible",
+                                  name,
                                   style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(height: 5),
-                                Text(doc["description"] ?? "Sin descripción"),
+                                Text(description),
                                 const SizedBox(height: 5),
                                 Row(
                                   children: [
@@ -83,10 +110,9 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                     const SizedBox(width: 5),
                                     Expanded(
                                       child: GestureDetector(
-                                        onTap: () => _openMap(doc["ubication"]),
+                                        onTap: () => _openMap(ubication),
                                         child: Text(
-                                          doc["address"] ??
-                                              "Dirección no disponible",
+                                          address,
                                           style: const TextStyle(
                                               color: Colors.blue,
                                               decoration:
@@ -102,8 +128,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                     const Icon(Icons.phone,
                                         color: Colors.green),
                                     const SizedBox(width: 5),
-                                    Text(doc["contact_number"] ??
-                                        "No disponible"),
+                                    Text(contactNumber),
                                   ],
                                 ),
                               ],
