@@ -15,6 +15,7 @@ class StudentsPage extends StatefulWidget {
 }
 
 class _StudentsPageState extends State<StudentsPage> {
+  final _searchController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -25,6 +26,7 @@ class _StudentsPageState extends State<StudentsPage> {
 
   final ImagePicker _picker = ImagePicker();
   List<Map<String, dynamic>> students = [];
+  List<Map<String, dynamic>> filteredStudents = [];
 
   @override
   void initState() {
@@ -76,10 +78,24 @@ class _StudentsPageState extends State<StudentsPage> {
   }
 
   Future<void> fetchStudents() async {
-    final response =
-        await Supabase.instance.client.from('students').select('*');
+    final response = await Supabase.instance.client
+        .from('students')
+        .select(
+            '*, student_instruments(instruments(name)), sedes!students_sede_id_fkey(name)')
+        .order('first_name', ascending: true); // Ordenar por nombre
+
     setState(() {
       students = List<Map<String, dynamic>>.from(response);
+      filteredStudents = students;
+    });
+  }
+
+  void filterStudents(String query) {
+    setState(() {
+      filteredStudents = students.where((student) {
+        final firstName = student['first_name'].toLowerCase();
+        return firstName.contains(query.toLowerCase());
+      }).toList();
     });
   }
 
@@ -198,17 +214,16 @@ class _StudentsPageState extends State<StudentsPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
-        title: Text(
-          'Estudiantes',
+        title: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Buscar estudiante...',
+            hintStyle: TextStyle(color: Colors.white60),
+            border: InputBorder.none,
+            icon: Icon(Icons.search, color: Colors.white),
+          ),
           style: TextStyle(color: Colors.white),
-        ),
-        leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            );
-          },
+          onChanged: filterStudents, // Filtra en tiempo real
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -228,9 +243,10 @@ class _StudentsPageState extends State<StudentsPage> {
       body: RefreshIndicator(
         onRefresh: fetchStudents, // Llamamos la función al refrescar
         child: ListView.builder(
-          itemCount: students.length,
+          // itemCount: students.length,
+          itemCount: filteredStudents.length,
           itemBuilder: (context, index) {
-            final student = students[index];
+            final student = filteredStudents[index];
             return ListTile(
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(25),
@@ -242,7 +258,16 @@ class _StudentsPageState extends State<StudentsPage> {
                         height: 50, width: 50, fit: BoxFit.cover),
               ),
               title: Text('${student['first_name']} ${student['last_name']}'),
-              subtitle: Text(student['email']),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(student['email']),
+                  Text(
+                      'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
+                  Text(
+                      'Sedes: ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}'),
+                ],
+              ),
               trailing: IconButton(
                 icon: Icon(Icons.more_vert),
                 onPressed: () => showStudentOptions(context, student),
