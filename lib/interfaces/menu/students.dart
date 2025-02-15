@@ -188,11 +188,27 @@ class _StudentsPageState extends State<StudentsPage> {
                 borderRadius: BorderRadius.circular(80),
                 child: student['profile_image'] != null &&
                         student['profile_image'].isNotEmpty
-                    ? Image.network(student['profile_image'], height: 100)
+                    ? Image.network(student['profile_image'], height: 150)
                     : Image.asset('assets/images/refmmp.png', height: 100),
               ),
-              SizedBox(height: 10),
-              Text('Email: ${student['email']}'),
+              SizedBox(height: 40),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    student['email'],
+                    style: TextStyle(color: Colors.blue, height: 2),
+                  ),
+                  Text(
+                    'Instrumento(s): ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}',
+                    style: TextStyle(height: 2),
+                  ),
+                  Text(
+                    'Sede(s): ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}',
+                    style: TextStyle(height: 2),
+                  ),
+                ],
+              ),
             ],
           ),
           actions: [
@@ -214,11 +230,19 @@ class _StudentsPageState extends State<StudentsPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
+        leading: Builder(
+          builder: (context) {
+            return IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            );
+          },
+        ),
         title: TextField(
           controller: _searchController,
           decoration: InputDecoration(
             hintText: 'Buscar estudiante...',
-            hintStyle: TextStyle(color: Colors.white60),
+            hintStyle: TextStyle(color: Colors.white),
             border: InputBorder.none,
             icon: Icon(Icons.search, color: Colors.white),
           ),
@@ -243,35 +267,42 @@ class _StudentsPageState extends State<StudentsPage> {
       body: RefreshIndicator(
         onRefresh: fetchStudents, // Llamamos la función al refrescar
         child: ListView.builder(
-          // itemCount: students.length,
           itemCount: filteredStudents.length,
           itemBuilder: (context, index) {
             final student = filteredStudents[index];
-            return ListTile(
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(25),
-                child: student['profile_image'] != null &&
-                        student['profile_image'].isNotEmpty
-                    ? Image.network(student['profile_image'],
-                        height: 50, width: 50, fit: BoxFit.cover)
-                    : Image.asset('assets/images/refmmp.png',
-                        height: 50, width: 50, fit: BoxFit.cover),
-              ),
-              title: Text('${student['first_name']} ${student['last_name']}'),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(student['email']),
-                  Text(
-                      'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
-                  Text(
-                      'Sedes: ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}'),
-                ],
-              ),
-              trailing: IconButton(
-                icon: Icon(Icons.more_vert),
-                onPressed: () => showStudentOptions(context, student),
-              ),
+            return Column(
+              children: [
+                ListTile(
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(25),
+                    child: student['profile_image'] != null &&
+                            student['profile_image'].isNotEmpty
+                        ? Image.network(student['profile_image'],
+                            height: 50, width: 50, fit: BoxFit.cover)
+                        : Image.asset('assets/images/refmmp.png',
+                            height: 50, width: 50, fit: BoxFit.cover),
+                  ),
+                  title: Text(
+                    '${student['first_name']} ${student['last_name']}',
+                    style: TextStyle(color: Colors.blue),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(student['email']),
+                      Text(
+                          'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
+                      Text(
+                          'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
+                    ],
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(Icons.more_vert),
+                    onPressed: () => showStudentOptions(context, student),
+                  ),
+                ),
+                Divider(thickness: 1, color: Colors.blue), // Línea divisoria
+              ],
             );
           },
         ),

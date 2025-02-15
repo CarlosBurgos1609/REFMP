@@ -27,7 +27,7 @@ Future<bool> showExitConfirmationDialog(BuildContext context) async {
           onPressed: () => SystemNavigator.pop(), // Cierra la app
           child: const Text(
             'Sí',
-            style: TextStyle(color: Colors.blue),
+            style: TextStyle(color: Colors.red),
             textAlign: TextAlign.center,
           ),
         ),
