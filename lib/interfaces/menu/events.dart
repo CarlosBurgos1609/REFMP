@@ -4,7 +4,6 @@ import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/date_symbol_data_local.dart';
-// import 'package:intl/intl.dart';
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key, required this.title});
@@ -62,14 +61,12 @@ class _EventsPageState extends State<EventsPage> {
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            widget.title,
-            style: const TextStyle(
-              fontSize: 22,
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          title: Text(widget.title,
+              style: const TextStyle(
+                fontSize: 22,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              )),
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
@@ -83,12 +80,13 @@ class _EventsPageState extends State<EventsPage> {
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
           onRefresh: fetchEvents,
+          color: Colors.blue,
           child: SingleChildScrollView(
             child: Column(
               children: [
                 TableCalendar(
                   locale: 'es_ES',
-                  firstDay: DateTime.utc(2000, 1, 1),
+                  firstDay: DateTime.utc(2025, 1, 1),
                   lastDay: DateTime.utc(2100, 12, 31),
                   focusedDay: _focusedDay,
                   selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
@@ -130,10 +128,10 @@ class _EventsPageState extends State<EventsPage> {
                     },
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 ListView.builder(
                   shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: _events.length,
                   itemBuilder: (context, index) {
                     final event = _events[index];
@@ -146,43 +144,54 @@ class _EventsPageState extends State<EventsPage> {
                           isScrollControlled: true,
                           builder: (context) {
                             return SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (event['image'] != null)
-                                    Image.network(event['image'],
-                                        width: double.infinity,
-                                        fit: BoxFit.cover),
-                                  Padding(
-                                    padding: const EdgeInsets.all(16.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                            event['name'] ??
-                                                'Evento sin nombre',
-                                            style: const TextStyle(
-                                                fontSize: 22,
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 10),
-                                        Text("Fecha: ${event['date']}",
-                                            style:
-                                                const TextStyle(fontSize: 16)),
-                                        Text("Hora: ${event['time']}",
-                                            style:
-                                                const TextStyle(fontSize: 16)),
-                                        Text("Ubicación: ${event['location']}",
-                                            style:
-                                                const TextStyle(fontSize: 16)),
-                                        Text("Sede: $sedeName",
-                                            style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
+                              child: Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Column(
+                                  children: [
+                                    if (event['image'] != null)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.vertical(
+                                            top: Radius.circular(20)),
+                                        child: Image.network(event['image'],
+                                            width: double.infinity,
+                                            fit: BoxFit.cover),
+                                      ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                              event['name'] ??
+                                                  'Evento sin nombre',
+                                              style: const TextStyle(
+                                                  color: Colors.blue,
+                                                  fontSize: 22,
+                                                  fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 10),
+                                          Text("Fecha: ${event['date']}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text("Hora: ${event['time']}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text(
+                                              "Ubicación: ${event['location']}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text("Sede: $sedeName",
+                                              style: const TextStyle(
+                                                  color: Colors.blue,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             );
                           },
@@ -190,14 +199,31 @@ class _EventsPageState extends State<EventsPage> {
                       },
                       child: Card(
                         margin: const EdgeInsets.all(10),
-                        child: ListTile(
-                          title: Text(event['name'] ?? 'Evento sin nombre',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(
-                              "${event['date']} - ${event['location']} - Sede: $sedeName"),
-                          trailing: Text("${event['time']}",
-                              style: const TextStyle(fontSize: 16)),
+                        child: Column(
+                          children: [
+                            if (event['image'] != null)
+                              ClipRRect(
+                                borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(10)),
+                                child: Image.network(event['image'],
+                                    width: double.infinity,
+                                    height: 150,
+                                    fit: BoxFit.cover),
+                              ),
+                            ListTile(
+                              title: Text(event['name'] ?? 'Evento sin nombre',
+                                  style: const TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  "${event['date']} - ${event['location']} - Sede: $sedeName"),
+                              trailing: Text(
+                                "${event['time']} ",
+                                style: const TextStyle(
+                                    fontSize: 16, color: Colors.blue),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
