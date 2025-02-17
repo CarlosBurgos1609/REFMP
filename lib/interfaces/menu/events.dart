@@ -90,13 +90,13 @@ class _EventsPageState extends State<EventsPage> {
                   lastDay: DateTime.utc(2100, 12, 31),
                   focusedDay: _focusedDay,
                   selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                      _events = _eventsByDay[selectedDay] ?? [];
-                    });
-                  },
+                  // onDaySelected: (selectedDay, focusedDay) {
+                  //   setState(() {
+                  //     _selectedDay = selectedDay;
+                  //     _focusedDay = focusedDay;
+                  //     _events = _eventsByDay[selectedDay] ?? [];
+                  //   });
+                  // },
                   onPageChanged: (focusedDay) {
                     setState(() {
                       _focusedDay = focusedDay;

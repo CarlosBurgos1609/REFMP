@@ -51,6 +51,7 @@ dependencies:
   geolocator: ^13.0.2
   table_calendar: ^3.2.0
   animate_do: ^4.0.1
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
