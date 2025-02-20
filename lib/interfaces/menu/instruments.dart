@@ -201,13 +201,15 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                       style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      "Estudiantes",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                          fontSize: 18),
-                      textAlign: TextAlign.center,
+                    const Center(
+                      child: Text(
+                        "Estudiantes",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                            fontSize: 18),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                     Column(
                       children: students.map((student) {
