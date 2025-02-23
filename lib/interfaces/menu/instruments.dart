@@ -184,7 +184,7 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(19.0),
           child: instrument == null
               ? const Center(
                   child: CircularProgressIndicator(color: Colors.blue))
@@ -195,14 +195,25 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                       child: instrument?['image'] != null
                           ? Image.network(instrument!['image'],
                               fit: BoxFit.contain)
-                          : const Icon(Icons.image_not_supported, size: 100),
+                          : const Icon(Icons.image_not_supported, size: 200),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: Text(
+                        "Descipción",
+                        style: const TextStyle(
+                          fontSize: 20,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                     Text(
                       instrument?['description'] ?? "Sin descripción",
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(fontSize: 20),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     const Center(
                       child: Text(
                         "Estudiantes",
