@@ -202,7 +202,7 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                       child: Text(
                         "Descipción",
                         style: const TextStyle(
-                          fontSize: 20,
+                          fontSize: 22,
                           color: Colors.blue,
                           fontWeight: FontWeight.bold,
                         ),
