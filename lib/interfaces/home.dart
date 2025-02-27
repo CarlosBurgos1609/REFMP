@@ -3,6 +3,7 @@ import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:refmp/interfaces/menu/headquarters.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -12,14 +13,33 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   String? profileImageUrl;
   final supabase = Supabase.instance.client;
+  late AnimationController _controller;
+  late Animation<Offset> _animation;
 
   @override
   void initState() {
     super.initState();
     fetchUserProfileImage();
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _animation = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   Future<void> fetchUserProfileImage() async {
@@ -40,13 +60,13 @@ class _HomePageState extends State<HomePage> {
           .from(table)
           .select('profile_image')
           .eq('user_id', user.id)
-          .maybeSingle(); // Obtiene solo un resultado
+          .maybeSingle();
 
       if (response != null && response['profile_image'] != null) {
         setState(() {
           profileImageUrl = response['profile_image'];
         });
-        break; // Si encuentra la imagen en una tabla, detiene la búsqueda
+        break;
       }
     }
   }
@@ -116,11 +136,76 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         drawer: Menu.buildDrawer(context),
-        body: const Center(
-          child: Text(
-            "Contenido de la página Principal",
-            style: TextStyle(fontSize: 18),
-          ),
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Center(
+              child: Row(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(70, 60, 70, 0),
+                  ),
+                  const Icon(Icons.location_city, size: 20, color: Colors.blue),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Sedes",
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: SlideTransition(
+                position: _animation,
+                child: FutureBuilder(
+                  future: Supabase.instance.client.from("sedes").select(),
+                  builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                          child: CircularProgressIndicator(color: Colors.blue));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Center(
+                          child: Text("No hay sedes disponibles",
+                              style: TextStyle(color: Colors.blue)));
+                    }
+
+                    snapshot.data!.sort(
+                        (a, b) => (a["name"] ?? "").compareTo(b["name"] ?? ""));
+
+                    return ListView(
+                      children: snapshot.data!.map((doc) {
+                        final name = doc["name"] ?? "Nombre no disponible";
+                        return Card(
+                          margin: const EdgeInsets.all(10),
+                          elevation: 5,
+                          child: ListTile(
+                            leading:
+                                const Icon(Icons.business, color: Colors.blue),
+                            title: Text(name,
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold)),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        const HeadquartersPage(title: "Sedes")),
+                              );
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
