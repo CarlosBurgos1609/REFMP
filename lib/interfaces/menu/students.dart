@@ -265,7 +265,8 @@ class _StudentsPageState extends State<StudentsPage> {
       ),
       drawer: Menu.buildDrawer(context),
       body: RefreshIndicator(
-        onRefresh: fetchStudents, // Llamamos la función al refrescar
+        onRefresh: fetchStudents,
+        color: Colors.blue, // Llamamos la función al refrescar
         child: ListView.builder(
           itemCount: filteredStudents.length,
           itemBuilder: (context, index) {
