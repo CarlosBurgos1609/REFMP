@@ -145,12 +145,12 @@ class _HomePageState extends State<HomePage>
                   Padding(
                     padding: EdgeInsets.fromLTRB(70, 60, 70, 0),
                   ),
-                  const Icon(Icons.location_city, size: 20, color: Colors.blue),
-                  const SizedBox(height: 10),
+                  const Icon(Icons.location_city, size: 30, color: Colors.blue),
+                  const SizedBox(height: 30),
                   const Text(
                     "Sedes",
                     style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 30,
                         fontWeight: FontWeight.bold,
                         color: Colors.blue),
                   ),
