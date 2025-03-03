@@ -186,9 +186,14 @@ class _HomePageState extends State<HomePage>
                           child: ListTile(
                             leading:
                                 const Icon(Icons.business, color: Colors.blue),
-                            title: Text(name,
-                                style: const TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.bold)),
+                            title: Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
                             onTap: () {
                               Navigator.push(
                                 context,
