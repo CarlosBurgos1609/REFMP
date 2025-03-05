@@ -183,7 +183,7 @@ class Menu {
                             ),
                           ),
                           accountEmail: Text(
-                            userProfile['charge'] ?? "Sin cargo",
+                            userProfile['charge'] ?? "No tiene Cargo",
                             style: const TextStyle(
                               fontSize: 13,
                               color: Colors.blue,
