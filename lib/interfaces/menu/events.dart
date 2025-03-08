@@ -136,7 +136,7 @@ class _EventsPageState extends State<EventsPage> {
                   itemBuilder: (context, index) {
                     final event = _events[index];
                     final sedeName =
-                        event['sedes']['name'] ?? 'Sede desconocida';
+                        event['sedes']['name'] ?? 'Sede No Encontrada';
                     return GestureDetector(
                       onTap: () {
                         showModalBottomSheet(
