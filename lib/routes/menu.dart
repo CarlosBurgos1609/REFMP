@@ -236,7 +236,7 @@ class Menu {
               }).toList(),
               const Divider(),
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 child: Text(
                   "Solo profesores",
                   style: TextStyle(
