@@ -38,7 +38,10 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
         appBar: AppBar(
           title: Text(
             widget.title,
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           backgroundColor: Colors.blue,
           leading: Builder(
