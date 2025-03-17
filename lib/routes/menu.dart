@@ -241,8 +241,8 @@ class Menu {
                   "Solo profesores",
                   style: TextStyle(
                       color: Colors.blue,
-                      fontWeight: FontWeight.bold,|
-                      fontSize: 16),
+                      fontWeight: FontWeight.bold,
+                      ),
                 ),
               ),
               // Estudiantes

@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:refmp/interfaces/menu/headquarters.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -17,29 +17,42 @@ class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   String? profileImageUrl;
   final supabase = Supabase.instance.client;
-  late AnimationController _controller;
-  late Animation<Offset> _animation;
+  late final PageController _pageController;
+  late Timer _timer;
+  int _currentPage = 0;
+  List<dynamic> sedes = [];
 
   @override
   void initState() {
     super.initState();
     fetchUserProfileImage();
-
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    _animation = Tween<Offset>(
-      begin: const Offset(0, 1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-    _controller.forward();
+    fetchSedes();
+    _pageController = PageController(viewportFraction: 0.9);
+    _startAutoScroll();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pageController.dispose();
+    _timer.cancel();
     super.dispose();
+  }
+
+  void _startAutoScroll() {
+    _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
+      if (sedes.isNotEmpty) {
+        if (_currentPage < sedes.length - 1) {
+          _currentPage++;
+        } else {
+          _currentPage = 0;
+        }
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   Future<void> fetchUserProfileImage() async {
@@ -68,6 +81,15 @@ class _HomePageState extends State<HomePage>
         });
         break;
       }
+    }
+  }
+
+  Future<void> fetchSedes() async {
+    final response = await supabase.from('sedes').select();
+    if (mounted) {
+      setState(() {
+        sedes = response;
+      });
     }
   }
 
@@ -136,82 +158,89 @@ class _HomePageState extends State<HomePage>
           ],
         ),
         drawer: Menu.buildDrawer(context),
-        body: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Center(
-              child: Row(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(70, 60, 70, 0),
-                  ),
-                  const Icon(Icons.location_city, size: 30, color: Colors.blue),
-                  const SizedBox(height: 30),
-                  const Text(
-                    "Sedes",
-                    style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: SlideTransition(
-                position: _animation,
-                child: FutureBuilder(
-                  future: Supabase.instance.client.from("sedes").select(),
-                  builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                          child: CircularProgressIndicator(color: Colors.blue));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(
-                          child: Text("No hay sedes disponibles",
-                              style: TextStyle(color: Colors.blue)));
-                    }
+        body: sedes.isEmpty
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.blue),
+              )
+            : PageView.builder(
+                controller: _pageController,
+                itemCount: sedes.length,
+                itemBuilder: (context, index) {
+                  final sede = sedes[index];
+                  final name = sede["name"] ?? "Nombre no disponible";
+                  final address = sede["address"] ?? "Dirección no disponible";
+                  final description =
+                      sede["description"] ?? "Descripción no disponible";
+                  final photo = sede["photo"];
 
-                    snapshot.data!.sort(
-                        (a, b) => (a["name"] ?? "").compareTo(b["name"] ?? ""));
-
-                    return ListView(
-                      children: snapshot.data!.map((doc) {
-                        final name = doc["name"] ?? "Nombre no disponible";
-                        return Card(
-                          margin: const EdgeInsets.all(10),
-                          elevation: 5,
-                          child: ListTile(
-                            leading:
-                                const Icon(Icons.business, color: Colors.blue),
-                            title: Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Card(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                      elevation: 8,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(20)),
+                              child: photo != null
+                                  ? Image.network(
+                                      photo,
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        return Image.asset(
+                                          "assets/images/refmmp.png",
+                                          fit: BoxFit.cover,
+                                        );
+                                      },
+                                    )
+                                  : Image.asset(
+                                      "assets/images/refmmp.png",
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Dirección: $address",
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Descripción: $description",
+                                    style: const TextStyle(fontSize: 14),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const HeadquartersPage(title: "Sedes")),
-                              );
-                            },
                           ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
