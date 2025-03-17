@@ -129,7 +129,7 @@ class _HomePageState extends State<HomePage>
                 );
               },
               child: Padding(
-                padding: const EdgeInsets.only(right: 24),
+                padding: const EdgeInsets.only(right: 20),
                 child: ClipOval(
                   child: profileImageUrl != null
                       ? Image.network(
@@ -174,7 +174,7 @@ class _HomePageState extends State<HomePage>
                   final photo = sede["photo"];
 
                   return Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(12.0),
                     child: Card(
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20)),
