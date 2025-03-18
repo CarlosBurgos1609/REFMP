@@ -57,68 +57,128 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
             setState(() {});
           },
           color: Colors.blue,
-          child: FutureBuilder(
-            future: fetchInstruments(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(color: Colors.blue),
-                );
-              }
-              if (snapshot.hasError) {
-                return const Center(child: Text("Error al cargar los datos"));
-              }
-              final instruments = snapshot.data ?? [];
+          child: ListView(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(10.0),
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                  child: Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(16)),
+                        child: Image.network(
+                          'https://dmhyuogexgghinvfgoup.supabase.co/storage/v1/object/public/headquarters//Fondo.jpg',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          children: [
+                            const Text(
+                              "Aprende trompeta de forma metódica y dinámica con la ayuda de un juego de aprendizaje",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 12),
+                              ),
+                              onPressed: () {
+                                // Redirigir a la pestaña específica cuando esté definida
+                              },
+                              icon: const Icon(Icons.sports_esports_rounded,
+                                  color: Colors.white),
+                              label: const Text("Aprende y Juega",
+                                  style: TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // const Divider(height: 20, thickness: 2, color: Colors.blue),
+              FutureBuilder(
+                future: fetchInstruments(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.blue),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const Center(
+                        child: Text("Error al cargar los datos"));
+                  }
+                  final instruments = snapshot.data ?? [];
 
-              return ListView.builder(
-                itemCount: instruments.length,
-                itemBuilder: (context, index) {
-                  final instrument = instruments[index];
-                  final description = truncateText(
-                      instrument['description'] ?? "Sin descripción", 9);
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: instruments.length,
+                    itemBuilder: (context, index) {
+                      final instrument = instruments[index];
+                      final description = truncateText(
+                          instrument['description'] ?? "Sin descripción", 9);
 
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => InstrumentDetailPage(
-                              instrumentId: instrument['id']),
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => InstrumentDetailPage(
+                                  instrumentId: instrument['id']),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.blue, width: 2),
+                          ),
+                          margin: const EdgeInsets.symmetric(
+                              vertical: 6, horizontal: 10),
+                          padding: const EdgeInsets.all(16),
+                          child: ListTile(
+                            leading: instrument['image'] != null
+                                ? SizedBox(
+                                    width: 80,
+                                    height: 80,
+                                    child: Image.network(instrument['image'],
+                                        fit: BoxFit.contain),
+                                  )
+                                : const Icon(Icons.image_not_supported,
+                                    size: 40),
+                            title: Text(
+                              instrument['name'] ?? "Nombre desconocido",
+                              style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18),
+                            ),
+                            subtitle: Text(description,
+                                style: const TextStyle(fontSize: 16)),
+                          ),
                         ),
                       );
                     },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.blue, width: 2),
-                      ),
-                      margin: const EdgeInsets.symmetric(
-                          vertical: 6, horizontal: 10),
-                      padding: const EdgeInsets.all(16),
-                      child: ListTile(
-                        leading: instrument['image'] != null
-                            ? SizedBox(
-                                width: 80,
-                                height: 80,
-                                child: Image.network(instrument['image'],
-                                    fit: BoxFit.contain),
-                              )
-                            : const Icon(Icons.image_not_supported, size: 40),
-                        title: Text(
-                          instrument['name'] ?? "Nombre desconocido",
-                          style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18),
-                        ),
-                        subtitle: Text(description,
-                            style: const TextStyle(fontSize: 16)),
-                      ),
-                    ),
                   );
                 },
-              );
-            },
+              ),
+            ],
           ),
         ),
       ),
