@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/games/trumpet.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -96,7 +97,11 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
                                     horizontal: 20, vertical: 12),
                               ),
                               onPressed: () {
-                                // Redirigir a la pestaña específica cuando esté definida
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const TrumpetPage()),
+                                );
                               },
                               icon: const Icon(Icons.sports_esports_rounded,
                                   color: Colors.white),

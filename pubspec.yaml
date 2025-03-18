@@ -52,6 +52,12 @@ dependencies:
   table_calendar: ^3.2.0
   animate_do: ^4.0.1
   flutter_local_notifications: ^18.0.1
+  
+  flame: ^1.26.0
+  flame_audio: ^2.11.1
+  flame_forge2d: ^0.18.2+7
+  flame_tiled: ^2.0.2
+  audioplayers: ^6.4.0
 
 dev_dependencies:
   flutter_test:
