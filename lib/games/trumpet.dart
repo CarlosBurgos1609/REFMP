@@ -14,11 +14,12 @@ class _TrumpetPageState extends State<TrumpetPage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
   String? currentSong;
+  String searchQuery = "";
 
   Future<List<Map<String, dynamic>>> fetchSongs() async {
     final response = await supabase
         .from('songs')
-        .select('id, name, image, mp3_file, artist');
+        .select('id, name, image, mp3_file, artist, difficulty');
 
     if (response.isNotEmpty) {
       return List<Map<String, dynamic>>.from(response);
@@ -35,11 +36,38 @@ class _TrumpetPageState extends State<TrumpetPage> {
       });
     } else {
       await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource(url));
+      await _audioPlayer.play(UrlSource(url), position: Duration.zero);
+      await _audioPlayer.seek(const Duration(seconds: 0));
+      await _audioPlayer.setPlaybackRate(1.0);
+      _audioPlayer.setReleaseMode(ReleaseMode.stop);
+
       setState(() {
         isPlaying = true;
         currentSong = url;
       });
+
+      Future.delayed(const Duration(seconds: 30), () {
+        if (isPlaying && currentSong == url) {
+          _audioPlayer.stop();
+          setState(() {
+            isPlaying = false;
+            currentSong = null;
+          });
+        }
+      });
+    }
+  }
+
+  Color getDifficultyColor(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'fácil':
+        return Colors.green;
+      case 'medio':
+        return Colors.yellow;
+      case 'difícil':
+        return Colors.red;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -52,7 +80,28 @@ class _TrumpetPageState extends State<TrumpetPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Canciones de Trompeta")),
+      appBar: AppBar(
+        title: const Text("Trompeta"),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: SizedBox(
+              width: 200,
+              child: TextField(
+                decoration: const InputDecoration(
+                  hintText: "Buscar Canciones...",
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    searchQuery = value.toLowerCase();
+                  });
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: fetchSongs(),
         builder: (context, snapshot) {
@@ -63,41 +112,81 @@ class _TrumpetPageState extends State<TrumpetPage> {
             return const Center(child: Text("No hay canciones disponibles."));
           }
 
-          final songs = snapshot.data!;
+          final songs = snapshot.data!
+              .where((song) => song['name'].toLowerCase().contains(searchQuery))
+              .toList();
+
           return ListView.builder(
             itemCount: songs.length,
             itemBuilder: (context, index) {
               final song = songs[index];
-
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 child: ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      song['image'],
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.music_note, size: 60),
-                    ),
+                  leading: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          song['image'],
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.music_note, size: 60),
+                        ),
+                      ),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                            // shape: BoxShape.circle,
+                            // color: Colors.white.withOpacity(0.7),
+                            ),
+                        child: Icon(
+                          (isPlaying && currentSong == song['mp3_file'])
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 40,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                   title: Text(song['name'],
                       style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(song['artist']),
-                  trailing: IconButton(
-                    icon: Icon(
-                      (isPlaying && currentSong == song['mp3_file'])
-                          ? Icons.pause_circle
-                          : Icons.play_circle,
-                      size: 32,
-                      color: Colors.blueAccent,
-                    ),
-                    onPressed: () => playSong(song['mp3_file']),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(song['artist']),
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: getDifficultyColor(song['difficulty']),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          song['difficulty'],
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
                   ),
+                  trailing: ElevatedButton.icon(
+                    onPressed: () => playSong(song['mp3_file']),
+                    icon: const Icon(Icons.music_note, color: Colors.white),
+                    label: const Text("Tocar",
+                        style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                  ),
+                  onTap: () => playSong(song['mp3_file']),
                 ),
               );
             },
