@@ -15,6 +15,11 @@ class InstrumentsPage extends StatefulWidget {
 class _InstrumentsPageState extends State<InstrumentsPage> {
   final SupabaseClient supabase = Supabase.instance.client;
 
+  Future<List<Map<String, dynamic>>> fetchGames() async {
+    final response = await supabase.from('games').select('*');
+    return response;
+  }
+
   Future<List<Map<String, dynamic>>> fetchInstruments() async {
     final response = await supabase.from('instruments').select('*');
     return response;
@@ -60,62 +65,107 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
           color: Colors.blue,
           child: ListView(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(10.0),
-                child: Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 4,
-                  child: Column(
-                    children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(16)),
-                        child: Image.network(
-                          'https://dmhyuogexgghinvfgoup.supabase.co/storage/v1/object/public/headquarters//Fondo.jpg',
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          children: [
-                            const Text(
-                              "Aprende trompeta de forma metódica y dinámica con la ayuda de un juego de aprendizaje",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            const SizedBox(height: 10),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+              FutureBuilder(
+                future: fetchGames(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.blue),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const Center(
+                        child: Text("Error al cargar los juegos"));
+                  }
+                  final games = snapshot.data ?? [];
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: games.length,
+                    itemBuilder: (context, index) {
+                      final game = games[index];
+                      final description = truncateText(
+                          game['description'] ?? "Sin descripción", 20);
+
+                      return Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 4,
+                          child: Column(
+                            children: [
+                              ClipRRect(
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(16)),
+                                child: Image.network(
+                                  game['image'] ?? '',
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: 180,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.image_not_supported,
+                                          size: 80),
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 12),
                               ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const TrumpetPage()),
-                                );
-                              },
-                              icon: const Icon(Icons.sports_esports_rounded,
-                                  color: Colors.white),
-                              label: const Text("Aprende y Juega",
-                                  style: TextStyle(color: Colors.white)),
-                            ),
-                          ],
+                              Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      game['name'] ?? "Nombre desconocido",
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      description,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 15),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 20, vertical: 12),
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const TrumpetPage()),
+                                        );
+                                      },
+                                      icon: const Icon(
+                                          Icons.sports_esports_rounded,
+                                          color: Colors.white),
+                                      label: const Text("Aprende y Juega",
+                                          style:
+                                              TextStyle(color: Colors.white)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                      );
+                    },
+                  );
+                },
               ),
-              // const Divider(height: 20, thickness: 2, color: Colors.blue),
+              const Divider(height: 20, thickness: 2, color: Colors.blue),
               FutureBuilder(
                 future: fetchInstruments(),
                 builder: (context, snapshot) {
