@@ -81,17 +81,25 @@ class _TrumpetPageState extends State<TrumpetPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Trompeta"),
+        backgroundColor: Colors.blue,
+        iconTheme: const IconThemeData(color: Colors.white),
+        // title: const Text("Trompeta"),
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SizedBox(
-              width: 200,
+              width: 290,
               child: TextField(
                 decoration: const InputDecoration(
-                  hintText: "Buscar Canciones...",
+                  hintText: "Buscar Canciones de Trompeta...",
+                  hintStyle: TextStyle(color: Colors.white),
                   border: InputBorder.none,
+                  icon: Icon(
+                    Icons.search,
+                    color: Colors.white,
+                  ),
                 ),
+                style: TextStyle(color: Colors.white),
                 onChanged: (value) {
                   setState(() {
                     searchQuery = value.toLowerCase();
