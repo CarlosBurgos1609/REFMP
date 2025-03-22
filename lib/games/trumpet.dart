@@ -20,11 +20,7 @@ class _TrumpetPageState extends State<TrumpetPage> {
     final response = await supabase
         .from('songs')
         .select('id, name, image, mp3_file, artist, difficulty');
-
-    if (response.isNotEmpty) {
-      return List<Map<String, dynamic>>.from(response);
-    }
-    return [];
+    return response.isNotEmpty ? List<Map<String, dynamic>>.from(response) : [];
   }
 
   void playSong(String url) async {
@@ -37,15 +33,12 @@ class _TrumpetPageState extends State<TrumpetPage> {
     } else {
       await _audioPlayer.stop();
       await _audioPlayer.play(UrlSource(url), position: Duration.zero);
-      await _audioPlayer.seek(const Duration(seconds: 0));
       await _audioPlayer.setPlaybackRate(1.0);
       _audioPlayer.setReleaseMode(ReleaseMode.stop);
-
       setState(() {
         isPlaying = true;
         currentSong = url;
       });
-
       Future.delayed(const Duration(seconds: 30), () {
         if (isPlaying && currentSong == url) {
           _audioPlayer.stop();
@@ -83,38 +76,35 @@ class _TrumpetPageState extends State<TrumpetPage> {
       appBar: AppBar(
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
-        // title: const Text("Trompeta"),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SizedBox(
-              width: 290,
-              child: TextField(
-                decoration: const InputDecoration(
-                  hintText: "Buscar Canciones de Trompeta...",
-                  hintStyle: TextStyle(color: Colors.white),
-                  border: InputBorder.none,
-                  icon: Icon(
-                    Icons.search,
-                    color: Colors.white,
-                  ),
-                ),
-                style: TextStyle(color: Colors.white),
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value.toLowerCase();
-                  });
-                },
+        title: SizedBox(
+          width: double.infinity,
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: "Buscar Canciones de Trompeta...",
+              hintStyle: const TextStyle(color: Colors.white),
+              border: InputBorder.none,
+              suffixIcon: const Icon(
+                Icons.search,
+                color: Colors.white,
               ),
             ),
+            style: const TextStyle(color: Colors.white),
+            onChanged: (value) {
+              setState(() {
+                searchQuery = value.toLowerCase();
+              });
+            },
           ),
-        ],
+        ),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: fetchSongs(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: CircularProgressIndicator(
+              color: Colors.blue,
+            ));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No hay canciones disponibles."));
@@ -133,39 +123,87 @@ class _TrumpetPageState extends State<TrumpetPage> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 child: ListTile(
-                  leading: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          song['image'],
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.music_note, size: 60),
-                        ),
-                      ),
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                            // shape: BoxShape.circle,
-                            // color: Colors.white.withOpacity(0.7),
-                            ),
-                        child: Icon(
-                          (isPlaying && currentSong == song['mp3_file'])
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      song['image'],
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.music_note, size: 60),
+                    ),
                   ),
-                  title: Text(song['name'],
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: GestureDetector(
+                    onTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (context) {
+                          return SingleChildScrollView(
+                            child: Card(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Column(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      song['image'],
+                                      width: 400,
+                                      height: 400,
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              const Icon(Icons.music_note,
+                                                  size: 100),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          song['name'],
+                                          style: const TextStyle(
+                                              color: Colors.blue,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text("Artista: ${song['artist']}",
+                                            style:
+                                                const TextStyle(fontSize: 16)),
+                                        const SizedBox(height: 5),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: getDifficultyColor(
+                                                song['difficulty']),
+                                            borderRadius:
+                                                BorderRadius.circular(5),
+                                          ),
+                                          child: Text(song['difficulty'],
+                                              style: const TextStyle(
+                                                  color: Colors.white)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    child: Text(song['name'],
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -186,7 +224,8 @@ class _TrumpetPageState extends State<TrumpetPage> {
                     ],
                   ),
                   trailing: ElevatedButton.icon(
-                    onPressed: () => playSong(song['mp3_file']),
+                    // onPressed: () => playSong(song['mp3_file']),
+                    onPressed: () {},
                     icon: const Icon(Icons.music_note, color: Colors.white),
                     label: const Text("Tocar",
                         style: TextStyle(color: Colors.white)),
