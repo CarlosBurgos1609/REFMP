@@ -81,7 +81,10 @@ class _TrumpetPageState extends State<TrumpetPage> {
           child: TextField(
             decoration: InputDecoration(
               hintText: "Buscar Canciones de Trompeta...",
-              hintStyle: const TextStyle(color: Colors.white),
+              hintStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              ),
               border: InputBorder.none,
               suffixIcon: const Icon(
                 Icons.search,
