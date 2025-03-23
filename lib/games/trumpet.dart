@@ -167,15 +167,15 @@ class _TrumpetPageState extends State<TrumpetPage> {
                           return SingleChildScrollView(
                             child: Card(
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(10),
                               ),
                               child: Column(
                                 children: [
                                   ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(12),
                                     child: Image.network(
                                       song['image'],
-                                      height: 400,
+                                      width: 400,
                                       fit: BoxFit.cover,
                                       errorBuilder:
                                           (context, error, stackTrace) =>

@@ -103,7 +103,8 @@ class _StudentsPageState extends State<StudentsPage> {
     await Supabase.instance.client
         .from('students')
         .delete()
-        .eq('id', studentId);
+        .eq('id', studentId)
+        .order('first_name', ascending: true);
     fetchStudents();
   }
 
