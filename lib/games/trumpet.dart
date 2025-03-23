@@ -19,7 +19,8 @@ class _TrumpetPageState extends State<TrumpetPage> {
   Future<List<Map<String, dynamic>>> fetchSongs() async {
     final response = await supabase
         .from('songs')
-        .select('id, name, image, mp3_file, artist, difficulty');
+        .select('id, name, image, mp3_file, artist, difficulty')
+        .order('name', ascending: true);
     return response.isNotEmpty ? List<Map<String, dynamic>>.from(response) : [];
   }
 
@@ -174,7 +175,6 @@ class _TrumpetPageState extends State<TrumpetPage> {
                                     borderRadius: BorderRadius.circular(8),
                                     child: Image.network(
                                       song['image'],
-                                      width: 400,
                                       height: 400,
                                       fit: BoxFit.cover,
                                       errorBuilder:
