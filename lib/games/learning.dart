@@ -100,7 +100,7 @@ class _LearningPageState extends State<LearningPage> {
           width: double.infinity,
           child: TextField(
             decoration: InputDecoration(
-              hintText: "Canciones de ${widget.instrumentName} ...",
+              hintText: "Buscar Canciones de ${widget.instrumentName} ...",
               hintStyle: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
