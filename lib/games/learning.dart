@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-class TrumpetPage extends StatefulWidget {
-  const TrumpetPage({super.key});
+class LearningPage extends StatefulWidget {
+  final String instrumentName; // Recibe el nombre del instrumento
+
+  const LearningPage({super.key, required this.instrumentName});
 
   @override
-  State<TrumpetPage> createState() => _TrumpetPageState();
+  State<LearningPage> createState() => _LearningPageState();
 }
 
-class _TrumpetPageState extends State<TrumpetPage> {
+class _LearningPageState extends State<LearningPage> {
   final supabase = Supabase.instance.client;
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
@@ -17,10 +19,27 @@ class _TrumpetPageState extends State<TrumpetPage> {
   String searchQuery = "";
 
   Future<List<Map<String, dynamic>>> fetchSongs() async {
+    // 🔹 Buscar la ID del instrumento en la tabla "instruments"
+    final instrumentResponse = await supabase
+        .from('instruments')
+        .select('id')
+        .eq('name', widget.instrumentName)
+        .maybeSingle(); // Espera un solo resultado o null
+
+    if (instrumentResponse == null) {
+      return []; // Si no hay instrumento, retorna una lista vacía
+    }
+
+    int instrumentId =
+        instrumentResponse['id']; // Obtener la ID del instrumento
+
+    // 🔹 Ahora, buscar las canciones que tengan esa instrument_id
     final response = await supabase
         .from('songs')
-        .select('id, name, image, mp3_file, artist, difficulty')
+        .select('id, name, image, mp3_file, artist, difficulty, instrument')
+        .eq('instrument', instrumentId) // Filtrar por instrument_id
         .order('name', ascending: true);
+
     return response.isNotEmpty ? List<Map<String, dynamic>>.from(response) : [];
   }
 
@@ -81,7 +100,7 @@ class _TrumpetPageState extends State<TrumpetPage> {
           width: double.infinity,
           child: TextField(
             decoration: InputDecoration(
-              hintText: "Buscar Canciones de Trompeta...",
+              hintText: "Canciones de ${widget.instrumentName} ...",
               hintStyle: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,

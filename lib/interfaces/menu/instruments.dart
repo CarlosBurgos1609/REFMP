@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
-import 'package:refmp/games/trumpet.dart';
+import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -143,8 +143,10 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const TrumpetPage()),
+                                            builder: (_) => LearningPage(
+                                                instrumentName: game[
+                                                    'name']), // Pasar el nombre del instrumento
+                                          ),
                                         );
                                       },
                                       icon: const Icon(
