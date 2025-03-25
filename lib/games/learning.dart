@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/games/play.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -19,21 +20,18 @@ class _LearningPageState extends State<LearningPage> {
   String searchQuery = "";
 
   Future<List<Map<String, dynamic>>> fetchSongs() async {
-    // 🔹 Buscar la ID del instrumento en la tabla "instruments"
     final instrumentResponse = await supabase
         .from('instruments')
         .select('id')
         .eq('name', widget.instrumentName)
-        .maybeSingle(); // Espera un solo resultado o null
+        .maybeSingle();
 
     if (instrumentResponse == null) {
-      return []; // Si no hay instrumento, retorna una lista vacía
+      return [];
     }
 
-    int instrumentId =
-        instrumentResponse['id']; // Obtener la ID del instrumento
+    int instrumentId = instrumentResponse['id'];
 
-    // 🔹 Ahora, buscar las canciones que tengan esa instrument_id
     final response = await supabase
         .from('songs')
         .select('id, name, image, mp3_file, artist, difficulty, instrument')
@@ -266,8 +264,15 @@ class _LearningPageState extends State<LearningPage> {
                     ],
                   ),
                   trailing: ElevatedButton.icon(
-                    // onPressed: () => playSong(song['mp3_file']),
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              PlayPage(songName: song["name"]),
+                        ),
+                      );
+                    },
                     icon: const Icon(Icons.music_note, color: Colors.white),
                     label: const Text("Tocar",
                         style: TextStyle(color: Colors.white)),
