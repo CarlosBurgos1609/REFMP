@@ -33,8 +33,12 @@ class _PlayPageState extends State<PlayPage> {
     if (response != null) {
       setState(() {
         song = response;
-        levels =
-            response['songs_level'].map((entry) => entry['levels']).toList();
+        levels = response['songs_level'] != null
+            ? response['songs_level']
+                .map((entry) => entry['level'])
+                .where((level) => level != null)
+                .toList()
+            : [];
         isLoading = false;
       });
     } else {

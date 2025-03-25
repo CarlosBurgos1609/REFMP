@@ -192,7 +192,7 @@ class _LearningPageState extends State<LearningPage> {
                                     borderRadius: BorderRadius.circular(12),
                                     child: Image.network(
                                       song['image'],
-                                      width: 400,
+                                      width: double.infinity,
                                       fit: BoxFit.cover,
                                       errorBuilder:
                                           (context, error, stackTrace) =>
