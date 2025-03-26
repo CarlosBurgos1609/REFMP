@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/games/trumpet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PlayPage extends StatefulWidget {
@@ -219,6 +220,15 @@ class _PlayPageState extends State<PlayPage> {
                                                       vertical: 12),
                                                 ),
                                                 onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          TrumpetPage(
+                                                              songName: song![
+                                                                  'name']),
+                                                    ),
+                                                  );
                                                   // Aquí puedes manejar la navegación o la lógica del botón
                                                 },
                                                 icon: const Icon(
