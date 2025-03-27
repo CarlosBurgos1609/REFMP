@@ -1,31 +1,27 @@
+import 'package:flame/events.dart';
+import 'package:flame/game.dart';
+import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-class TrumpetPage extends StatefulWidget {
+class TrumpetGameWidget extends StatefulWidget {
   final String songName;
+  final String artist;
 
-  const TrumpetPage({super.key, required this.songName});
+  const TrumpetGameWidget(
+      {super.key, required this.songName, required this.artist});
 
   @override
-  _TrumpetPageState createState() => _TrumpetPageState();
+  _TrumpetGameWidgetState createState() => _TrumpetGameWidgetState();
 }
 
-class _TrumpetPageState extends State<TrumpetPage> {
-  final supabase = Supabase.instance.client;
-  final AudioPlayer audioPlayer = AudioPlayer();
-  Map<String, dynamic>? song;
-  bool isLoading = true;
-  bool isPlaying = false;
-
+class _TrumpetGameWidgetState extends State<TrumpetGameWidget> {
   @override
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeRight,
     ]);
-    fetchSongDetails();
   }
 
   @override
@@ -33,63 +29,7 @@ class _TrumpetPageState extends State<TrumpetPage> {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
-    audioPlayer.dispose();
     super.dispose();
-  }
-
-  Future<void> fetchSongDetails() async {
-    final response = await supabase
-        .from('songs')
-        .select(
-            'id, name, image, artist, difficulty, mp3_file, instruments(name)')
-        .eq('name', widget.songName)
-        .maybeSingle();
-
-    if (response != null) {
-      setState(() {
-        song = response;
-        isLoading = false;
-        if (song!['mp3_file'] != null) {
-          audioPlayer.setSourceUrl(song!['mp3_file']);
-          audioPlayer.play(UrlSource(song!['mp3_file']));
-          isPlaying = true;
-        }
-      });
-    } else {
-      setState(() {
-        song = null;
-        isLoading = false;
-      });
-    }
-  }
-
-  void showPauseMenu() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Pausa"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                audioPlayer.resume();
-                setState(() => isPlaying = true);
-              },
-              child: const Text("Reanudar"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: const Text("Salir"),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -97,127 +37,133 @@ class _TrumpetPageState extends State<TrumpetPage> {
     return Scaffold(
       body: Stack(
         children: [
-          Image.asset(
-            'assets/images/pasto.png',
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/pasto.png',
+              fit: BoxFit.cover,
+            ),
           ),
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : song == null
-                  ? const Center(child: Text("No se encontró la canción."))
-                  : Column(
-                      children: [
-                        const SizedBox(height: 10),
-                        Center(
-                          child: Text(
-                            song!['name'],
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ),
-                        Center(
-                          child: Text(
-                            song!['artist'],
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 0),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            const SizedBox(width: 10),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                shape: const CircleBorder(),
-                                padding: const EdgeInsets.all(20),
-                              ),
-                              onPressed: showPauseMenu,
-                              child:
-                                  const Icon(Icons.pause, color: Colors.white),
-                            ),
-                            const SizedBox(width: 10),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(30),
-                              child: Image.asset(
-                                'assets/images/refmmp.png',
-                                width: 60,
-                                height: 60,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const Spacer(),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: Image.network(
-                                song!['image'],
-                                width: 80,
-                                height: 80,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(Icons.music_note, size: 50),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: Container(
-                            width: double.infinity,
-                            color: Colors.black12,
-                            child: const Center(
-                              child: Text(
-                                "Aquí bajará la tonada en forma de partitura",
-                                style: TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildTrumpetButton(Colors.yellow),
-                            const SizedBox(width: 50),
-                            _buildTrumpetButton(Colors.blue),
-                            const SizedBox(width: 50),
-                            _buildTrumpetButton(Colors.red),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Image.asset(
-                          'assets/images/trumpet.png',
-                          width: 200,
-                          height: 100,
-                        ),
-                        const SizedBox(height: 20),
-                      ],
+          Column(
+            children: [
+              const SizedBox(height: 40),
+              Text(
+                widget.songName,
+                style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue),
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                widget.artist,
+                style: const TextStyle(fontSize: 18, color: Colors.black54),
+                textAlign: TextAlign.center,
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Image.asset(
+                        'assets/images/trumpet.png',
+                        width: 500,
+                        height: 250,
+                      ),
                     ),
+                    Positioned.fill(
+                      child: GameWidget(game: TrumpetGame()),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {},
+                    child: const Text("Pistón 1"),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {},
+                    child: const Text("Pistón 2"),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {},
+                    child: const Text("Pistón 3"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+          Positioned(
+            top: 40,
+            left: 10,
+            child: IconButton(
+              icon:
+                  const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildTrumpetButton(Color color) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(100),
-          side: const BorderSide(color: Colors.amber, width: 2),
-        ),
-        padding: const EdgeInsets.all(30),
-      ),
-      onPressed: () {},
-      child: const SizedBox.shrink(),
-    );
+class TrumpetGame extends FlameGame with TapDetector {
+  List<FallingButton> buttons = [];
+  int score = 0;
+
+  @override
+  Future<void> onLoad() async {
+    _spawnButtons();
+  }
+
+  void _spawnButtons() {
+    for (int i = 0; i < 10; i++) {
+      double xPos = (i % 3) * 100 + 100;
+      var button = FallingButton(Vector2(xPos, -i * 100.0));
+      buttons.add(button);
+      add(button);
+    }
+  }
+
+  @override
+  void onTapDown(TapDownInfo info) {
+    for (var button in buttons) {
+      if (button.containsPoint(info.eventPosition.global)) {
+        if (button.isActive) {
+          score += 10;
+          button.removeFromParent();
+        }
+      }
+    }
+  }
+}
+
+class FallingButton extends SpriteComponent with HasGameRef<TrumpetGame> {
+  bool isActive = true;
+
+  FallingButton(Vector2 position) {
+    this.position = position;
+    size = Vector2(50, 50);
+  }
+
+  @override
+  Future<void> onLoad() async {
+    sprite = await Sprite.load('trumpet.png');
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    position.y += 100 * dt;
+    if (position.y > gameRef.size.y) {
+      isActive = false;
+      removeFromParent();
+    }
   }
 }

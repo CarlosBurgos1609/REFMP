@@ -1,3 +1,4 @@
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/games/trumpet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -224,13 +225,18 @@ class _PlayPageState extends State<PlayPage> {
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (context) =>
-                                                          TrumpetPage(
-                                                              songName: song![
-                                                                  'name']),
+                                                          Scaffold(
+                                                        body: GameWidget(
+                                                            game: TrumpetGame(
+                                                                // song!['name']
+                                                                )),
+                                                      ),
                                                     ),
                                                   );
-                                                  // Aquí puedes manejar la navegación o la lógica del botón
                                                 },
+
+                                                // Aquí puedes manejar la navegación o la lógica del botón
+
                                                 icon: const Icon(
                                                     Icons
                                                         .sports_esports_rounded,
