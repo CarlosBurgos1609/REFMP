@@ -28,7 +28,7 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
   String truncateText(String text, int wordLimit) {
     final words = text.split(' ');
     if (words.length > wordLimit) {
-      return words.take(wordLimit).join(' ') + '...';
+      return '${words.take(wordLimit).join(' ')}...';
     }
     return text;
   }

@@ -233,16 +233,16 @@ class Menu {
                     Menu._navigateToPage(context, index);
                   },
                 );
-              }).toList(),
+              }),
               const Divider(),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 child: Text(
                   "Solo profesores",
                   style: TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                      ),
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               // Estudiantes
@@ -261,7 +261,7 @@ class Menu {
                     Menu._navigateToPage(context, index);
                   },
                 );
-              }).toList(),
+              }),
               const Divider(),
               // Notificaciones, eventos y configuración
               ...[3, 6, 8].map((index) {
@@ -279,7 +279,7 @@ class Menu {
                     Menu._navigateToPage(context, index);
                   },
                 );
-              }).toList(),
+              }),
             ],
           ),
         );

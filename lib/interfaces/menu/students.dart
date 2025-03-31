@@ -252,10 +252,6 @@ class _StudentsPageState extends State<StudentsPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        child: Icon(
-          Icons.add,
-          color: Colors.white,
-        ),
         onPressed: () {
           Navigator.push(
             context,
@@ -263,6 +259,10 @@ class _StudentsPageState extends State<StudentsPage> {
           );
         },
         backgroundColor: Colors.blue,
+        child: Icon(
+          Icons.add,
+          color: Colors.white,
+        ),
       ),
       drawer: Menu.buildDrawer(context),
       body: RefreshIndicator(

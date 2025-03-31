@@ -97,12 +97,12 @@ class _HeadquartersFormState extends State<HeadquartersForm> {
                 controller: _addressController,
                 decoration: const InputDecoration(
                   labelText: 'Dirección',
-                  labelStyle: const TextStyle(color: Colors.blue),
+                  labelStyle: TextStyle(color: Colors.blue),
                   hoverColor: Colors.blue,
                   border: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.blue),
                   ),
-                  focusedBorder: const OutlineInputBorder(
+                  focusedBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.blue),
                   ),
                 ),

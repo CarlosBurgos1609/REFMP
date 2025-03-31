@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StudentForm extends StatefulWidget {
+  const StudentForm({super.key});
+
   @override
   _StudentFormState createState() => _StudentFormState();
 }

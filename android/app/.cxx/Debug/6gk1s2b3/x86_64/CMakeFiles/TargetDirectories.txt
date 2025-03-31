@@ -1,0 +1,2 @@
+C:/Users/Personal/Documents/proyecto/refmp/android/app/.cxx/Debug/6gk1s2b3/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/Personal/Documents/proyecto/refmp/android/app/.cxx/Debug/6gk1s2b3/x86_64/CMakeFiles/rebuild_cache.dir
