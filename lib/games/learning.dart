@@ -128,7 +128,9 @@ class _LearningPageState extends State<LearningPage> {
             ));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No hay canciones disponibles."));
+            return const Center(
+                child:
+                    Text("No hay canciones disponibles de instruments[name] "));
           }
 
           final songs = snapshot.data!
