@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
+import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomePage extends StatefulWidget {
@@ -90,6 +92,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> fetchUserProfileImage() async {
     final user = supabase.auth.currentUser;
+
     if (user == null) return;
 
     List<String> tables = [
@@ -141,6 +144,7 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return WillPopScope(
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
@@ -352,6 +356,13 @@ class _HomePageState extends State<HomePage>
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue),
+                    ),
+                    Divider(
+                      height: 40,
+                      thickness: 2,
+                      color: themeProvider.isDarkMode
+                          ? const Color.fromARGB(255, 34, 34, 34)
+                          : const Color.fromARGB(255, 197, 196, 196),
                     ),
                     const SizedBox(height: 10),
                     games.isEmpty
