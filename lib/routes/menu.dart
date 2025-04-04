@@ -161,8 +161,39 @@ class Menu {
                           ));
                         }
                         if (snapshot.hasError || snapshot.data == null) {
-                          return const Text("Error al cargar perfil",
-                              style: TextStyle(color: Colors.white));
+                          return UserAccountsDrawerHeader(
+                            decoration: BoxDecoration(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            accountName: Text(
+                              "Sin Conexion a internet",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            currentAccountPicture: GestureDetector(
+                              onTap: () {
+                                currentIndexNotifier.value = 1;
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ProfilePage(title: "Perfil"),
+                                  ),
+                                );
+                              },
+                              child: CircleAvatar(
+                                backgroundColor: Colors.blue,
+                                backgroundImage: const AssetImage(
+                                    "assets/images/refmmp.png"),
+                              ),
+                            ),
+                            accountEmail: null,
+                          );
                         }
 
                         final userProfile =
