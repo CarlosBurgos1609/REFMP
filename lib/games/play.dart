@@ -79,187 +79,200 @@ class _PlayPageState extends State<PlayPage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : song == null
-              ? const Center(child: Text("No se encontró la canción."))
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
-                                song!['image'],
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(Icons.music_note, size: 100),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Center(
-                                    child: Text(
-                                        "Dificultad: ${song!["difficulty"]}",
-                                        style: TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold,
-                                            color: getDifficultyColor(
-                                                song!["difficulty"]))),
-                                  ),
-                                  Center(
-                                    child: Text(
-                                      song!['name'],
-                                      style: const TextStyle(
-                                          color: Colors.blue,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text("Artista: ${song!['artist']}",
-                                      style: const TextStyle(fontSize: 16)),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    "Instrumento: ${song!['instruments']?['name'] ?? "Desconocido"}",
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Divider(color: Colors.blue, thickness: 2),
-                      const SizedBox(height: 10),
-                      const Center(
-                        child: Text(
-                          "Niveles disponibles:",
-                          style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+      body: RefreshIndicator(
+        color: Colors.blue,
+        onRefresh: () async {
+          setState(() {
+            isLoading = true;
+          });
+          await fetchSongDetails();
+        },
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : song == null
+                ? const Center(child: Text("No se encontró la canción."))
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          textAlign: TextAlign.center,
+                          child: Column(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  song!['image'],
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.music_note, size: 100),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Center(
+                                      child: Text(
+                                          "Dificultad: ${song!["difficulty"]}",
+                                          style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: getDifficultyColor(
+                                                  song!["difficulty"]))),
+                                    ),
+                                    Center(
+                                      child: Text(
+                                        song!['name'],
+                                        style: const TextStyle(
+                                            color: Colors.blue,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text("Artista: ${song!['artist']}",
+                                        style: const TextStyle(fontSize: 16)),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      "Instrumento: ${song!['instruments']?['name'] ?? "Desconocido"}",
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      levels.isEmpty
-                          ? const Text("No hay niveles disponibles.")
-                          : Column(
-                              children: levels.map((level) {
-                                return Padding(
-                                  padding: const EdgeInsets.all(10.0),
-                                  child: Card(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    elevation: 4,
-                                    child: Column(
-                                      children: [
-                                        ClipRRect(
-                                          borderRadius:
-                                              const BorderRadius.vertical(
-                                                  top: Radius.circular(16)),
-                                          child: Image.network(
-                                            level['image'] ?? '',
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: 180,
-                                            errorBuilder: (context, error,
-                                                    stackTrace) =>
-                                                const Icon(
-                                                    Icons.image_not_supported,
-                                                    size: 80),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.all(12.0),
-                                          child: Column(
-                                            children: [
-                                              Text(
-                                                level['name'] ??
-                                                    "Nombre desconocido",
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.blue),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                level['description'] ??
-                                                    "Sin descripción.",
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    fontSize: 15),
-                                              ),
-                                              const SizedBox(height: 10),
-                                              ElevatedButton.icon(
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.blue,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                  ),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 20,
-                                                      vertical: 12),
-                                                ),
-                                                onPressed: () {
-                                                  // Navigator.push(
-                                                  //   context,
-                                                  //   MaterialPageRoute(
-                                                  //     builder: (context) =>
-                                                  //         Scaffold(
-                                                  //       body: GameWidget(
-                                                  //           game: TrumpetGame(
-                                                  //               // song!['name']
-                                                  //               ),
-                                                  //               ),
-                                                  //     ),
-                                                  //   ),
-                                                  // );
-                                                },
-
-                                                // Aquí puedes manejar la navegación o la lógica del botón
-
-                                                icon: const Icon(
-                                                    Icons
-                                                        .sports_esports_rounded,
-                                                    color: Colors.white),
-                                                label: const Text(
-                                                  "Aprende y Juega",
-                                                  style: TextStyle(
-                                                      color: Colors.white),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
+                        const SizedBox(height: 20),
+                        const Divider(color: Colors.blue, thickness: 2),
+                        const SizedBox(height: 10),
+                        const Center(
+                          child: Text(
+                            "Niveles disponibles:",
+                            style: TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
                             ),
-                    ],
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        levels.isEmpty
+                            ? const Text("No hay niveles disponibles.")
+                            : Column(
+                                children: levels.map((level) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(10.0),
+                                    child: Card(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      elevation: 4,
+                                      child: Column(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                                    top: Radius.circular(16)),
+                                            child: Image.network(
+                                              level['image'] ?? '',
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              height: 180,
+                                              errorBuilder: (context, error,
+                                                      stackTrace) =>
+                                                  const Icon(
+                                                      Icons.image_not_supported,
+                                                      size: 80),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Column(
+                                              children: [
+                                                Text(
+                                                  level['name'] ??
+                                                      "Nombre desconocido",
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.blue),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  level['description'] ??
+                                                      "Sin descripción.",
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                      fontSize: 15),
+                                                ),
+                                                const SizedBox(height: 10),
+                                                ElevatedButton.icon(
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.blue,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                    ),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 12),
+                                                  ),
+                                                  onPressed: () {
+                                                    // Navigator.push(
+                                                    //   context,
+                                                    //   MaterialPageRoute(
+                                                    //     builder: (context) =>
+                                                    //         Scaffold(
+                                                    //       body: GameWidget(
+                                                    //           game: TrumpetGame(
+                                                    //               // song!['name']
+                                                    //               ),
+                                                    //               ),
+                                                    //     ),
+                                                    //   ),
+                                                    // );
+                                                  },
+
+                                                  // Aquí puedes manejar la navegación o la lógica del botón
+
+                                                  icon: const Icon(
+                                                      Icons
+                                                          .sports_esports_rounded,
+                                                      color: Colors.white),
+                                                  label: const Text(
+                                                    "Aprende y Juega",
+                                                    style: TextStyle(
+                                                        color: Colors.white),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                      ],
+                    ),
                   ),
-                ),
+      ),
     );
   }
 }
