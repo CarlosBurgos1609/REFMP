@@ -220,7 +220,15 @@ class _HomePageState extends State<HomePage>
                 padding: const EdgeInsets.all(2.0),
                 child: Column(
                   children: [
-                    const SizedBox(height: 10),
+                    Image.asset("assets/images/logofn.png"),
+                    const SizedBox(height: 30),
+                    Divider(
+                      height: 40,
+                      thickness: 2,
+                      color: themeProvider.isDarkMode
+                          ? const Color.fromARGB(255, 34, 34, 34)
+                          : const Color.fromARGB(255, 197, 196, 196),
+                    ),
                     const Text(
                       'Sedes',
                       style: TextStyle(
