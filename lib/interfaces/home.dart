@@ -350,13 +350,6 @@ class _HomePageState extends State<HomePage>
                             ],
                           ),
                     const SizedBox(height: 20),
-                    const Text(
-                      "Aprende y Juega",
-                      style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue),
-                    ),
                     Divider(
                       height: 40,
                       thickness: 2,
@@ -364,7 +357,14 @@ class _HomePageState extends State<HomePage>
                           ? const Color.fromARGB(255, 34, 34, 34)
                           : const Color.fromARGB(255, 197, 196, 196),
                     ),
-                    const SizedBox(height: 10),
+                    const Text(
+                      "Aprende y Juega",
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue),
+                    ),
+                    const SizedBox(height: 20),
                     games.isEmpty
                         ? const Center(
                             child:
