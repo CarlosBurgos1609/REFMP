@@ -220,8 +220,17 @@ class _HomePageState extends State<HomePage>
                 padding: const EdgeInsets.all(2.0),
                 child: Column(
                   children: [
-                    Image.asset("assets/images/logofn.png"),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                      child: Image.asset(
+                        themeProvider.isDarkMode
+                            ? "assets/images/appbar.png"
+                            : "assets/images/logofn.png",
+                      ),
+                    ),
+                    const SizedBox(height: 3),
                     Divider(
                       height: 40,
                       thickness: 2,
