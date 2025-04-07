@@ -163,9 +163,10 @@ class _PlayPageState extends State<PlayPage> {
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 20),
                         levels.isEmpty
-                            ? const Text("No hay niveles disponibles.")
+                            ? const Center(
+                                child: Text("No hay niveles disponibles."))
                             : Column(
                                 children: levels.map((level) {
                                   return Padding(
