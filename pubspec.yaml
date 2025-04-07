@@ -58,7 +58,9 @@ dependencies:
   flame_forge2d: ^0.18.2+7
   flame_tiled: ^2.0.2
   audioplayers: ^6.4.0
+  
   syncfusion_flutter_calendar: ^29.1.35
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:

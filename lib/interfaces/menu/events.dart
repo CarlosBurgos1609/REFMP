@@ -23,6 +23,7 @@ class _EventsPageState extends State<EventsPage> {
   @override
   void initState() {
     super.initState();
+
     fetchEvents();
   }
 
@@ -106,78 +107,83 @@ class _EventsPageState extends State<EventsPage> {
           ),
         ),
         drawer: Menu.buildDrawer(context),
-        body: SfCalendar(
-          view: CalendarView.month,
-          dataSource: EventDataSource(_appointments),
-          minDate: DateTime(2025, 1, 1),
-          monthViewSettings: const MonthViewSettings(
-            appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
-            showAgenda: true,
-          ),
-          onTap: (calendarTapDetails) {
-            if (calendarTapDetails.appointments != null &&
-                calendarTapDetails.appointments!.isNotEmpty) {
-              final tappedAppointment =
-                  calendarTapDetails.appointments!.first as Appointment;
-              final eventIndex = int.tryParse(tappedAppointment.notes ?? '');
-              if (eventIndex != null && eventIndex < _eventDetails.length) {
-                final event = _eventDetails[eventIndex];
-                final sedeName = event['sedes']['name'] ?? 'Sede no encontrada';
+        body: RefreshIndicator(
+          onRefresh: fetchEvents,
+          child: SfCalendar(
+            view: CalendarView.month,
+            dataSource: EventDataSource(_appointments),
+            minDate: DateTime(2025, 1, 1),
+            monthViewSettings: const MonthViewSettings(
+              appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
+              showAgenda: true,
+            ),
+            onTap: (calendarTapDetails) {
+              if (calendarTapDetails.appointments != null &&
+                  calendarTapDetails.appointments!.isNotEmpty) {
+                final tappedAppointment =
+                    calendarTapDetails.appointments!.first as Appointment;
+                final eventIndex = int.tryParse(tappedAppointment.notes ?? '');
+                if (eventIndex != null && eventIndex < _eventDetails.length) {
+                  final event = _eventDetails[eventIndex];
+                  final sedeName =
+                      event['sedes']['name'] ?? 'Sede no encontrada';
 
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (context) {
-                    return SingleChildScrollView(
-                      child: Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (event['image'] != null)
-                              ClipRRect(
-                                borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(20)),
-                                child: Image.network(event['image'],
-                                    width: double.infinity, fit: BoxFit.cover),
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (context) {
+                      return SingleChildScrollView(
+                        child: Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (event['image'] != null)
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(20)),
+                                  child: Image.network(event['image'],
+                                      width: double.infinity,
+                                      fit: BoxFit.cover),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(event['name'] ?? 'Evento sin nombre',
+                                        style: const TextStyle(
+                                            color: Colors.blue,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                        "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
+                                        style: const TextStyle(fontSize: 16)),
+                                    Text("Hora: ${event['time']}",
+                                        style: const TextStyle(fontSize: 16)),
+                                    Text("Ubicación: ${event['location']}",
+                                        style: const TextStyle(fontSize: 16)),
+                                    Text("Sede: $sedeName",
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: Colors.blue)),
+                                  ],
+                                ),
                               ),
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(event['name'] ?? 'Evento sin nombre',
-                                      style: const TextStyle(
-                                          color: Colors.blue,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                      "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
-                                      style: const TextStyle(fontSize: 16)),
-                                  Text("Hora: ${event['time']}",
-                                      style: const TextStyle(fontSize: 16)),
-                                  Text("Ubicación: ${event['location']}",
-                                      style: const TextStyle(fontSize: 16)),
-                                  Text("Sede: $sedeName",
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                          color: Colors.blue)),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                );
+                      );
+                    },
+                  );
+                }
               }
-            }
-          },
+            },
+          ),
         ),
       ),
     );
