@@ -269,7 +269,7 @@ class Menu {
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 child: Text(
-                  "Solo profesores",
+                  "Usuarios",
                   style: TextStyle(
                     color: Colors.blue,
                     fontWeight: FontWeight.bold,
