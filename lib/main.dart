@@ -29,6 +29,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: themeProvider.currentTheme,
       debugShowCheckedModeBanner: false,
+      locale: const Locale('es'),
       home: FutureBuilder<AuthState?>(
         future: _getInitialScreen(),
         builder: (context, snapshot) {
