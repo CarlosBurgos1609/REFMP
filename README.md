@@ -1,7 +1,6 @@
 # REFMP
-# Red-de-Escuelas-de-Formación-Musical-de-Pasto
+# Red de Escuelas De Formación Musical de Pasto
 
-A new Flutter project.
 
 ## Getting Started
 
