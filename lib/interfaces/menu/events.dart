@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
-import 'package:intl/intl.dart';
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key, required this.title});
@@ -17,13 +18,16 @@ class _EventsPageState extends State<EventsPage> {
   final SupabaseClient supabase = Supabase.instance.client;
   List<Appointment> _appointments = [];
   List<Map<String, dynamic>> _eventDetails = [];
-
-  get rawDateT => null;
+  late CalendarController _calendarController;
+  DateTime _focusedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-
+    _calendarController = CalendarController();
+    initializeDateFormatting('es_ES', null).then((_) {
+      setState(() {});
+    });
     fetchEvents();
   }
 
@@ -41,20 +45,18 @@ class _EventsPageState extends State<EventsPage> {
       try {
         final rawDate = event['date'];
         final rawTime = event['time'];
-
         DateTime startDateTime;
 
         if (rawDate.toString().contains('T')) {
           startDateTime = DateTime.parse(rawDate);
         } else {
-          startDateTime = DateTime.parse('$rawDateT$rawTime');
+          startDateTime = DateTime.parse('$rawDate $rawTime');
         }
 
         DateTime endDateTime = startDateTime.add(const Duration(hours: 1));
 
         appointments.add(Appointment(
           startTime: startDateTime,
-
           endTime: endDateTime,
           subject: event['name'] ?? 'Evento sin nombre',
           notes: eventDetails.length.toString(), // índice
@@ -74,8 +76,29 @@ class _EventsPageState extends State<EventsPage> {
     });
   }
 
+  void _goToPreviousMonth() {
+    final newDate =
+        DateTime(_focusedDate.year, _focusedDate.month - 1, _focusedDate.day);
+    if (newDate.isBefore(DateTime(2025, 1, 1))) return;
+    _calendarController.displayDate = newDate;
+    setState(() {
+      _focusedDate = newDate;
+    });
+  }
+
+  void _goToNextMonth() {
+    final newDate =
+        DateTime(_focusedDate.year, _focusedDate.month + 1, _focusedDate.day);
+    _calendarController.displayDate = newDate;
+    setState(() {
+      _focusedDate = newDate;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final monthName = DateFormat.yMMMM('es_ES').format(_focusedDate);
+
     return WillPopScope(
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
@@ -98,91 +121,142 @@ class _EventsPageState extends State<EventsPage> {
             },
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {},
-          backgroundColor: Colors.blue,
-          child: Icon(
-            Icons.add,
-            color: Colors.white,
-          ),
-        ),
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
           onRefresh: fetchEvents,
-          child: SfCalendar(
-            view: CalendarView.month,
-            dataSource: EventDataSource(_appointments),
-            minDate: DateTime(2025, 1, 1),
-            monthViewSettings: const MonthViewSettings(
-              appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
-              showAgenda: true,
-            ),
-            onTap: (calendarTapDetails) {
-              if (calendarTapDetails.appointments != null &&
-                  calendarTapDetails.appointments!.isNotEmpty) {
-                final tappedAppointment =
-                    calendarTapDetails.appointments!.first as Appointment;
-                final eventIndex = int.tryParse(tappedAppointment.notes ?? '');
-                if (eventIndex != null && eventIndex < _eventDetails.length) {
-                  final event = _eventDetails[eventIndex];
-                  final sedeName =
-                      event['sedes']['name'] ?? 'Sede no encontrada';
-
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (context) {
-                      return SingleChildScrollView(
-                        child: Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+          child: Column(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      monthName[0].toUpperCase() + monthName.substring(1),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: _goToPreviousMonth,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (event['image'] != null)
-                                ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(20)),
-                                  child: Image.network(event['image'],
-                                      width: double.infinity,
-                                      fit: BoxFit.cover),
+                          child:
+                              const Icon(Icons.arrow_left, color: Colors.white),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _goToNextMonth,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Icon(Icons.arrow_right,
+                              color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SfCalendar(
+                  controller: _calendarController,
+                  view: CalendarView.month,
+                  dataSource: EventDataSource(_appointments),
+                  minDate: DateTime(2025, 1, 1),
+                  monthViewSettings: const MonthViewSettings(
+                    appointmentDisplayMode:
+                        MonthAppointmentDisplayMode.appointment,
+                    showAgenda: true,
+                  ),
+                  onTap: (calendarTapDetails) {
+                    if (calendarTapDetails.appointments != null &&
+                        calendarTapDetails.appointments!.isNotEmpty) {
+                      final tappedAppointment =
+                          calendarTapDetails.appointments!.first as Appointment;
+                      final eventIndex =
+                          int.tryParse(tappedAppointment.notes ?? '');
+                      if (eventIndex != null &&
+                          eventIndex < _eventDetails.length) {
+                        final event = _eventDetails[eventIndex];
+                        final sedeName =
+                            event['sedes']['name'] ?? 'Sede no encontrada';
+
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          builder: (context) {
+                            return SingleChildScrollView(
+                              child: Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(event['name'] ?? 'Evento sin nombre',
-                                        style: const TextStyle(
-                                            color: Colors.blue,
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                        "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
-                                        style: const TextStyle(fontSize: 16)),
-                                    Text("Hora: ${event['time']}",
-                                        style: const TextStyle(fontSize: 16)),
-                                    Text("Ubicación: ${event['location']}",
-                                        style: const TextStyle(fontSize: 16)),
-                                    Text("Sede: $sedeName",
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                            color: Colors.blue)),
+                                    if (event['image'] != null)
+                                      ClipRRect(
+                                        borderRadius:
+                                            const BorderRadius.vertical(
+                                                top: Radius.circular(20)),
+                                        child: Image.network(event['image'],
+                                            width: double.infinity,
+                                            fit: BoxFit.cover),
+                                      ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                              event['name'] ??
+                                                  'Evento sin nombre',
+                                              style: const TextStyle(
+                                                  color: Colors.blue,
+                                                  fontSize: 22,
+                                                  fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                              "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text("Hora: ${event['time']}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text(
+                                              "Ubicación: ${event['location']}",
+                                              style: const TextStyle(
+                                                  fontSize: 16)),
+                                          Text("Sede: $sedeName",
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: Colors.blue)),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }
-              }
-            },
+                            );
+                          },
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
