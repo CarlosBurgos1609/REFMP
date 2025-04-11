@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/interfaces/home.dart';
+import 'package:refmp/interfaces/menu/graduates.dart';
 import 'package:refmp/interfaces/menu/settings.dart';
 import 'package:refmp/interfaces/menu/contacts.dart';
 import 'package:refmp/interfaces/menu/events.dart';
@@ -95,7 +96,7 @@ class Menu {
           builder: (context) => const StudentsPage(title: "Estudiantes")),
       10: MaterialPageRoute(
           settings: const RouteSettings(name: 'Egresados'),
-          builder: (context) => const SettingsPage(title: "Egresados")),
+          builder: (context) => const GraduatesPage(title: "Egresados")),
     };
 
     // Actualiza el índice de la página actual
