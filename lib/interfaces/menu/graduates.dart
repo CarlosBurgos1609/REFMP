@@ -95,8 +95,12 @@ class _GraduatesPageState extends State<GraduatesPage> {
               Text('¿Estás seguro de que deseas eliminar a este egresado?'),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancelar')),
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.blue),
+              ),
+            ),
             TextButton(
               onPressed: () {
                 deleteGraduate(graduateId);

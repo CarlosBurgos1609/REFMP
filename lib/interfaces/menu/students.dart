@@ -154,7 +154,10 @@ class _StudentsPageState extends State<StudentsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cancelar'),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.blue),
+              ),
             ),
             TextButton(
               onPressed: () {
