@@ -186,10 +186,15 @@ class _StudentsPageState extends State<StudentsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(80),
+                borderRadius: BorderRadius.circular(500),
                 child: student['profile_image'] != null &&
                         student['profile_image'].isNotEmpty
-                    ? Image.network(student['profile_image'], height: 150)
+                    ? Image.network(
+                        student['profile_image'],
+                        height: 150,
+                        width: 150,
+                        fit: BoxFit.cover,
+                      )
                     : Image.asset('assets/images/refmmp.png', height: 100),
               ),
               SizedBox(height: 40),
