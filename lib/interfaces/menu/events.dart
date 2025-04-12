@@ -135,6 +135,7 @@ class _EventsPageState extends State<EventsPage> {
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
           onRefresh: fetchEvents,
+          color: Colors.blue,
           child: Column(
             children: [
               const SizedBox(height: 12),
@@ -158,8 +159,8 @@ class _EventsPageState extends State<EventsPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child:
-                              const Icon(Icons.arrow_left, color: Colors.white),
+                          child: const Icon(Icons.arrow_back_ios_rounded,
+                              color: Colors.white),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton(
@@ -170,7 +171,7 @@ class _EventsPageState extends State<EventsPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Icon(Icons.arrow_right,
+                          child: const Icon(Icons.arrow_forward_ios_rounded,
                               color: Colors.white),
                         ),
                       ],
