@@ -20,11 +20,13 @@ class _EventsPageState extends State<EventsPage> {
   List<Map<String, dynamic>> _eventDetails = [];
   late CalendarController _calendarController;
   DateTime _focusedDate = DateTime.now();
+  CalendarView _calendarView = CalendarView.month;
 
   @override
   void initState() {
     super.initState();
     _calendarController = CalendarController();
+    _calendarController.view = _calendarView;
     initializeDateFormatting('es_ES', null).then((_) {
       setState(() {});
     });
@@ -59,8 +61,8 @@ class _EventsPageState extends State<EventsPage> {
           startTime: startDateTime,
           endTime: endDateTime,
           subject: event['name'] ?? 'Evento sin nombre',
-          notes: eventDetails.length.toString(), // índice
-          color: Colors.blue,
+          notes: eventDetails.length.toString(),
+          color: Colors.green,
         ));
 
         eventDetails.add(event);
@@ -95,6 +97,15 @@ class _EventsPageState extends State<EventsPage> {
     });
   }
 
+  void _toggleCalendarView() {
+    setState(() {
+      _calendarView = _calendarView == CalendarView.month
+          ? CalendarView.schedule
+          : CalendarView.month;
+      _calendarController.view = _calendarView;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final monthName = DateFormat.yMMMM('es_ES').format(_focusedDate);
@@ -126,9 +137,9 @@ class _EventsPageState extends State<EventsPage> {
           onRefresh: fetchEvents,
           child: Column(
             children: [
+              const SizedBox(height: 12),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -167,16 +178,49 @@ class _EventsPageState extends State<EventsPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _toggleCalendarView,
+                    icon: const Icon(Icons.swap_horiz, color: Colors.white),
+                    label: Text(
+                      _calendarView == CalendarView.month
+                          ? 'Cambiar a Agenda'
+                          : 'Cambiar a Calendario',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: SfCalendar(
                   controller: _calendarController,
-                  view: CalendarView.month,
+                  view: _calendarView,
                   dataSource: EventDataSource(_appointments),
                   minDate: DateTime(2025, 1, 1),
-                  monthViewSettings: const MonthViewSettings(
+                  todayHighlightColor: Colors.blue,
+                  selectionDecoration: BoxDecoration(
+                    border: Border.all(color: Colors.blue, width: 2),
+                    borderRadius: BorderRadius.circular(6),
+                    color: Colors.transparent,
+                  ),
+                  monthViewSettings: MonthViewSettings(
                     appointmentDisplayMode:
                         MonthAppointmentDisplayMode.appointment,
                     showAgenda: true,
+                  ),
+                  scheduleViewSettings: const ScheduleViewSettings(
+                    appointmentItemHeight: 70,
                   ),
                   onTap: (calendarTapDetails) {
                     if (calendarTapDetails.appointments != null &&
