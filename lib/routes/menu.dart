@@ -156,10 +156,10 @@ class Menu {
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator(
-                            color: Colors.blue,
-                          ));
+                          // return const Center(
+                          //     child: CircularProgressIndicator(
+                          //   color: Colors.blue,
+                          // ));
                         }
                         if (snapshot.hasError || snapshot.data == null) {
                           return UserAccountsDrawerHeader(

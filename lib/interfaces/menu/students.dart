@@ -263,7 +263,7 @@ class _StudentsPageState extends State<StudentsPage> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => StudentForm()),
+            MaterialPageRoute(builder: (context) => RegisterStudentForm()),
           );
         },
         backgroundColor: Colors.blue,

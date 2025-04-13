@@ -97,6 +97,14 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
                           elevation: 4,
                           child: Column(
                             children: [
+                              const Text(
+                                "Aprende y Juega",
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue),
+                              ),
+                              const SizedBox(height: 20),
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(16)),
@@ -168,6 +176,17 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
                 },
               ),
               const Divider(height: 20, thickness: 2, color: Colors.blue),
+              const SizedBox(height: 10),
+              const Center(
+                child: Text(
+                  "Intrumentos",
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue),
+                ),
+              ),
+              const SizedBox(height: 20),
               FutureBuilder(
                 future: fetchInstruments(),
                 builder: (context, snapshot) {
