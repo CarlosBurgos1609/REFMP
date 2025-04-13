@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/edit/edit_profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -181,6 +182,26 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                 ),
+      floatingActionButton: userTable == null
+          ? null
+          : FloatingActionButton(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditProfilePage(
+                      userProfile: userProfile,
+                      userTable: userTable!,
+                    ),
+                  ),
+                );
+                // Refrescar datos al volver
+                _findUserTable();
+              },
+              backgroundColor: Colors.blue,
+              child: const Icon(Icons.edit, color: Colors.white),
+              tooltip: 'Editar perfil',
+            ),
     );
   }
 

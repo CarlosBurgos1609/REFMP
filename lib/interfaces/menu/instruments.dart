@@ -65,6 +65,17 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
           color: Colors.blue,
           child: ListView(
             children: [
+              const SizedBox(height: 20),
+              Center(
+                child: const Text(
+                  "Aprende y Juega",
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue),
+                ),
+              ),
+              const SizedBox(height: 10),
               FutureBuilder(
                 future: fetchGames(),
                 builder: (context, snapshot) {
@@ -97,14 +108,6 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
                           elevation: 4,
                           child: Column(
                             children: [
-                              const Text(
-                                "Aprende y Juega",
-                                style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue),
-                              ),
-                              const SizedBox(height: 20),
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(16)),
