@@ -63,6 +63,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
     final fileExt = file.path.split('.').last;
     final fileName = '${const Uuid().v4()}.$fileExt';
 
+    // ignore: unused_local_variable
     final storageResponse = await supabase.storage
         .from('students')
         .upload('profile_images/$fileName', file);
@@ -78,6 +79,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
     if (_formKey.currentState!.validate() &&
         selectedSedeId != null &&
         imageFile != null) {
+      _formKey.currentState!.save();
       final imageUrl = await uploadImage(imageFile!);
 
       final response = await supabase
@@ -111,6 +113,21 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
     }
   }
 
+  InputDecoration customInputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: Colors.blue),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: Colors.blue, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -120,6 +137,14 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         child: Form(
           key: _formKey,
           child: Column(children: [
+            Text(
+              'Imagen de Perfil',
+              style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18),
+            ),
+            SizedBox(height: 8),
             GestureDetector(
               onTap: pickImage,
               child: Container(
@@ -136,44 +161,52 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
                       : null,
                 ),
                 child: imageFile == null
-                    ? Center(child: Text('Seleccionar imagen'))
+                    ? Center(
+                        child: Icon(Icons.cloud_upload,
+                            size: 80, color: Colors.blue),
+                      )
                     : null,
               ),
             ),
             SizedBox(height: 16),
             TextFormField(
               controller: firstNameController,
-              decoration: InputDecoration(labelText: 'Nombre'),
+              decoration: customInputDecoration('Nombre'),
               validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
             ),
+            SizedBox(height: 10),
             TextFormField(
               controller: lastNameController,
-              decoration: InputDecoration(labelText: 'Apellido'),
+              decoration: customInputDecoration('Apellido'),
               validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
             ),
+            SizedBox(height: 10),
             TextFormField(
               controller: idNumberController,
-              decoration:
-                  InputDecoration(labelText: 'Número de identificación'),
+              decoration: customInputDecoration('Número de identificación'),
               validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
             ),
+            SizedBox(height: 10),
             TextFormField(
               controller: emailController,
-              decoration: InputDecoration(labelText: 'Correo electrónico'),
+              decoration: customInputDecoration('Correo electrónico'),
               validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
             ),
+            SizedBox(height: 10),
             TextFormField(
               controller: passwordController,
-              decoration: InputDecoration(labelText: 'Contraseña'),
+              decoration: customInputDecoration('Contraseña'),
               obscureText: true,
               validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
             ),
+            SizedBox(height: 10),
             DropdownButtonFormField<int>(
               value: selectedSedeId,
               items: sedes
                   .map((sede) => DropdownMenuItem<int>(
                         value: sede['id'],
-                        child: Text(sede['name']),
+                        child: Text(sede['name'],
+                            style: TextStyle(color: Colors.blue)),
                       ))
                   .toList(),
               onChanged: (value) {
@@ -181,17 +214,21 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
                   selectedSedeId = value;
                 });
               },
-              decoration: InputDecoration(labelText: 'Sede'),
+              decoration: customInputDecoration('Sede'),
               validator: (value) =>
                   value == null ? 'Seleccione una sede' : null,
             ),
-            SizedBox(height: 16),
-            Text('Instrumentos', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 20),
+            Text('Instrumentos',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
             ...instrumentos.map((instrumento) {
               final instrumentId = instrumento['id'] as int;
               return CheckboxListTile(
-                title: Text(instrumento['name']),
+                title: Text(instrumento['name'],
+                    style: TextStyle(color: Colors.blue)),
                 value: selectedInstrumentIds.contains(instrumentId),
+                activeColor: Colors.blue,
                 onChanged: (bool? selected) {
                   setState(() {
                     if (selected == true) {
@@ -205,6 +242,9 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
             }).toList(),
             SizedBox(height: 20),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+              ),
               onPressed: registerStudent,
               child: Text('Registrar Estudiante'),
             ),

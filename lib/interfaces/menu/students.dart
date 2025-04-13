@@ -212,8 +212,12 @@ class _StudentsPageState extends State<StudentsPage> {
                     'Instrumento(s): ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}',
                     style: TextStyle(height: 2),
                   ),
+                  // Text(
+                  //   'Sede(s): ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}',
+                  //   style: TextStyle(height: 2),
+                  // ),
                   Text(
-                    'Sede(s): ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}',
+                    'Sede(s): ${student['sedes']?['name'] ?? 'No asignada'}',
                     style: TextStyle(height: 2),
                   ),
                 ],
