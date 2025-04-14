@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/edit/edit_events.dart';
 import 'package:refmp/forms/eventsForm.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
@@ -156,6 +157,53 @@ class _EventsPageState extends State<EventsPage> {
     return false;
   }
 
+  Future<void> _deleteEvent(
+      Map<String, dynamic> event, BuildContext context) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // 1. Eliminar el evento de la base de datos
+      await supabase.from('events').delete().eq('id', event['id']);
+
+      // 2. Eliminar la imagen del bucket (si existe)
+      final imageName = event['image'];
+      if (imageName != null && imageName.isNotEmpty) {
+        await supabase.storage
+            .from('Events')
+            .remove(['events_images/$imageName']);
+      }
+
+      // 3. Mostrar un mensaje de éxito
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Evento eliminado correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // 4. Redirigir a EventsPage
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (context) => const EventsPage(
+                    title: 'Eventos',
+                  )),
+        );
+      }
+    } catch (e) {
+      print('Error eliminando evento: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al eliminar el evento'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _goToPreviousMonth() {
     final newDate =
         DateTime(_focusedDate.year, _focusedDate.month - 1, _focusedDate.day);
@@ -301,7 +349,8 @@ class _EventsPageState extends State<EventsPage> {
                   ),
                   monthViewSettings: MonthViewSettings(
                     appointmentDisplayMode:
-                        MonthAppointmentDisplayMode.appointment,
+                        // MonthAppointmentDisplayMode.appointment,
+                        MonthAppointmentDisplayMode.indicator,
                     showAgenda: true,
                   ),
                   scheduleViewSettings: const ScheduleViewSettings(
@@ -380,84 +429,107 @@ class _EventsPageState extends State<EventsPage> {
                                               if (snapshot.connectionState ==
                                                   ConnectionState.waiting) {
                                                 return const Center(
-                                                    child:
-                                                        //     CircularProgressIndicator(
-                                                        //   color: Colors.blue,
-                                                        // ),
-                                                        Text(""));
+                                                    child: Text(""));
                                               } else if (snapshot.hasData &&
                                                   snapshot.data == true) {
                                                 return Align(
                                                   alignment:
                                                       Alignment.centerRight,
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () async {
-                                                      final confirm =
-                                                          await showDialog<
-                                                              bool>(
-                                                        context: context,
-                                                        builder: (context) =>
-                                                            AlertDialog(
-                                                          title: const Text(
-                                                              '¿Eliminar evento?'),
-                                                          content: const Text(
-                                                              '¿Estás seguro de eliminar este evento?'),
-                                                          actions: [
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          context)
-                                                                      .pop(
-                                                                          false),
-                                                              child: const Text(
-                                                                  'Cancelar'),
-                                                            ),
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          context)
-                                                                      .pop(
-                                                                          true),
-                                                              child: const Text(
-                                                                  'Eliminar'),
-                                                            ),
-                                                          ],
+                                                  child: Row(
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(10.0),
+                                                        child:
+                                                            ElevatedButton.icon(
+                                                          style: ElevatedButton
+                                                              .styleFrom(
+                                                            backgroundColor:
+                                                                Colors.blue,
+                                                            foregroundColor:
+                                                                Colors.white,
+                                                          ),
+                                                          onPressed: () {
+                                                            Navigator.push(
+                                                              context,
+                                                              MaterialPageRoute(
+                                                                builder: (context) =>
+                                                                    EditEventForm(
+                                                                        event:
+                                                                            event),
+                                                              ),
+                                                            );
+                                                          },
+                                                          icon: const Icon(
+                                                              Icons.edit),
+                                                          label: const Text(
+                                                              'Editar'),
                                                         ),
-                                                      );
+                                                      ),
+                                                      const SizedBox(width: 10),
+                                                      ElevatedButton.icon(
+                                                        onPressed: () async {
+                                                          final confirm =
+                                                              await showDialog<
+                                                                  bool>(
+                                                            context: context,
+                                                            builder:
+                                                                (context) =>
+                                                                    AlertDialog(
+                                                              title: const Text(
+                                                                  '¿Eliminar evento?'),
+                                                              content: const Text(
+                                                                  '¿Estás seguro de que deseas eliminar este evento?'),
+                                                              actions: [
+                                                                TextButton(
+                                                                  onPressed: () =>
+                                                                      Navigator.of(
+                                                                              context)
+                                                                          .pop(
+                                                                              false),
+                                                                  child: const Text(
+                                                                      'Cancelar'),
+                                                                ),
+                                                                TextButton(
+                                                                  onPressed: () =>
+                                                                      Navigator.of(
+                                                                              context)
+                                                                          .pop(
+                                                                              true),
+                                                                  child: const Text(
+                                                                      'Eliminar'),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
 
-                                                      if (confirm == true) {
-                                                        await Supabase
-                                                            .instance.client
-                                                            .from('events')
-                                                            .delete()
-                                                            .eq('id',
-                                                                event['id']);
-                                                        if (mounted) {
-                                                          Navigator.of(context)
-                                                              .pop();
-                                                          fetchEvents();
-                                                        }
-                                                      }
-                                                    },
-                                                    icon: const Icon(
-                                                        Icons.delete),
-                                                    label:
-                                                        const Text('Eliminar'),
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          Colors.red,
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                    ),
+                                                          if (confirm == true) {
+                                                            await _deleteEvent(
+                                                                event,
+                                                                context); // Aquí llamas a _deleteEvent
+                                                          }
+                                                        },
+                                                        icon: const Icon(
+                                                            Icons.delete),
+                                                        label: const Text(
+                                                            'Eliminar'),
+                                                        style: ElevatedButton
+                                                            .styleFrom(
+                                                          backgroundColor:
+                                                              Colors.red,
+                                                          foregroundColor:
+                                                              Colors.white,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 );
                                               } else {
-                                                return const SizedBox
-                                                    .shrink(); // No muestra nada si no tiene permiso
+                                                return const SizedBox.shrink();
                                               }
                                             },
-                                          ),
+                                          )
                                         ],
                                       ),
                                     ),
