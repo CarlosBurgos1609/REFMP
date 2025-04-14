@@ -100,6 +100,62 @@ class _EventsPageState extends State<EventsPage> {
     });
   }
 
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+
+    final teacher = await supabase
+        .from('teachers')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (teacher != null) return true;
+
+    final advisor = await supabase
+        .from('advisors')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (advisor != null) return true;
+
+    return false;
+  }
+
+  Future<bool> _canDeleteEvent(int eventId) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final userResponse = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (userResponse != null) return true;
+
+    final teacherResponse = await supabase
+        .from('teachers')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (teacherResponse != null) return true;
+
+    final advisorResponse = await supabase
+        .from('advisors')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (advisorResponse != null) return true;
+
+    return false;
+  }
+
   void _goToPreviousMonth() {
     final newDate =
         DateTime(_focusedDate.year, _focusedDate.month - 1, _focusedDate.day);
@@ -317,6 +373,91 @@ class _EventsPageState extends State<EventsPage> {
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 16,
                                                   color: Colors.blue)),
+                                          FutureBuilder<bool>(
+                                            future:
+                                                _canDeleteEvent(event['id']),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.connectionState ==
+                                                  ConnectionState.waiting) {
+                                                return const Center(
+                                                    child:
+                                                        //     CircularProgressIndicator(
+                                                        //   color: Colors.blue,
+                                                        // ),
+                                                        Text(""));
+                                              } else if (snapshot.hasData &&
+                                                  snapshot.data == true) {
+                                                return Align(
+                                                  alignment:
+                                                      Alignment.centerRight,
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () async {
+                                                      final confirm =
+                                                          await showDialog<
+                                                              bool>(
+                                                        context: context,
+                                                        builder: (context) =>
+                                                            AlertDialog(
+                                                          title: const Text(
+                                                              '¿Eliminar evento?'),
+                                                          content: const Text(
+                                                              '¿Estás seguro de eliminar este evento?'),
+                                                          actions: [
+                                                            TextButton(
+                                                              onPressed: () =>
+                                                                  Navigator.of(
+                                                                          context)
+                                                                      .pop(
+                                                                          false),
+                                                              child: const Text(
+                                                                  'Cancelar'),
+                                                            ),
+                                                            TextButton(
+                                                              onPressed: () =>
+                                                                  Navigator.of(
+                                                                          context)
+                                                                      .pop(
+                                                                          true),
+                                                              child: const Text(
+                                                                  'Eliminar'),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+
+                                                      if (confirm == true) {
+                                                        await Supabase
+                                                            .instance.client
+                                                            .from('events')
+                                                            .delete()
+                                                            .eq('id',
+                                                                event['id']);
+                                                        if (mounted) {
+                                                          Navigator.of(context)
+                                                              .pop();
+                                                          fetchEvents();
+                                                        }
+                                                      }
+                                                    },
+                                                    icon: const Icon(
+                                                        Icons.delete),
+                                                    label:
+                                                        const Text('Eliminar'),
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          Colors.red,
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                    ),
+                                                  ),
+                                                );
+                                              } else {
+                                                return const SizedBox
+                                                    .shrink(); // No muestra nada si no tiene permiso
+                                              }
+                                            },
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -334,16 +475,29 @@ class _EventsPageState extends State<EventsPage> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {
-            // Al hacer clic en el botón, navegamos al formulario para agregar un nuevo evento
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => AddEventForm()),
-            );
+        floatingActionButton: FutureBuilder<bool>(
+          future: _canAddEvent(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(); // o un indicador de carga pequeño
+            }
+
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const AddEventForm()),
+                  );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox(); // no mostrar nada si no tiene permiso
+            }
           },
-          child: Icon(Icons.add),
-          backgroundColor: Colors.blue,
         ),
       ),
     );
