@@ -42,22 +42,41 @@ class _EventsPageState extends State<EventsPage> {
         .order('date', ascending: true)
         .order('name', ascending: true);
 
+    debugPrint('Eventos obtenidos: ${response.length}');
+
     List<Appointment> appointments = [];
     List<Map<String, dynamic>> eventDetails = [];
 
     for (var event in response) {
       try {
-        final rawDate = event['date'];
-        final rawTime = event['time'];
-        DateTime startDateTime;
+        final rawDate = event['date']; // ya es timestamp con hora
+        final rawTimeFin = event['time_fin'];
 
-        if (rawDate.toString().contains('T')) {
-          startDateTime = DateTime.parse(rawDate);
+        debugPrint('Procesando evento: $event');
+
+        if (rawDate == null) continue;
+
+        DateTime startDateTime = DateTime.parse(rawDate);
+        DateTime endDateTime;
+
+        if (rawTimeFin != null && rawTimeFin.toString().isNotEmpty) {
+          final dateOnly = DateTime(
+              startDateTime.year, startDateTime.month, startDateTime.day);
+          final parts = rawTimeFin.toString().split(":");
+          endDateTime = DateTime(
+            dateOnly.year,
+            dateOnly.month,
+            dateOnly.day,
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+          );
         } else {
-          startDateTime = DateTime.parse('$rawDate $rawTime');
+          endDateTime = startDateTime.add(const Duration(hours: 1));
         }
 
-        DateTime endDateTime = startDateTime.add(const Duration(hours: 1));
+        if (endDateTime.isBefore(startDateTime)) {
+          endDateTime = startDateTime.add(const Duration(hours: 1));
+        }
 
         appointments.add(Appointment(
           startTime: startDateTime,
@@ -283,9 +302,11 @@ class _EventsPageState extends State<EventsPage> {
                                               "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
                                               style: const TextStyle(
                                                   fontSize: 16)),
-                                          Text("Hora: ${event['time']}",
-                                              style: const TextStyle(
-                                                  fontSize: 16)),
+                                          Text(
+                                            "Hora: ${event['time']} - ${event['time_fin'] ?? 'No especificada'}",
+                                            style:
+                                                const TextStyle(fontSize: 16),
+                                          ),
                                           Text(
                                               "Ubicación: ${event['location']}",
                                               style: const TextStyle(
