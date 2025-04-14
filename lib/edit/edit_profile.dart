@@ -20,7 +20,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   late TextEditingController firstNameController;
   late TextEditingController lastNameController;
-  late TextEditingController emailController;
+  // late TextEditingController emailController;
   late TextEditingController identificationController;
   late TextEditingController chargeController;
 
@@ -40,7 +40,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         TextEditingController(text: widget.userProfile['first_name']);
     lastNameController =
         TextEditingController(text: widget.userProfile['last_name']);
-    emailController = TextEditingController(text: widget.userProfile['email']);
+    // emailController = TextEditingController(text: widget.userProfile['email']);
     identificationController = TextEditingController(
         text: widget.userProfile['identification_number']);
     chargeController =
@@ -60,7 +60,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       try {
         await supabase.auth.signInWithPassword(
-          email: emailController.text.trim(),
+          // email: emailController.text.trim(),
           password: currentPasswordController.text.trim(),
         );
 
@@ -77,7 +77,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     await supabase.from(widget.userTable).update({
       'first_name': firstNameController.text.trim(),
       'last_name': lastNameController.text.trim(),
-      'email': emailController.text.trim(),
+      // 'email': emailController.text.trim(),
       'identification_number': identificationController.text.trim(),
       'charge': chargeController.text.trim(),
     }).eq('user_id', user.id);
@@ -141,7 +141,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           children: [
             _buildField('Nombres', firstNameController),
             _buildField('Apellidos', lastNameController),
-            _buildField('Correo', emailController),
+            // _buildField('Correo', emailController),
             _buildField('Identificación', identificationController),
             _buildField('Cargo', chargeController),
             const SizedBox(height: 10),
