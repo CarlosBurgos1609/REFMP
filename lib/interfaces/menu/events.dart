@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/forms/eventsForm.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -248,7 +249,7 @@ class _EventsPageState extends State<EventsPage> {
                     showAgenda: true,
                   ),
                   scheduleViewSettings: const ScheduleViewSettings(
-                    appointmentItemHeight: 70,
+                    appointmentItemHeight: 50,
                   ),
                   onTap: (calendarTapDetails) {
                     if (calendarTapDetails.appointments != null &&
@@ -332,6 +333,17 @@ class _EventsPageState extends State<EventsPage> {
               ),
             ],
           ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            // Al hacer clic en el botón, navegamos al formulario para agregar un nuevo evento
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => AddEventForm()),
+            );
+          },
+          child: Icon(Icons.add),
+          backgroundColor: Colors.blue,
         ),
       ),
     );
