@@ -157,7 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       GestureDetector(
                         onTap: _pickImage,
                         child: CircleAvatar(
-                          radius: 60,
+                          radius: 80,
                           backgroundColor: Colors.blue,
                           backgroundImage: profileImageUrl.isNotEmpty
                               ? NetworkImage(profileImageUrl) as ImageProvider
@@ -165,7 +165,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: const Align(
                             alignment: Alignment.bottomRight,
                             child: CircleAvatar(
-                              radius: 18,
+                              radius: 20,
                               backgroundColor: Colors.white,
                               child: Icon(Icons.camera_alt, color: Colors.blue),
                             ),

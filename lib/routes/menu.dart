@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/menu/graduates.dart';
+import 'package:refmp/interfaces/menu/info.dart';
 import 'package:refmp/interfaces/menu/settings.dart';
 import 'package:refmp/interfaces/menu/contacts.dart';
 import 'package:refmp/interfaces/menu/events.dart';
@@ -24,7 +25,8 @@ class Menu {
     3: 'Notificaciones',
     6: 'Contactos',
     8: 'Configuración',
-    10: 'Egresados'
+    10: 'Egresados',
+    11: 'Información'
   };
 
   static IconData _getIcon(int index) {
@@ -51,6 +53,8 @@ class Menu {
         return Icons.supervised_user_circle;
       case 10:
         return Icons.supervised_user_circle_sharp;
+      case 11:
+        return Icons.info_outline_rounded;
       default:
         return Icons.error;
     }
@@ -97,6 +101,9 @@ class Menu {
       10: MaterialPageRoute(
           settings: const RouteSettings(name: 'Egresados'),
           builder: (context) => const GraduatesPage(title: "Egresados")),
+      11: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Información'),
+          builder: (context) => const InfoPage(title: "Información")),
     };
 
     // Actualiza el índice de la página actual
@@ -250,7 +257,8 @@ class Menu {
                   ),
                 ),
               ),
-              ...[0, 1, 2, 4, 5, 7].map((index) {
+              //falta ubicaciones que es el 7
+              ...[0, 1, 2, 4, 5].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
@@ -296,7 +304,7 @@ class Menu {
               }),
               const Divider(),
               // Notificaciones, eventos y configuración
-              ...[3, 6, 8].map((index) {
+              ...[3, 6, 8, 11].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
