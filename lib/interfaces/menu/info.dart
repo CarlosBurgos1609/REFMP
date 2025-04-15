@@ -72,9 +72,15 @@ class _InfoPageState extends State<InfoPage> {
               ),
 
               // Autor
-              const Text(
+              Text(
                 'Autor de la aplicación',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.isDarkMode
+                      ? const Color.fromARGB(255, 255, 255, 255)
+                      : const Color.fromARGB(255, 33, 150, 243),
+                ),
               ),
               const SizedBox(height: 10),
               InkWell(
@@ -98,9 +104,15 @@ class _InfoPageState extends State<InfoPage> {
               const SizedBox(height: 10),
 
               // Patrocinador
-              const Text(
+              Text(
                 'Patrocinado por:',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.isDarkMode
+                      ? const Color.fromARGB(255, 255, 255, 255)
+                      : const Color.fromARGB(255, 33, 150, 243),
+                ),
               ),
               const SizedBox(height: 10),
               InkWell(
