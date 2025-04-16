@@ -40,18 +40,23 @@ dependencies:
   firebase_auth: ^5.4.0
   firebase_storage: ^12.4.0
   image_picker: ^1.1.2
+  firebase_messaging: ^15.2.5
   
   supabase_flutter: ^2.8.3
   path: ^1.9.0
   provider: ^6.1.2
   shared_preferences: ^2.3.5
-  google_maps_flutter: ^2.10.0
   flutter_map: ^8.0.0
   latlong2: ^0.9.1
   geolocator: ^13.0.2
+  google_maps_flutter: ^2.10.0
+
   table_calendar: ^3.2.0
   animate_do: ^4.0.1
-  flutter_local_notifications: ^18.0.1
+  syncfusion_flutter_calendar: ^29.1.35
+  intl: ^0.20.2
+
+  flutter_local_notifications: ^19.1.0
   
   flame: ^1.26.0
   flame_audio: ^2.11.1
@@ -59,8 +64,10 @@ dependencies:
   flame_tiled: ^2.0.2
   audioplayers: ^6.4.0
   
-  syncfusion_flutter_calendar: ^29.1.35
-  intl: ^0.20.2
+
+  permission_handler: ^12.0.0+1
+  timezone: ^0.10.0
+  # flutter_native_timezone: ^2.0.0
 
 dev_dependencies:
   flutter_test:

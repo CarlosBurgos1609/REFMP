@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/init.dart';
+import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/interfaces/menu/instruments.dart';
+import 'package:refmp/interfaces/menu/notification.dart';
+import 'package:refmp/services/notification_service.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  NotificationService.init(navigatorKey);
+  await Firebase.initializeApp();
   await Supabase.initialize(
     url: 'https://dmhyuogexgghinvfgoup.supabase.co',
     anonKey:
@@ -29,6 +37,34 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: themeProvider.currentTheme,
       debugShowCheckedModeBanner: false,
+      onGenerateRoute: (settings) {
+        if (settings.name == '/home') {
+          return MaterialPageRoute(
+            builder: (context) => const HomePage(
+              title: 'Inicio',
+            ),
+          );
+        }
+        if (settings.name == '/events') {
+          return MaterialPageRoute(
+            builder: (context) => const EventsPage(
+              title: 'Eventos',
+            ),
+          );
+        }
+        if (settings.name == '/instruments') {
+          return MaterialPageRoute(
+            builder: (context) => const InstrumentsPage(
+              title: 'Intrumentos',
+            ),
+          );
+        }
+        // Otras rutas
+        return MaterialPageRoute(
+            builder: (context) => const NotificationPage(
+                  title: 'Notificaciones',
+                ));
+      },
       home: FutureBuilder<AuthState?>(
         future: _getInitialScreen(),
         builder: (context, snapshot) {
