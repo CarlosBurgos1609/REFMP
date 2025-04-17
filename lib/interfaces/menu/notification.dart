@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/interfaces/home.dart';
+import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/interfaces/menu/headquarters.dart';
+import 'package:refmp/interfaces/menu/instruments.dart';
+import 'package:refmp/interfaces/menu/profile.dart';
+import 'package:refmp/interfaces/menu/students.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -60,8 +66,11 @@ class _NotificationPageState extends State<NotificationPage> {
       if (notifData != null) {
         await NotificationService.showNotification(
           id: notif['id'],
-          title: notifData['title'],
-          message: notifData['message'],
+          title: notifData['title'], // ¡¡¡Nombre del evento!!!!
+          message: notifData['message'], // Mensaje del evento ...
+          icon: 'icon',
+          // imageUrl: notifData[
+          //     'image'], // ruta temporal o local del archivo descargado
           payload: notifData['redirect_to'],
         );
 
@@ -100,6 +109,15 @@ class _NotificationPageState extends State<NotificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final routeBuilderMap = {
+      '/home': () => const HomePage(title: 'Inicio'),
+      '/profile': () => const ProfilePage(title: 'Perfil'),
+      '/headquarters': () => const HeadquartersPage(title: 'Sedes'),
+      '/intrumentos': () => const InstrumentsPage(title: 'Instrumentos'),
+      '/events': () => const EventsPage(title: 'Eventos'),
+      '/students': () => const StudentsPage(title: 'Estudiantes'),
+    };
+
     return WillPopScope(
       onWillPop: () => showExitConfirmationDialog(context),
       child: Scaffold(
@@ -203,9 +221,38 @@ class _NotificationPageState extends State<NotificationPage> {
                                 ),
                                 subtitle: Text(notifData['message']),
                                 onTap: () {
-                                  final redirect = notifData['redirect_to'];
-                                  if (redirect != null) {
-                                    Navigator.pushNamed(context, redirect);
+                                  final redirect = notifData['redirect_to']
+                                      ?.toString()
+                                      .trim();
+                                  print("🔁 Redirigiendo a: $redirect");
+
+                                  final redirectToIndex = {
+                                    '/home': 1,
+                                    '/profile': 2,
+                                    '/headquarters': 3,
+                                    '/intrumentos': 4,
+                                    '/events': 5,
+                                    '/students': 6,
+                                  };
+
+                                  if (redirect != null &&
+                                      routeBuilderMap.containsKey(redirect) &&
+                                      redirectToIndex.containsKey(redirect)) {
+                                    Menu.currentIndexNotifier.value =
+                                        redirectToIndex[redirect]!;
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            routeBuilderMap[redirect]!(),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              "Ruta de redirección no válida")),
+                                    );
                                   }
                                 },
                               ),

@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _notificationsPlugin =
+  static final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   static void init(GlobalKey<NavigatorState> navigatorKey) {
-    const androidInit = AndroidInitializationSettings('image');
+    const androidInit = AndroidInitializationSettings('icon');
     const initSettings = InitializationSettings(android: androidInit);
 
-    _notificationsPlugin.initialize(
+    flutterLocalNotificationsPlugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
         final payload = response.payload;
@@ -22,34 +22,47 @@ class NotificationService {
 
   static Future<void> showNotification({
     required int id,
-    required String title, // Campo `name` desde Supabase
-    required String message, // Campo `message` desde Supabase
+    required String title,
+    required String message,
+    String icon = 'icon', // tu icono azul del calendario
+    String? imageUrl,
     String? payload,
+    String subText = 'Red de Escuelas de Formación Musical de Pasto',
   }) async {
-    final androidDetails = AndroidNotificationDetails(
-      'default_channel_id',
-      'Notificaciones',
-      channelDescription: 'Canal para mostrar notificaciones',
+    final androidPlatformChannelSpecifics = AndroidNotificationDetails(
+      'event_channel',
+      'Eventos',
+      channelDescription: 'Notificaciones de eventos musicales',
       importance: Importance.max,
       priority: Priority.high,
-      icon: 'image',
-      styleInformation: BigTextStyleInformation(
-        '<font color="#757575">$message</font>', // Texto del mensaje en gris
-        htmlFormatTitle: true,
-        htmlFormatBigText: true,
-        htmlFormatContent: true,
-        contentTitle: '$title.', // Título en azul y negrita
-        summaryText: 'Red de Escuelas de Formación Musical',
-      ),
+      icon: icon,
+      subText: subText,
+      styleInformation: imageUrl != null
+          ? BigPictureStyleInformation(
+              FilePathAndroidBitmap(imageUrl),
+              contentTitle: title,
+              summaryText: message,
+              htmlFormatContent: true,
+              htmlFormatTitle: true,
+            )
+          : BigTextStyleInformation(
+              message,
+              contentTitle: title,
+              summaryText: subText,
+              htmlFormatContent: true,
+              htmlFormatBigText: true,
+            ),
     );
 
-    final notificationDetails = NotificationDetails(android: androidDetails);
+    final platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+    );
 
-    await _notificationsPlugin.show(
+    await flutterLocalNotificationsPlugin.show(
       id,
-      '', // Título vacío para que lo tome desde `styleInformation`
-      '',
-      notificationDetails,
+      title,
+      message,
+      platformChannelSpecifics,
       payload: payload,
     );
   }

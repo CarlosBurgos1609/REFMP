@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/init.dart';
 import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/interfaces/menu/headquarters.dart';
 import 'package:refmp/interfaces/menu/instruments.dart';
 import 'package:refmp/interfaces/menu/notification.dart';
 import 'package:refmp/services/notification_service.dart';
@@ -35,6 +36,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return MaterialApp(
+      navigatorKey: navigatorKey,
       theme: themeProvider.currentTheme,
       debugShowCheckedModeBanner: false,
       onGenerateRoute: (settings) {
@@ -56,6 +58,13 @@ class MyApp extends StatelessWidget {
           return MaterialPageRoute(
             builder: (context) => const InstrumentsPage(
               title: 'Intrumentos',
+            ),
+          );
+        }
+        if (settings.name == '/sedes') {
+          return MaterialPageRoute(
+            builder: (context) => const HeadquartersPage(
+              title: 'Sedes',
             ),
           );
         }
