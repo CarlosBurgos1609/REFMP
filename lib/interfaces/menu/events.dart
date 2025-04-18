@@ -477,10 +477,20 @@ class _EventsPageState extends State<EventsPage> {
                                                             builder:
                                                                 (context) =>
                                                                     AlertDialog(
-                                                              title: const Text(
-                                                                  '¿Eliminar evento?'),
-                                                              content: const Text(
-                                                                  '¿Estás seguro de que deseas eliminar este evento?'),
+                                                              title:
+                                                                  const Center(
+                                                                child: Text(
+                                                                  '¿Eliminar evento?',
+                                                                  style: TextStyle(
+                                                                      color: Colors
+                                                                          .blue),
+                                                                ),
+                                                              ),
+                                                              content:
+                                                                  const Center(
+                                                                child: Text(
+                                                                    '¿Estás seguro de que deseas eliminar este evento?'),
+                                                              ),
                                                               actions: [
                                                                 TextButton(
                                                                   onPressed: () =>
@@ -488,8 +498,13 @@ class _EventsPageState extends State<EventsPage> {
                                                                               context)
                                                                           .pop(
                                                                               false),
-                                                                  child: const Text(
-                                                                      'Cancelar'),
+                                                                  child:
+                                                                      const Text(
+                                                                    'Cancelar',
+                                                                    style: TextStyle(
+                                                                        color: Colors
+                                                                            .blue),
+                                                                  ),
                                                                 ),
                                                                 TextButton(
                                                                   onPressed: () =>
@@ -497,8 +512,13 @@ class _EventsPageState extends State<EventsPage> {
                                                                               context)
                                                                           .pop(
                                                                               true),
-                                                                  child: const Text(
-                                                                      'Eliminar'),
+                                                                  child:
+                                                                      const Text(
+                                                                    'Eliminar',
+                                                                    style: TextStyle(
+                                                                        color: Colors
+                                                                            .red),
+                                                                  ),
                                                                 ),
                                                               ],
                                                             ),

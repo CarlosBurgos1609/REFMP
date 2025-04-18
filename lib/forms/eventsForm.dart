@@ -76,6 +76,30 @@ class _AddEventFormState extends State<AddEventForm> {
         endTime!.hour,
         endTime!.minute,
       );
+      if (imageFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor selecciona una imagen')),
+        );
+        return;
+      }
+      if (selectedDateTime == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecciona la fecha y hora de inicio')),
+        );
+        return;
+      }
+      if (endTime == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecciona la hora de fin')),
+        );
+        return;
+      }
+      if (selectedSede == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecciona una sede')),
+        );
+        return;
+      }
 
       await supabase.from('events').insert({
         'name': nameController.text,
@@ -377,27 +401,35 @@ class _AddEventFormState extends State<AddEventForm> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(
-                        Icons.save,
-                        color: Colors.blue,
-                      ),
+                      icon: const Icon(Icons.save, color: Colors.white),
                       label: const Text(
                         'Guardar Evento',
-                        style: TextStyle(color: Colors.blue),
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onPressed: saveEvent,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(
-                        Icons.cancel,
-                        color: Colors.red,
-                      ),
+                      icon: const Icon(Icons.cancel, color: Colors.red),
                       label: const Text(
                         'Cancelar',
                         style: TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onPressed: cancelEvent,
                     ),

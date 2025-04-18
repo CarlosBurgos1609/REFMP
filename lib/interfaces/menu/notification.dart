@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/menu/events.dart';
@@ -9,6 +10,7 @@ import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/interfaces/menu/students.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/services/notification_service.dart';
+import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationPage extends StatefulWidget {
@@ -23,6 +25,20 @@ class NotificationPage extends StatefulWidget {
 class _NotificationPageState extends State<NotificationPage> {
   bool _notificationsEnabled = false;
   List<Map<String, dynamic>> _notifications = [];
+
+  final Map<String, IconData> iconMap = {
+    'alarm': Icons.alarm,
+    'event': Icons.event,
+    'message': Icons.message,
+    'music': Icons.music_note,
+    'person': Icons.person,
+    'school': Icons.school,
+    'home': Icons.home,
+    'info': Icons.info,
+    'star': Icons.star,
+    'warning': Icons.warning,
+    'notifications': Icons.notifications,
+  };
 
   @override
   void initState() {
@@ -66,11 +82,9 @@ class _NotificationPageState extends State<NotificationPage> {
       if (notifData != null) {
         await NotificationService.showNotification(
           id: notif['id'],
-          title: notifData['title'], // ¡¡¡Nombre del evento!!!!
-          message: notifData['message'], // Mensaje del evento ...
-          icon: 'icon',
-          // imageUrl: notifData[
-          //     'image'], // ruta temporal o local del archivo descargado
+          title: notifData['title'],
+          message: notifData['message'],
+          icon: notifData['icon'],
           payload: notifData['redirect_to'],
         );
 
@@ -80,7 +94,7 @@ class _NotificationPageState extends State<NotificationPage> {
       }
     }
 
-    await fetchNotificationHistory(); // actualizar historial
+    await fetchNotificationHistory();
   }
 
   Future<void> fetchNotificationHistory() async {
@@ -109,6 +123,7 @@ class _NotificationPageState extends State<NotificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final routeBuilderMap = {
       '/home': () => const HomePage(title: 'Inicio'),
       '/profile': () => const ProfilePage(title: 'Perfil'),
@@ -148,9 +163,15 @@ class _NotificationPageState extends State<NotificationPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     "Permitir notificaciones",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: themeProvider.isDarkMode
+                          ? const Color.fromARGB(255, 255, 255, 255)
+                          : const Color.fromARGB(255, 33, 150, 243),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Switch(
                     value: _notificationsEnabled,
@@ -186,6 +207,10 @@ class _NotificationPageState extends State<NotificationPage> {
                           final notif = _notifications[index];
                           final notifData = notif['notifications'];
 
+                          final iconKey = notifData['icon']?.toString() ?? '';
+                          final icon = iconMap[iconKey] ?? Icons.notifications;
+                          final imageUrl = notifData['image'];
+
                           return Dismissible(
                             key: Key(notif['id'].toString()),
                             background: Container(
@@ -212,19 +237,28 @@ class _NotificationPageState extends State<NotificationPage> {
                               elevation: 4,
                               margin: const EdgeInsets.symmetric(vertical: 8),
                               child: ListTile(
-                                leading: const Icon(Icons.notifications,
-                                    color: Colors.blue),
+                                leading: Icon(icon, color: Colors.blue),
                                 title: Text(
-                                  notifData['title'],
+                                  notifData['title'] ?? '',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold),
                                 ),
-                                subtitle: Text(notifData['message']),
+                                subtitle: Text(notifData['message'] ?? ''),
+                                trailing: imageUrl != null
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Image.network(
+                                          imageUrl,
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      )
+                                    : null,
                                 onTap: () {
                                   final redirect = notifData['redirect_to']
                                       ?.toString()
                                       .trim();
-                                  print("🔁 Redirigiendo a: $redirect");
 
                                   final redirectToIndex = {
                                     '/home': 1,
