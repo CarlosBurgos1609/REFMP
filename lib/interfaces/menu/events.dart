@@ -477,19 +477,21 @@ class _EventsPageState extends State<EventsPage> {
                                                             builder:
                                                                 (context) =>
                                                                     AlertDialog(
-                                                              title:
-                                                                  const Center(
-                                                                child: Text(
-                                                                  '¿Eliminar evento?',
-                                                                  style: TextStyle(
-                                                                      color: Colors
-                                                                          .blue),
-                                                                ),
+                                                              title: const Text(
+                                                                '¿Eliminar evento?',
+                                                                style: TextStyle(
+                                                                    color: Colors
+                                                                        .blue),
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .center,
                                                               ),
                                                               content:
-                                                                  const Center(
-                                                                child: Text(
-                                                                    '¿Estás seguro de que deseas eliminar este evento?'),
+                                                                  const Text(
+                                                                '¿Estás seguro de que deseas eliminar este evento?',
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .center,
                                                               ),
                                                               actions: [
                                                                 TextButton(
@@ -504,6 +506,9 @@ class _EventsPageState extends State<EventsPage> {
                                                                     style: TextStyle(
                                                                         color: Colors
                                                                             .blue),
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
                                                                   ),
                                                                 ),
                                                                 TextButton(
