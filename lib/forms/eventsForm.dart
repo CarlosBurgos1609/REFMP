@@ -50,14 +50,24 @@ class _AddEventFormState extends State<AddEventForm> {
   }
 
   Future<void> saveEvent() async {
-    if (_formKey.currentState!.validate() &&
-        selectedDateTime != null &&
-        endTime != null &&
-        selectedSede != null &&
-        imageFile != null) {
-      final filename = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+    if (!_formKey.currentState!.validate()) return;
 
-      final storageResponse = await supabase.storage
+    if (imageFile == null ||
+        selectedDateTime == null ||
+        endTime == null ||
+        selectedSede == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Completa todos los campos requeridos')),
+      );
+      return;
+    }
+
+    final uuid = DateTime.now().millisecondsSinceEpoch;
+    final filename =
+        'event_${uuid}_${nameController.text.trim().replaceAll(" ", "_")}.jpg';
+
+    try {
+      await supabase.storage
           .from('Events')
           .upload('event_images/$filename', imageFile!);
 
@@ -66,7 +76,7 @@ class _AddEventFormState extends State<AddEventForm> {
           .getPublicUrl('event_images/$filename');
 
       final selectedSedeId =
-          sedes.firstWhere((sede) => sede['name'] == selectedSede)['id'] as int;
+          sedes.firstWhere((sede) => sede['name'] == selectedSede)['id'];
 
       final date = selectedDateTime!;
       final endDateTime = DateTime(
@@ -76,30 +86,6 @@ class _AddEventFormState extends State<AddEventForm> {
         endTime!.hour,
         endTime!.minute,
       );
-      if (imageFile == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor selecciona una imagen')),
-        );
-        return;
-      }
-      if (selectedDateTime == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Selecciona la fecha y hora de inicio')),
-        );
-        return;
-      }
-      if (endTime == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Selecciona la hora de fin')),
-        );
-        return;
-      }
-      if (selectedSede == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Selecciona una sede')),
-        );
-        return;
-      }
 
       await supabase.from('events').insert({
         'name': nameController.text,
@@ -116,18 +102,27 @@ class _AddEventFormState extends State<AddEventForm> {
         'end_datetime': endDateTime.toIso8601String(),
       });
 
+      if (imageFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor selecciona una imagen')),
+        );
+        return;
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Evento guardado con éxito')),
         );
-      }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-            builder: (context) => const EventsPage(
-                  title: 'Eventos',
-                )),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (context) => const EventsPage(title: 'Eventos')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar el evento: $e')),
       );
     }
   }
