@@ -20,7 +20,7 @@ class _LocationsPage extends State<LocationsPage> {
           title: Text(
             widget.title,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 23,
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
