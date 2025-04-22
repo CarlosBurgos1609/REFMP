@@ -22,7 +22,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController lastNameController;
   // late TextEditingController emailController;
   late TextEditingController identificationController;
-  late TextEditingController chargeController;
+  // late TextEditingController chargeController;
 
   // Contraseña
   final TextEditingController currentPasswordController =
@@ -43,8 +43,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     // emailController = TextEditingController(text: widget.userProfile['email']);
     identificationController = TextEditingController(
         text: widget.userProfile['identification_number']);
-    chargeController =
-        TextEditingController(text: widget.userProfile['charge']);
+    // chargeController =
+    //     TextEditingController(text: widget.userProfile['charge']);
   }
 
   Future<void> _updateProfile() async {
@@ -79,7 +79,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       'last_name': lastNameController.text.trim(),
       // 'email': emailController.text.trim(),
       'identification_number': identificationController.text.trim(),
-      'charge': chargeController.text.trim(),
+      // 'charge': chargeController.text.trim(),
     }).eq('user_id', user.id);
 
     _showMessage('Perfil actualizado');
@@ -143,7 +143,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             _buildField('Apellidos', lastNameController),
             // _buildField('Correo', emailController),
             _buildField('Identificación', identificationController),
-            _buildField('Cargo', chargeController),
+            // _buildField('Cargo', chargeController),
             const SizedBox(height: 10),
             ListTile(
               title: const Text('¿Deseas cambiar la contraseña?',
