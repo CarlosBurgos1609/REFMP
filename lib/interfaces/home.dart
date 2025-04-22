@@ -236,7 +236,7 @@ class _HomePageState extends State<HomePage>
                       thickness: 2,
                       color: themeProvider.isDarkMode
                           ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 197, 196, 196),
+                          : const Color.fromARGB(255, 236, 234, 234),
                     ),
                     const Text(
                       'Sedes',
@@ -372,7 +372,7 @@ class _HomePageState extends State<HomePage>
                       thickness: 2,
                       color: themeProvider.isDarkMode
                           ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 197, 196, 196),
+                          : const Color.fromARGB(255, 236, 234, 234),
                     ),
                     const Text(
                       "Aprende y Juega",
