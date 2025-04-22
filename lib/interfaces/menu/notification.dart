@@ -193,9 +193,22 @@ class _NotificationPageState extends State<NotificationPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Divider(
+                height: 40,
+                thickness: 2,
+                color: themeProvider.isDarkMode
+                    ? const Color.fromARGB(255, 34, 34, 34)
+                    : const Color.fromARGB(255, 236, 234, 234),
+              ),
+              Text(
                 "Historial de notificaciones",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.isDarkMode
+                      ? const Color.fromARGB(255, 255, 252, 252)
+                      : const Color.fromARGB(255, 33, 150, 243),
+                ),
               ),
               const SizedBox(height: 10),
               Expanded(
