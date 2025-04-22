@@ -1,6 +1,7 @@
 // ignore_for_file: unused_local_variable
 
 import 'dart:io';
+import 'package:diacritic/diacritic.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -63,8 +64,9 @@ class _AddEventFormState extends State<AddEventForm> {
     }
 
     final uuid = DateTime.now().millisecondsSinceEpoch;
-    final filename =
-        'event_${uuid}_${nameController.text.trim().replaceAll(" ", "_")}.jpg';
+    final cleanName =
+        removeDiacritics(nameController.text.trim().replaceAll(" ", "_"));
+    final filename = 'event_${uuid}_$cleanName.jpg';
 
     try {
       await supabase.storage
