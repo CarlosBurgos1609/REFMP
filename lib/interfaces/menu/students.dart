@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:refmp/forms/studentsform.dart';
-
+import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -240,6 +241,7 @@ class _StudentsPageState extends State<StudentsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
@@ -315,7 +317,13 @@ class _StudentsPageState extends State<StudentsPage> {
                     onPressed: () => showStudentOptions(context, student),
                   ),
                 ),
-                Divider(thickness: 1, color: Colors.blue), // Línea divisoria
+                Divider(
+                  thickness: 1,
+                  height: 10,
+                  color: themeProvider.isDarkMode
+                      ? const Color.fromARGB(255, 34, 34, 34)
+                      : const Color.fromARGB(255, 236, 234, 234),
+                ), // Línea divisoria
               ],
             );
           },
