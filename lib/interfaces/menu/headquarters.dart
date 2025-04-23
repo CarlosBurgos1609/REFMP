@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/headquartersforms.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +31,34 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
     }
   }
 
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+
+    final teacher = await supabase
+        .from('teachers')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (teacher != null) return true;
+
+    final advisor = await supabase
+        .from('advisors')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (advisor != null) return true;
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -52,6 +81,29 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
               );
             },
           ),
+        ),
+        floatingActionButton: FutureBuilder<bool>(
+          future: _canAddEvent(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(); // o un indicador de carga pequeño
+            }
+
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => HeadquartersForm()),
+                  );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox(); // no mostrar nada si no tiene permiso
+            }
+          },
         ),
         drawer: Menu.buildDrawer(context),
         body: Builder(
@@ -166,19 +218,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
               ),
             );
           },
-        ),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: Colors.blue,
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const HeadquartersForm()),
-            );
-          },
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
-          ),
         ),
       ),
     );
