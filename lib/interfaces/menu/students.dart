@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/studentsform.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/routes/menu.dart';
@@ -239,6 +240,34 @@ class _StudentsPageState extends State<StudentsPage> {
     );
   }
 
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+
+    final teacher = await supabase
+        .from('teachers')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (teacher != null) return true;
+
+    final advisor = await supabase
+        .from('advisors')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (advisor != null) return true;
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -265,18 +294,29 @@ class _StudentsPageState extends State<StudentsPage> {
           onChanged: filterStudents, // Filtra en tiempo real
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => RegisterStudentForm()),
-          );
+      floatingActionButton: FutureBuilder<bool>(
+        future: _canAddEvent(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox(); // o un indicador de carga pequeño
+          }
+
+          if (snapshot.hasData && snapshot.data == true) {
+            return FloatingActionButton(
+              backgroundColor: Colors.blue,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => RegisterStudentForm()),
+                );
+              },
+              child: const Icon(Icons.add, color: Colors.white),
+            );
+          } else {
+            return const SizedBox(); // no mostrar nada si no tiene permiso
+          }
         },
-        backgroundColor: Colors.blue,
-        child: Icon(
-          Icons.add,
-          color: Colors.white,
-        ),
       ),
       drawer: Menu.buildDrawer(context),
       body: RefreshIndicator(
