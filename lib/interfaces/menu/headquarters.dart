@@ -31,7 +31,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
     }
   }
 
-  Future<bool> _canAddEvent() async {
+  Future<bool> _canViewHeadquarters() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return false;
 
@@ -41,21 +41,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
         .eq('user_id', userId)
         .maybeSingle();
     if (user != null) return true;
-
-    final teacher = await supabase
-        .from('teachers')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (teacher != null) return true;
-
-    final advisor = await supabase
-        .from('advisors')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (advisor != null) return true;
-
     return false;
   }
 
@@ -83,7 +68,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
           ),
         ),
         floatingActionButton: FutureBuilder<bool>(
-          future: _canAddEvent(),
+          future: _canViewHeadquarters(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox(); // o un indicador de carga pequeño
