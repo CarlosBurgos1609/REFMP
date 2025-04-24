@@ -36,19 +36,19 @@ class _GraduatesPageState extends State<GraduatesPage> {
         .maybeSingle();
     if (user != null) return true;
 
-    final teacher = await supabase
-        .from('teachers')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (teacher != null) return true;
+    // final teacher = await supabase
+    //     .from('teachers')
+    //     .select()
+    //     .eq('user_id', userId)
+    //     .maybeSingle();
+    // if (teacher != null) return true;
 
-    final advisor = await supabase
-        .from('advisors')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (advisor != null) return true;
+    // final advisor = await supabase
+    //     .from('advisors')
+    //     .select()
+    //     .eq('user_id', userId)
+    //     .maybeSingle();
+    // if (advisor != null) return true;
 
     return false;
   }
