@@ -162,14 +162,19 @@ class _GraduatesPageState extends State<GraduatesPage> {
                         graduate['profile_image'].isNotEmpty
                     ? Image.network(graduate['profile_image'],
                         height: 150, width: 150, fit: BoxFit.cover)
-                    : Image.asset('assets/images/refmmp.png', height: 100),
+                    : Image.asset(
+                        'assets/images/refmmp.png',
+                        height: 100,
+                        width: 100,
+                        fit: BoxFit.cover,
+                      ),
               ),
               SizedBox(height: 40),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(graduate['email'],
-                      style: TextStyle(color: Colors.blue, height: 2)),
+                  // Text(graduate['email'],
+                  //     style: TextStyle(color: Colors.blue, height: 2)),
                   Text(
                     'Instrumento(s): ${graduate['graduate_instruments'] != null && graduate['graduate_instruments'].isNotEmpty ? graduate['graduate_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}',
                     style: TextStyle(height: 2),
@@ -253,32 +258,50 @@ class _GraduatesPageState extends State<GraduatesPage> {
             return Column(
               children: [
                 ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(25),
-                    child: graduate['profile_image'] != null &&
-                            graduate['profile_image'].isNotEmpty
-                        ? Image.network(graduate['profile_image'],
-                            height: 50, width: 50, fit: BoxFit.cover)
-                        : Image.asset('assets/images/refmmp.png',
-                            height: 50, width: 50, fit: BoxFit.cover),
+                  leading: GestureDetector(
+                    onTap: () => showGraduateDetails(graduate),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(25),
+                      child: graduate['profile_image'] != null &&
+                              graduate['profile_image'].isNotEmpty
+                          ? Image.network(graduate['profile_image'],
+                              height: 50, width: 50, fit: BoxFit.cover)
+                          : Image.asset('assets/images/refmmp.png',
+                              height: 50, width: 50, fit: BoxFit.cover),
+                    ),
                   ),
-                  title: Text(
-                    '${graduate['first_name']} ${graduate['last_name']}',
-                    style: TextStyle(color: Colors.blue),
+                  title: GestureDetector(
+                    onTap: () => showGraduateDetails(graduate),
+                    child: Text(
+                      '${graduate['first_name']} ${graduate['last_name']}',
+                      style: TextStyle(color: Colors.blue),
+                    ),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(graduate['email']),
+                      // Text(graduate['email']),
                       Text(
                           'Instrumentos: ${graduate['graduate_instruments'] != null && graduate['graduate_instruments'].isNotEmpty ? graduate['graduate_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
                       Text(
                           'Sede: ${graduate['sedes']?['name'] ?? 'No asignado'}'),
                     ],
                   ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.more_vert),
-                    onPressed: () => showGraduateOptions(context, graduate),
+                  trailing: FutureBuilder<bool>(
+                    future: _canAddEvent(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const SizedBox();
+                      }
+                      if (snapshot.hasData && snapshot.data == true) {
+                        return IconButton(
+                          icon: Icon(Icons.more_vert, color: Colors.blue),
+                          onPressed: () =>
+                              showGraduateOptions(context, graduate),
+                        );
+                      }
+                      return const SizedBox(); // No muestra nada si no tiene permiso
+                    },
                   ),
                 ),
                 Divider(thickness: 1, color: Colors.blue),
