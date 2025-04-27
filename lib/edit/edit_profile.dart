@@ -18,10 +18,10 @@ class EditProfilePage extends StatefulWidget {
 class _EditProfilePageState extends State<EditProfilePage> {
   final supabase = Supabase.instance.client;
 
-  late TextEditingController firstNameController;
-  late TextEditingController lastNameController;
+  // late TextEditingController firstNameController;
+  // late TextEditingController lastNameController;
   // late TextEditingController emailController;
-  late TextEditingController identificationController;
+  // // late TextEditingController identificationController;
   // late TextEditingController chargeController;
 
   // Contraseña
@@ -36,13 +36,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   void initState() {
     super.initState();
-    firstNameController =
-        TextEditingController(text: widget.userProfile['first_name']);
-    lastNameController =
-        TextEditingController(text: widget.userProfile['last_name']);
+    // firstNameController =
+    //     TextEditingController(text: widget.userProfile['first_name']);
+    // lastNameController =
+    //     TextEditingController(text: widget.userProfile['last_name']);
     // emailController = TextEditingController(text: widget.userProfile['email']);
-    identificationController = TextEditingController(
-        text: widget.userProfile['identification_number']);
+    // identificationController = TextEditingController(
+    //     text: widget.userProfile['identification_number']);
     // chargeController =
     //     TextEditingController(text: widget.userProfile['charge']);
   }
@@ -75,10 +75,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     // Actualizar perfil en la tabla
     await supabase.from(widget.userTable).update({
-      'first_name': firstNameController.text.trim(),
-      'last_name': lastNameController.text.trim(),
+      // 'first_name': firstNameController.text.trim(),
+      // 'last_name': lastNameController.text.trim(),
       // 'email': emailController.text.trim(),
-      'identification_number': identificationController.text.trim(),
+      // 'identification_number': identificationController.text.trim(),
       // 'charge': chargeController.text.trim(),
     }).eq('user_id', user.id);
 
@@ -139,11 +139,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildField('Nombres', firstNameController),
-            _buildField('Apellidos', lastNameController),
+            // _buildField('Nombres', firstNameController),
+            // _buildField('Apellidos', lastNameController),
             // _buildField('Correo', emailController),
-            _buildField('Identificación', identificationController),
+            // _buildField('Identificación', identificationController),
             // _buildField('Cargo', chargeController),
+            const SizedBox(height: 20),
+            Padding(
+              padding: EdgeInsets.all(10),
+              child: Text(
+                  "Si quiere cambiar la información del perfil comuníquese con la sede principal"),
+            ),
             const SizedBox(height: 10),
             ListTile(
               title: const Text('¿Deseas cambiar la contraseña?',
