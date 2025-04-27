@@ -206,10 +206,10 @@ class _StudentsPageState extends State<StudentsPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    student['email'],
-                    style: TextStyle(color: Colors.blue, height: 2),
-                  ),
+                  // Text(
+                  //   student['email'],
+                  //   style: TextStyle(color: Colors.blue, height: 2),
+                  // ),
                   Text(
                     'Instrumento(s): ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}',
                     style: TextStyle(height: 2),
@@ -329,18 +329,23 @@ class _StudentsPageState extends State<StudentsPage> {
             return Column(
               children: [
                 ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(25),
-                    child: student['profile_image'] != null &&
-                            student['profile_image'].isNotEmpty
-                        ? Image.network(student['profile_image'],
-                            height: 50, width: 50, fit: BoxFit.cover)
-                        : Image.asset('assets/images/refmmp.png',
-                            height: 50, width: 50, fit: BoxFit.cover),
+                  leading: GestureDetector(
+                    onTap: () => showStudentDetails(student),
+                    child: CircleAvatar(
+                      backgroundImage: student['profile_image'] != null
+                          ? NetworkImage(student['profile_image'])
+                          : AssetImage('assets/images/refmmp.png')
+                              as ImageProvider,
+                      radius: 25,
+                    ),
                   ),
-                  title: Text(
-                    '${student['first_name']} ${student['last_name']}',
-                    style: TextStyle(color: Colors.blue),
+                  title: GestureDetector(
+                    onTap: () => showStudentDetails(student),
+                    child: Text(
+                      '${student['first_name']} ${student['last_name']}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,9 +357,20 @@ class _StudentsPageState extends State<StudentsPage> {
                           'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
                     ],
                   ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.more_vert),
-                    onPressed: () => showStudentOptions(context, student),
+                  trailing: FutureBuilder<bool>(
+                    future: _canAddEvent(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const SizedBox();
+                      }
+                      if (snapshot.hasData && snapshot.data == true) {
+                        return IconButton(
+                          icon: Icon(Icons.more_vert, color: Colors.blue),
+                          onPressed: () => showStudentOptions(context, student),
+                        );
+                      }
+                      return const SizedBox(); // No muestra nada si no tiene permiso
+                    },
                   ),
                 ),
                 Divider(
