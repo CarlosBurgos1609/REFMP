@@ -345,7 +345,7 @@ class _StudentsPageState extends State<StudentsPage> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(student['email']),
+                      // Text(student['email']),
                       Text(
                           'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
                       Text(
