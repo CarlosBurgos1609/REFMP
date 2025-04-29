@@ -68,6 +68,10 @@ dependencies:
   permission_handler: ^12.0.0+1
   timezone: ^0.10.0
   diacritic: ^0.1.6
+
+  flutter_native_splash: ^2.4.6
+  flutter_launcher_icons: ^0.14.3
+
   # flutter_native_timezone: ^2.0.0
 
 dev_dependencies:
@@ -82,6 +86,21 @@ flutter:
   assets:
     - assets/images/
   #   - images/a_dot_ham.jpeg
+
+flutter_native_splash:
+  color: "#E3F2FD" # Cambia esto por el color de fondo que desees, por ejemplo: "#E3F2FD"
+  image: assets/images/logo.png
+  android: true
+  ios: true
+  fullscreen: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/logo.png
+  adaptive_icon_background: "#FFFFFF" # Cambia el fondo si quieres otro color
+  adaptive_icon_foreground: assets/images/icono.png
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
