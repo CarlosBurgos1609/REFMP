@@ -89,7 +89,7 @@ flutter:
 
 flutter_native_splash:
   color: "#E3F2FD" # Cambia esto por el color de fondo que desees, por ejemplo: "#E3F2FD"
-  image: assets/images/logo.png
+  image: assets/images/logo1.png
   android: true
   ios: true
   fullscreen: true
@@ -97,7 +97,7 @@ flutter_native_splash:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/images/logo.png
+  image_path: assets/images/icono.png
   adaptive_icon_background: "#FFFFFF" # Cambia el fondo si quieres otro color
   adaptive_icon_foreground: assets/images/icono.png
 
