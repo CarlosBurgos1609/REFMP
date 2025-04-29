@@ -39,6 +39,7 @@ class _SettingsPage extends State<SettingsPage> {
             ),
             TextButton(
               onPressed: () {
+                Menu.currentIndexNotifier.value = 0;
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => const Init()),
