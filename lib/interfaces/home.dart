@@ -241,7 +241,7 @@ class _HomePageState extends State<HomePage>
                     const Text(
                       'Sedes',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 25,
                         fontWeight: FontWeight.bold,
                         color: Colors.blue,
                       ),
