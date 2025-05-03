@@ -4,7 +4,7 @@ import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/input.dart';
 import 'package:flutter/material.dart';
-import 'package:refmp/main.dart'; // para usar navigatorKey
+import 'package:refmp/main.dart'; // Para usar navigatorKey
 
 class InicioScene extends FlameGame {
   final BuildContext context;
@@ -13,14 +13,14 @@ class InicioScene extends FlameGame {
 
   @override
   Future<void> onLoad() async {
-    await super.onLoad();
+    super.onLoad();
 
     final backSprite = await loadSprite('back.png');
 
     final backButton = BackButtonComponent(
       sprite: backSprite,
       size: Vector2(40, 40),
-      position: Vector2(20, 20),
+      position: Vector2(20, 50),
       context: context,
     );
 
@@ -40,7 +40,6 @@ class BackButtonComponent extends SpriteComponent with TapCallbacks {
 
   @override
   void onTapUp(TapUpEvent event) {
-    // Aquí SÍ navegas a Home
     navigatorKey.currentState?.pushReplacementNamed('/home');
   }
 }

@@ -1,11 +1,10 @@
-// lib/game/escenas/splash_scene.dart
-import 'dart:ui';
-
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/material.dart'; // Asegúrate de tener este import
 
 class SplashScene extends FlameGame {
-  final VoidCallback onFinish;
+  final VoidCallback
+      onFinish; // Asegúrate de que VoidCallback está bien definido
 
   SplashScene({required this.onFinish});
 
@@ -13,6 +12,7 @@ class SplashScene extends FlameGame {
   Future<void> onLoad() async {
     super.onLoad();
 
+    // Cargar sprite
     final sprite = await loadSprite('icono.png');
     final logo = SpriteComponent()
       ..sprite = sprite
@@ -22,7 +22,8 @@ class SplashScene extends FlameGame {
 
     add(logo);
 
-    await Future.delayed(const Duration(seconds: 3));
-    onFinish(); // Aquí ahora pasa a InicioScene
+    // Después de 3 segundos, llamar al callback para cambiar de pantalla
+    await Future.delayed(const Duration(seconds: 1));
+    onFinish(); // Llama al callback
   }
 }
