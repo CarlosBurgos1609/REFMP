@@ -85,6 +85,7 @@ flutter:
 
   assets:
     - assets/images/
+    # - assets/scripts/logo/logo.png
   #   - images/a_dot_ham.jpeg
 
 flutter_native_splash:
