@@ -12,6 +12,12 @@ class SplashScene extends FlameGame {
   Future<void> onLoad() async {
     super.onLoad();
 
+    add(RectangleComponent(
+      size: canvasSize,
+      paint: Paint()..color = Colors.white,
+      priority: -1, // para que quede en el fondo
+    ));
+
     // Cargar sprite
     final sprite = await loadSprite('icono.png');
     final logo = SpriteComponent()

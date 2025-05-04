@@ -15,6 +15,13 @@ class InicioScene extends FlameGame {
   Future<void> onLoad() async {
     super.onLoad();
 
+    // Fondo blanco
+    add(RectangleComponent(
+      size: canvasSize,
+      paint: Paint()..color = Colors.white,
+      priority: -1, // para que quede en el fondo
+    ));
+
     final backSprite = await loadSprite('back.png');
 
     final backButton = BackButtonComponent(
@@ -25,6 +32,22 @@ class InicioScene extends FlameGame {
     );
 
     add(backButton);
+
+    // Texto al lado del botón
+    final text = TextComponent(
+      text: 'Instrumentos',
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          color: Colors.blue,
+          fontSize: 25,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      position: Vector2(150, 58), // Ajusta según se vea visualmente
+      anchor: Anchor.topLeft,
+    );
+
+    add(text);
   }
 }
 
