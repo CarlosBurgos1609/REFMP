@@ -1,6 +1,7 @@
 // import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:refmp/connections/register_connections.dart';
+import 'package:refmp/controllers/exit.dart';
 // import 'package:image_picker/image_picker.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -200,114 +201,118 @@ class _GraduatesPageState extends State<GraduatesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            );
-          },
-        ),
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Buscar egresado...',
-            hintStyle: TextStyle(color: Colors.white),
-            border: InputBorder.none,
-            icon: Icon(Icons.search, color: Colors.white),
+    return WillPopScope(
+      onWillPop: () => showExitConfirmationDialog(context),
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.blue,
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
           ),
-          style: TextStyle(color: Colors.white),
-          onChanged: filterGraduates,
+          title: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar egresado...',
+              hintStyle: TextStyle(color: Colors.white),
+              border: InputBorder.none,
+              icon: Icon(Icons.search, color: Colors.white),
+            ),
+            style: TextStyle(color: Colors.white),
+            onChanged: filterGraduates,
+          ),
         ),
-      ),
-      floatingActionButton: FutureBuilder<bool>(
-        future: _canAddEvent(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SizedBox(); // o un indicador de carga pequeño
-          }
+        floatingActionButton: FutureBuilder<bool>(
+          future: _canAddEvent(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(); // o un indicador de carga pequeño
+            }
 
-          if (snapshot.hasData && snapshot.data == true) {
-            return FloatingActionButton(
-              backgroundColor: Colors.blue,
-              onPressed: () {
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(
-                //       builder: (context) => RegisterStudentForm()),
-                // );
-              },
-              child: const Icon(Icons.add, color: Colors.white),
-            );
-          } else {
-            return const SizedBox(); // no mostrar nada si no tiene permiso
-          }
-        },
-      ),
-      drawer: Menu.buildDrawer(context),
-      body: RefreshIndicator(
-        onRefresh: fetchGraduates,
-        color: Colors.blue,
-        child: ListView.builder(
-          itemCount: filteredGraduates.length,
-          itemBuilder: (context, index) {
-            final graduate = filteredGraduates[index];
-            return Column(
-              children: [
-                ListTile(
-                  leading: GestureDetector(
-                    onTap: () => showGraduateDetails(graduate),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(25),
-                      child: graduate['profile_image'] != null &&
-                              graduate['profile_image'].isNotEmpty
-                          ? Image.network(graduate['profile_image'],
-                              height: 50, width: 50, fit: BoxFit.cover)
-                          : Image.asset('assets/images/refmmp.png',
-                              height: 50, width: 50, fit: BoxFit.cover),
-                    ),
-                  ),
-                  title: GestureDetector(
-                    onTap: () => showGraduateDetails(graduate),
-                    child: Text(
-                      '${graduate['first_name']} ${graduate['last_name']}',
-                      style: TextStyle(color: Colors.blue),
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Text(graduate['email']),
-                      Text(
-                          'Instrumentos: ${graduate['graduate_instruments'] != null && graduate['graduate_instruments'].isNotEmpty ? graduate['graduate_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
-                      Text(
-                          'Sede: ${graduate['sedes']?['name'] ?? 'No asignado'}'),
-                    ],
-                  ),
-                  trailing: FutureBuilder<bool>(
-                    future: _canAddEvent(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SizedBox();
-                      }
-                      if (snapshot.hasData && snapshot.data == true) {
-                        return IconButton(
-                          icon: Icon(Icons.more_vert, color: Colors.blue),
-                          onPressed: () =>
-                              showGraduateOptions(context, graduate),
-                        );
-                      }
-                      return const SizedBox(); // No muestra nada si no tiene permiso
-                    },
-                  ),
-                ),
-                Divider(thickness: 1, color: Colors.blue),
-              ],
-            );
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //       builder: (context) => RegisterStudentForm()),
+                  // );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox(); // no mostrar nada si no tiene permiso
+            }
           },
+        ),
+        drawer: Menu.buildDrawer(context),
+        body: RefreshIndicator(
+          onRefresh: fetchGraduates,
+          color: Colors.blue,
+          child: ListView.builder(
+            itemCount: filteredGraduates.length,
+            itemBuilder: (context, index) {
+              final graduate = filteredGraduates[index];
+              return Column(
+                children: [
+                  ListTile(
+                    leading: GestureDetector(
+                      onTap: () => showGraduateDetails(graduate),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(25),
+                        child: graduate['profile_image'] != null &&
+                                graduate['profile_image'].isNotEmpty
+                            ? Image.network(graduate['profile_image'],
+                                height: 50, width: 50, fit: BoxFit.cover)
+                            : Image.asset('assets/images/refmmp.png',
+                                height: 50, width: 50, fit: BoxFit.cover),
+                      ),
+                    ),
+                    title: GestureDetector(
+                      onTap: () => showGraduateDetails(graduate),
+                      child: Text(
+                        '${graduate['first_name']} ${graduate['last_name']}',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Text(graduate['email']),
+                        Text(
+                            'Instrumentos: ${graduate['graduate_instruments'] != null && graduate['graduate_instruments'].isNotEmpty ? graduate['graduate_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
+                        Text(
+                            'Sede: ${graduate['sedes']?['name'] ?? 'No asignado'}'),
+                      ],
+                    ),
+                    trailing: FutureBuilder<bool>(
+                      future: _canAddEvent(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const SizedBox();
+                        }
+                        if (snapshot.hasData && snapshot.data == true) {
+                          return IconButton(
+                            icon: Icon(Icons.more_vert, color: Colors.blue),
+                            onPressed: () =>
+                                showGraduateOptions(context, graduate),
+                          );
+                        }
+                        return const SizedBox(); // No muestra nada si no tiene permiso
+                      },
+                    ),
+                  ),
+                  Divider(thickness: 1, color: Colors.blue),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

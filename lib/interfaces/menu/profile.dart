@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/edit/edit_profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -120,88 +121,94 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.title,
-          style: const TextStyle(
-              fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
+    return WillPopScope(
+      onWillPop: () => showExitConfirmationDialog(context),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.title,
+            style: const TextStyle(
+                fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
+          ),
+          backgroundColor: Colors.blue,
+          centerTitle: true,
         ),
-        leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            );
-          },
-        ),
-        backgroundColor: Colors.blue,
-        centerTitle: true,
-      ),
-      drawer: Menu.buildDrawer(context),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.blue))
-          : userTable == null
-              ? const Center(
-                  child: Text('Usuario no registrado en ninguna tabla',
-                      style: TextStyle(fontSize: 18, color: Colors.red)))
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 20),
-                      // 🔹 Mostrar la tabla donde está el usuario
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      ),
-                      const SizedBox(height: 20),
-                      GestureDetector(
-                        onTap: _pickImage,
-                        child: CircleAvatar(
-                          radius: 80,
-                          backgroundColor: Colors.blue,
-                          backgroundImage: profileImageUrl.isNotEmpty
-                              ? NetworkImage(profileImageUrl) as ImageProvider
-                              : const AssetImage('assets/images/refmmp.png'),
-                          child: const Align(
-                            alignment: Alignment.bottomRight,
-                            child: CircleAvatar(
-                              radius: 20,
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.camera_alt, color: Colors.blue),
+        drawer: Menu.buildDrawer(context),
+        body: isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.blue))
+            : userTable == null
+                ? const Center(
+                    child: Text('Usuario no registrado en ninguna tabla',
+                        style: TextStyle(fontSize: 18, color: Colors.red)))
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 20),
+                        // 🔹 Mostrar la tabla donde está el usuario
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        ),
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: CircleAvatar(
+                            radius: 80,
+                            backgroundColor: Colors.blue,
+                            backgroundImage: profileImageUrl.isNotEmpty
+                                ? NetworkImage(profileImageUrl) as ImageProvider
+                                : const AssetImage('assets/images/refmmp.png'),
+                            child: const Align(
+                              alignment: Alignment.bottomRight,
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: Colors.white,
+                                child:
+                                    Icon(Icons.camera_alt, color: Colors.blue),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      _buildProfileField('Nombres', userProfile['first_name']),
-                      _buildProfileField('Apellidos', userProfile['last_name']),
-                      _buildProfileField('Identificación',
-                          userProfile['identification_number']),
-                      _buildProfileField('Cargo', userProfile['charge']),
-                      _buildProfileField('Correo', userProfile['email']),
-                    ],
-                  ),
-                ),
-      floatingActionButton: userTable == null
-          ? null
-          : FloatingActionButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditProfilePage(
-                      userProfile: userProfile,
-                      userTable: userTable!,
+                        const SizedBox(height: 20),
+                        _buildProfileField(
+                            'Nombres', userProfile['first_name']),
+                        _buildProfileField(
+                            'Apellidos', userProfile['last_name']),
+                        _buildProfileField('Identificación',
+                            userProfile['identification_number']),
+                        _buildProfileField('Cargo', userProfile['charge']),
+                        _buildProfileField('Correo', userProfile['email']),
+                      ],
                     ),
                   ),
-                );
-                // Refrescar datos al volver
-                _findUserTable();
-              },
-              backgroundColor: Colors.blue,
-              child: const Icon(Icons.edit, color: Colors.white),
-              tooltip: 'Editar perfil',
-            ),
+        floatingActionButton: userTable == null
+            ? null
+            : FloatingActionButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => EditProfilePage(
+                        userProfile: userProfile,
+                        userTable: userTable!,
+                      ),
+                    ),
+                  );
+                  // Refrescar datos al volver
+                  _findUserTable();
+                },
+                backgroundColor: Colors.blue,
+                child: const Icon(Icons.edit, color: Colors.white),
+                tooltip: 'Editar perfil',
+              ),
+      ),
     );
   }
 

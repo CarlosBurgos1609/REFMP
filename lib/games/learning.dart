@@ -71,7 +71,7 @@ class _LearningPageState extends State<LearningPage> {
         isPlaying = true;
         currentSong = url;
       });
-      Future.delayed(const Duration(seconds: 30), () {
+      Future.delayed(const Duration(seconds: 20), () {
         if (isPlaying && currentSong == url) {
           _audioPlayer.stop();
           setState(() {
@@ -250,13 +250,14 @@ class _LearningPageState extends State<LearningPage> {
                         );
                       },
                       child: Text(song['name'],
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, color: Colors.blue)),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(song['artist']),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),

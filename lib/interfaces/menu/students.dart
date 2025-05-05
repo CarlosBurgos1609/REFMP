@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/connections/register_connections.dart';
+import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/forms/studentsform.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/routes/menu.dart';
@@ -271,118 +272,123 @@ class _StudentsPageState extends State<StudentsPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            );
-          },
-        ),
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Buscar estudiante...',
-            hintStyle: TextStyle(color: Colors.white),
-            border: InputBorder.none,
-            icon: Icon(Icons.search, color: Colors.white),
+    return WillPopScope(
+      onWillPop: () => showExitConfirmationDialog(context),
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.blue,
+          leading: Builder(
+            builder: (context) {
+              return IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              );
+            },
           ),
-          style: TextStyle(color: Colors.white),
-          onChanged: filterStudents, // Filtra en tiempo real
+          title: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar estudiante...',
+              hintStyle: TextStyle(color: Colors.white),
+              border: InputBorder.none,
+              icon: Icon(Icons.search, color: Colors.white),
+            ),
+            style: TextStyle(color: Colors.white),
+            onChanged: filterStudents, // Filtra en tiempo real
+          ),
         ),
-      ),
-      floatingActionButton: FutureBuilder<bool>(
-        future: _canAddEvent(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SizedBox(); // o un indicador de carga pequeño
-          }
+        floatingActionButton: FutureBuilder<bool>(
+          future: _canAddEvent(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(); // o un indicador de carga pequeño
+            }
 
-          if (snapshot.hasData && snapshot.data == true) {
-            return FloatingActionButton(
-              backgroundColor: Colors.blue,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => RegisterStudentForm()),
-                );
-              },
-              child: const Icon(Icons.add, color: Colors.white),
-            );
-          } else {
-            return const SizedBox(); // no mostrar nada si no tiene permiso
-          }
-        },
-      ),
-      drawer: Menu.buildDrawer(context),
-      body: RefreshIndicator(
-        onRefresh: fetchStudents,
-        color: Colors.blue, // Llamamos la función al refrescar
-        child: ListView.builder(
-          itemCount: filteredStudents.length,
-          itemBuilder: (context, index) {
-            final student = filteredStudents[index];
-            return Column(
-              children: [
-                ListTile(
-                  leading: GestureDetector(
-                    onTap: () => showStudentDetails(student),
-                    child: CircleAvatar(
-                      backgroundImage: student['profile_image'] != null
-                          ? NetworkImage(student['profile_image'])
-                          : AssetImage('assets/images/refmmp.png')
-                              as ImageProvider,
-                      radius: 25,
-                    ),
-                  ),
-                  title: GestureDetector(
-                    onTap: () => showStudentDetails(student),
-                    child: Text(
-                      '${student['first_name']} ${student['last_name']}',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.blue),
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Text(student['email']),
-                      Text(
-                          'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
-                      Text(
-                          'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
-                    ],
-                  ),
-                  trailing: FutureBuilder<bool>(
-                    future: _canAddEvent(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SizedBox();
-                      }
-                      if (snapshot.hasData && snapshot.data == true) {
-                        return IconButton(
-                          icon: Icon(Icons.more_vert, color: Colors.blue),
-                          onPressed: () => showStudentOptions(context, student),
-                        );
-                      }
-                      return const SizedBox(); // No muestra nada si no tiene permiso
-                    },
-                  ),
-                ),
-                Divider(
-                  thickness: 1,
-                  height: 10,
-                  color: themeProvider.isDarkMode
-                      ? const Color.fromARGB(255, 34, 34, 34)
-                      : const Color.fromARGB(255, 236, 234, 234),
-                ), // Línea divisoria
-              ],
-            );
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => RegisterStudentForm()),
+                  );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox(); // no mostrar nada si no tiene permiso
+            }
           },
+        ),
+        drawer: Menu.buildDrawer(context),
+        body: RefreshIndicator(
+          onRefresh: fetchStudents,
+          color: Colors.blue, // Llamamos la función al refrescar
+          child: ListView.builder(
+            itemCount: filteredStudents.length,
+            itemBuilder: (context, index) {
+              final student = filteredStudents[index];
+              return Column(
+                children: [
+                  ListTile(
+                    leading: GestureDetector(
+                      onTap: () => showStudentDetails(student),
+                      child: CircleAvatar(
+                        backgroundImage: student['profile_image'] != null
+                            ? NetworkImage(student['profile_image'])
+                            : AssetImage('assets/images/refmmp.png')
+                                as ImageProvider,
+                        radius: 25,
+                      ),
+                    ),
+                    title: GestureDetector(
+                      onTap: () => showStudentDetails(student),
+                      child: Text(
+                        '${student['first_name']} ${student['last_name']}',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.blue),
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Text(student['email']),
+                        Text(
+                            'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
+                        Text(
+                            'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
+                      ],
+                    ),
+                    trailing: FutureBuilder<bool>(
+                      future: _canAddEvent(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const SizedBox();
+                        }
+                        if (snapshot.hasData && snapshot.data == true) {
+                          return IconButton(
+                            icon: Icon(Icons.more_vert, color: Colors.blue),
+                            onPressed: () =>
+                                showStudentOptions(context, student),
+                          );
+                        }
+                        return const SizedBox(); // No muestra nada si no tiene permiso
+                      },
+                    ),
+                  ),
+                  Divider(
+                    thickness: 1,
+                    height: 10,
+                    color: themeProvider.isDarkMode
+                        ? const Color.fromARGB(255, 34, 34, 34)
+                        : const Color.fromARGB(255, 236, 234, 234),
+                  ), // Línea divisoria
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
