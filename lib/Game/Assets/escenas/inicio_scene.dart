@@ -43,8 +43,8 @@ class InicioScene extends FlameGame {
           fontWeight: FontWeight.bold,
         ),
       ),
-      position: Vector2(150, 58), // Ajusta según se vea visualmente
-      anchor: Anchor.topLeft,
+      position: Vector2(canvasSize.x / 2, 58), // Centrado horizontalmente
+      anchor: Anchor.topCenter, // Ancla centrada
     );
 
     add(text);
