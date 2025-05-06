@@ -70,7 +70,7 @@ class _PlayPageState extends State<PlayPage> {
       case 'fácil':
         return Colors.green;
       case 'medio':
-        return Colors.yellow;
+        return const Color.fromARGB(255, 230, 214, 70);
       case 'difícil':
         return Colors.red;
       default:

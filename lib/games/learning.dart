@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/games/play.dart';
+import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -19,6 +20,30 @@ class _LearningPageState extends State<LearningPage> {
   String? currentSong;
   String searchQuery = "";
   Future<List<Map<String, dynamic>>>? _songsFuture;
+
+  int _selectedIndex = 1; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    // Navegación según la opción elegida
+    switch (index) {
+      case 0:
+        // Navigator.push(context, MaterialPageRoute(builder: (_) => AprendePage()));
+        break;
+      case 1:
+        // Ya estás en LearningPage, no haces nada
+        break;
+      case 2:
+        // Navigator.push(context, MaterialPageRoute(builder: (_) => TorneoPage()));
+        break;
+      case 3:
+        // Navigator.push(context, MaterialPageRoute(builder: (_) => RecompensasPage()));
+        break;
+    }
+  }
 
   @override
   void initState() {
@@ -302,6 +327,10 @@ class _LearningPageState extends State<LearningPage> {
             ),
           );
         },
+      ),
+      bottomNavigationBar: CustomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onItemTapped: _onItemTapped,
       ),
     );
   }
