@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:refmp/games/game/escenas/MusicPage.dart';
+import 'package:refmp/games/learning.dart';
 import 'package:refmp/games/play.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-class LearningPage extends StatefulWidget {
+class MusicPage extends StatefulWidget {
   final String instrumentName;
 
-  const LearningPage({super.key, required this.instrumentName});
+  const MusicPage({super.key, required this.instrumentName});
 
   @override
-  State<LearningPage> createState() => _LearningPageState();
+  State<MusicPage> createState() => _MusicPageState();
 }
 
-class _LearningPageState extends State<LearningPage> {
+class _MusicPageState extends State<MusicPage> {
   final supabase = Supabase.instance.client;
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
@@ -22,7 +22,7 @@ class _LearningPageState extends State<LearningPage> {
   String searchQuery = "";
   Future<List<Map<String, dynamic>>>? _songsFuture;
 
-  int _selectedIndex = 0; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
+  int _selectedIndex = 1; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
 
   void _onItemTapped(int index) {
     if (_selectedIndex == index) return; // evitar recargar la misma página

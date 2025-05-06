@@ -17,22 +17,21 @@ class CustomNavigationBar extends StatelessWidget {
       onTap: onItemTapped,
       selectedItemColor: Colors.blue,
       unselectedItemColor: Colors.grey,
-      type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(
-          icon: Icon(Icons.menu_book),
+          icon: Icon(Icons.book_rounded),
           label: 'Aprende',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.music_note),
-          label: 'Canciones',
+          icon: Icon(Icons.music_note_rounded),
+          label: 'Música',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.emoji_events),
+          icon: Icon(Icons.emoji_events_rounded),
           label: 'Torneo',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.card_giftcard),
+          icon: Icon(Icons.card_giftcard_rounded),
           label: 'Recompensas',
         ),
       ],
