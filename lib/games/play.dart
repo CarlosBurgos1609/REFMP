@@ -1,7 +1,12 @@
 // import 'package:flame/game.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 // import 'package:refmp/games/trumpet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:audioplayers/audioplayers.dart';
+
+Timer? _timer;
 
 class PlayPage extends StatefulWidget {
   final String songName;
@@ -18,10 +23,18 @@ class _PlayPageState extends State<PlayPage> {
   List<dynamic> levels = [];
   bool isLoading = true;
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool isPlaying = false;
+
   @override
   void initState() {
     super.initState();
     fetchSongDetails();
+    _audioPlayer.onPlayerComplete.listen((event) {
+      setState(() {
+        isPlaying = false;
+      });
+    });
   }
 
   Future<void> fetchSongDetails() async {
@@ -88,7 +101,10 @@ class _PlayPageState extends State<PlayPage> {
           await fetchSongDetails();
         },
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(
+                child: CircularProgressIndicator(
+                color: Colors.blue,
+              ))
             : song == null
                 ? const Center(child: Text("No se encontró la canción."))
                 : SingleChildScrollView(
@@ -142,6 +158,61 @@ class _PlayPageState extends State<PlayPage> {
                                     Text(
                                       "Instrumento: ${song!['instruments']?['name'] ?? "Desconocido"}",
                                       style: const TextStyle(fontSize: 16),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue,
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 14),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          icon: Icon(
+                                              isPlaying
+                                                  ? Icons.pause
+                                                  : Icons.play_arrow,
+                                              color: Colors.white),
+                                          label: Text(
+                                            isPlaying ? "Pausar" : "Reproducir",
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16),
+                                          ),
+                                          onPressed: () async {
+                                            final url = song!['mp3_file'];
+                                            if (url == null || url.isEmpty)
+                                              return;
+
+                                            if (isPlaying) {
+                                              await _audioPlayer.pause();
+                                              _timer?.cancel();
+                                            } else {
+                                              await _audioPlayer
+                                                  .play(UrlSource(url));
+
+                                              // Cancelar temporizador previo (por si acaso)
+                                              _timer?.cancel();
+
+                                              // Crear temporizador para pausar a los 30 segundos
+                                              _timer = Timer(
+                                                  const Duration(seconds: 30),
+                                                  () async {
+                                                await _audioPlayer.pause();
+                                                setState(() {
+                                                  isPlaying = false;
+                                                });
+                                              });
+                                            }
+
+                                            setState(() {
+                                              isPlaying = !isPlaying;
+                                            });
+                                          }),
                                     ),
                                   ],
                                 ),

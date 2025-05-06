@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
-import 'package:refmp/games/game_page.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
@@ -453,7 +452,7 @@ class _HomePageState extends State<HomePage>
                                                     style: const TextStyle(
                                                         fontSize: 15),
                                                   ),
-                                                  const SizedBox(height: 10),
+                                                  const SizedBox(height: 12),
                                                   ElevatedButton.icon(
                                                     style: ElevatedButton
                                                         .styleFrom(
@@ -519,95 +518,6 @@ class _HomePageState extends State<HomePage>
                                           ? Colors.blue
                                           : Colors.grey[400],
                                     ),
-                                  ),
-                                ),
-                              ),
-                              Divider(
-                                height: 40,
-                                thickness: 2,
-                                color: themeProvider.isDarkMode
-                                    ? const Color.fromARGB(255, 34, 34, 34)
-                                    : const Color.fromARGB(255, 236, 234, 234),
-                              ),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
-                                child: Card(
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16)),
-                                  elevation: 4,
-                                  child: Column(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius:
-                                            const BorderRadius.vertical(
-                                                top: Radius.circular(16)),
-                                        child: Image.asset(
-                                          "assets/images/aprende.png",
-                                          fit: BoxFit.cover,
-                                          width: double.infinity,
-                                          height: 160,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  const Icon(
-                                                      Icons.image_not_supported,
-                                                      size: 80),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.all(12.0),
-                                        child: Column(
-                                          children: [
-                                            Text(
-                                              "Aprende y juega",
-                                              textAlign: TextAlign.center,
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.blue,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              "Aprende a tocar los instrumentos en el juego de aprendizaje dale al botón y empieza a practicar tu intrumento.",
-                                              textAlign: TextAlign.center,
-                                              style:
-                                                  const TextStyle(fontSize: 15),
-                                            ),
-                                            const SizedBox(height: 10),
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.blue,
-                                                shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10)),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 20,
-                                                        vertical: 12),
-                                              ),
-                                              onPressed: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const GamePage(),
-                                                  ),
-                                                );
-                                              },
-                                              icon: const Icon(
-                                                  Icons.sports_esports_rounded,
-                                                  color: Colors.white),
-                                              label: const Text(
-                                                  "Aprende y Juega",
-                                                  style: TextStyle(
-                                                      color: Colors.white)),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
                                   ),
                                 ),
                               ),

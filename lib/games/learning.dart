@@ -209,7 +209,7 @@ class _LearningPageState extends State<LearningPage> {
                                       ),
                                     ),
                                     Padding(
-                                      padding: const EdgeInsets.all(16.0),
+                                      padding: const EdgeInsets.all(13.0),
                                       child: Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -222,22 +222,28 @@ class _LearningPageState extends State<LearningPage> {
                                                 fontWeight: FontWeight.bold),
                                           ),
                                           const SizedBox(height: 10),
-                                          Text("Artista: ${song['artist']}",
-                                              style: const TextStyle(
-                                                  fontSize: 16)),
-                                          const SizedBox(height: 5),
+                                          Text(
+                                            "Artista: ${song['artist']}",
+                                            style:
+                                                const TextStyle(fontSize: 20),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 10),
                                           Container(
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 4),
+                                                horizontal: 8, vertical: 8),
                                             decoration: BoxDecoration(
                                               color: getDifficultyColor(
                                                   song['difficulty']),
                                               borderRadius:
                                                   BorderRadius.circular(5),
                                             ),
-                                            child: Text(song['difficulty'],
-                                                style: const TextStyle(
-                                                    color: Colors.white)),
+                                            child: Text(
+                                              song['difficulty'],
+                                              style: const TextStyle(
+                                                  color: Colors.white),
+                                              textAlign: TextAlign.center,
+                                            ),
                                           ),
                                         ],
                                       ),
