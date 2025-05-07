@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
-import 'package:refmp/games/play.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:audioplayers/audioplayers.dart';
 
 class LearningPage extends StatefulWidget {
   final String instrumentName;
@@ -16,16 +14,12 @@ class LearningPage extends StatefulWidget {
 
 class _LearningPageState extends State<LearningPage> {
   final supabase = Supabase.instance.client;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool isPlaying = false;
-  String? currentSong;
+  Future<List<Map<String, dynamic>>>? _levelsFuture;
   String searchQuery = "";
-  Future<List<Map<String, dynamic>>>? _songsFuture;
-
-  int _selectedIndex = 0; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
+  int _selectedIndex = 0;
 
   void _onItemTapped(int index) {
-    if (_selectedIndex == index) return; // evitar recargar la misma página
+    if (_selectedIndex == index) return;
 
     switch (index) {
       case 0:
@@ -46,105 +40,45 @@ class _LearningPageState extends State<LearningPage> {
           ),
         );
         break;
-      case 2:
-        // Navigator.pushReplacement(
-        //   context,
-        //   MaterialPageRoute(
-        //     builder: (context) => TournamentPage(instrumentName: widget.instrumentName),
-        //   ),
-        // );
-        break;
-      case 3:
-        // Navigator.pushReplacement(
-        //   context,
-        //   MaterialPageRoute(
-        //     builder: (context) => RewardsPage(instrumentName: widget.instrumentName),
-        //   ),
-        // );
-        break;
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _songsFuture = fetchSongs();
+    _levelsFuture = fetchLevels();
   }
 
-  Future<List<Map<String, dynamic>>> fetchSongs() async {
+  Future<List<Map<String, dynamic>>> fetchLevels() async {
+    // Primero obtenemos el id del instrumento
     final instrumentResponse = await supabase
-        .from('instruments')
+        .from('instruments') // Traemos los instrumentos
         .select('id')
-        .eq('name', widget.instrumentName)
-        .maybeSingle();
+        .eq('name',
+            widget.instrumentName) // Buscamos el instrumento por su nombre
+        .maybeSingle(); // Si el instrumento no se encuentra, devolvemos null
 
-    if (instrumentResponse == null) {
-      return [];
-    }
+    if (instrumentResponse == null)
+      return []; // Si no encontramos el instrumento
 
-    int instrumentId = instrumentResponse['id'];
+    final instrumentId = instrumentResponse['id'];
 
-    final response = await supabase
-        .from('songs')
-        .select('id, name, image, mp3_file, artist, difficulty, instrument')
-        .eq('instrument', instrumentId)
-        .order('name', ascending: true);
+    // Obtener los niveles asociados a este instrumento
+    final levelsResponse = await supabase
+        .from('levels') // Ahora consultamos en la tabla levels
+        .select('id, name, description, image')
+        .eq('instrument_id',
+            instrumentId) // Filtramos por el id del instrumento
+        .order('name'); // Ordenamos por el nombre del nivel
 
-    return response.isNotEmpty ? List<Map<String, dynamic>>.from(response) : [];
+    return levelsResponse;
   }
 
-  Future<void> _refreshSongs() async {
-    final newSongs = await fetchSongs();
+  Future<void> _refreshLevels() async {
+    final newLevels = await fetchLevels();
     setState(() {
-      _songsFuture = Future.value(newSongs);
+      _levelsFuture = Future.value(newLevels);
     });
-  }
-
-  void playSong(String url) async {
-    if (isPlaying && currentSong == url) {
-      await _audioPlayer.pause();
-      setState(() {
-        isPlaying = false;
-        currentSong = null;
-      });
-    } else {
-      await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource(url), position: Duration.zero);
-      await _audioPlayer.setPlaybackRate(1.0);
-      _audioPlayer.setReleaseMode(ReleaseMode.stop);
-      setState(() {
-        isPlaying = true;
-        currentSong = url;
-      });
-      Future.delayed(const Duration(seconds: 20), () {
-        if (isPlaying && currentSong == url) {
-          _audioPlayer.stop();
-          setState(() {
-            isPlaying = false;
-            currentSong = null;
-          });
-        }
-      });
-    }
-  }
-
-  Color getDifficultyColor(String difficulty) {
-    switch (difficulty.toLowerCase()) {
-      case 'fácil':
-        return Colors.green;
-      case 'medio':
-        return Colors.yellow;
-      case 'difícil':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
   }
 
   @override
@@ -157,16 +91,10 @@ class _LearningPageState extends State<LearningPage> {
           width: double.infinity,
           child: TextField(
             decoration: InputDecoration(
-              hintText: "Buscar Canciones de ${widget.instrumentName} ...",
-              hintStyle: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
+              hintText: "Buscar Niveles de ${widget.instrumentName}...",
+              hintStyle: const TextStyle(color: Colors.white, fontSize: 14),
               border: InputBorder.none,
-              suffixIcon: const Icon(
-                Icons.search,
-                color: Colors.white,
-              ),
+              suffixIcon: const Icon(Icons.search, color: Colors.white),
             ),
             style: const TextStyle(color: Colors.white),
             onChanged: (value) {
@@ -178,169 +106,57 @@ class _LearningPageState extends State<LearningPage> {
         ),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _songsFuture,
+        future: _levelsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
                 child: CircularProgressIndicator(color: Colors.blue));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No hay canciones disponibles"));
+            return const Center(child: Text("No hay niveles disponibles"));
           }
 
-          final songs = snapshot.data!
-              .where((song) => song['name'].toLowerCase().contains(searchQuery))
+          final levels = snapshot.data!
+              .where((level) =>
+                  level['name'].toLowerCase().contains(searchQuery) ||
+                  level['description'].toLowerCase().contains(searchQuery))
               .toList();
 
           return RefreshIndicator(
+            onRefresh: _refreshLevels,
             color: Colors.blue,
-            onRefresh: _refreshSongs,
             child: ListView.builder(
-              itemCount: songs.length,
+              itemCount: levels.length,
               itemBuilder: (context, index) {
-                final song = songs[index];
+                final level = levels[index];
                 return Card(
                   margin:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
-                    leading: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            song['image'],
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Icon(Icons.music_note, size: 60),
-                          ),
-                        ),
-                        Icon(
-                          (isPlaying && currentSong == song['mp3_file'])
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 40,
-                          color: Colors.white,
-                        ),
-                      ],
-                    ),
-                    title: GestureDetector(
-                      onTap: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (context) {
-                            return SingleChildScrollView(
-                              child: Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.network(
-                                        song['image'],
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const Icon(Icons.music_note,
-                                                    size: 100),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(13.0),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            song['name'],
-                                            style: const TextStyle(
-                                                color: Colors.blue,
-                                                fontSize: 22,
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Text(
-                                            "Artista: ${song['artist']}",
-                                            style:
-                                                const TextStyle(fontSize: 20),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              color: getDifficultyColor(
-                                                  song['difficulty']),
-                                              borderRadius:
-                                                  BorderRadius.circular(5),
-                                            ),
-                                            child: Text(
-                                              song['difficulty'],
-                                              style: const TextStyle(
-                                                  color: Colors.white),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                      child: Text(song['name'],
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: Colors.blue)),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(song['artist']),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: getDifficultyColor(song['difficulty']),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Text(
-                            song['difficulty'],
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                    trailing: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                PlayPage(songName: song["name"]),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.music_note, color: Colors.white),
-                      label: const Text("Tocar",
-                          style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        level['image'],
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.school, size: 60),
                       ),
                     ),
-                    onTap: () => playSong(song['mp3_file']),
+                    title: Text(
+                      level['name'],
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
+                    subtitle: Text(level['description']),
+                    trailing: Icon(Icons.arrow_forward_ios, color: Colors.blue),
+                    onTap: () {
+                      // Aquí puedes redirigir a una pantalla con detalles del nivel
+                      // o con las canciones del nivel
+                    },
                   ),
                 );
               },
