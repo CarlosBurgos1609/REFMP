@@ -176,6 +176,10 @@ class _MusicPageState extends State<MusicPage> {
             },
           ),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _songsFuture,

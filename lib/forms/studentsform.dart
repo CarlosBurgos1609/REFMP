@@ -131,7 +131,17 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Registrar Estudiante')),
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        title: Text(
+          'Registrar Estudiante',
+          style: const TextStyle(color: Colors.white),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(16),
         child: Form(
@@ -246,7 +256,10 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
                 backgroundColor: Colors.blue,
               ),
               onPressed: registerStudent,
-              child: Text('Registrar Estudiante'),
+              child: Text(
+                'Registrar Estudiante',
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ]),
         ),
