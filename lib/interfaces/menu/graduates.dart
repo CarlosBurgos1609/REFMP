@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/forms/graduatesForm.dart';
 // import 'package:image_picker/image_picker.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -237,11 +238,11 @@ class _GraduatesPageState extends State<GraduatesPage> {
               return FloatingActionButton(
                 backgroundColor: Colors.blue,
                 onPressed: () {
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //       builder: (context) => RegisterStudentForm()),
-                  // );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => RegisterGraduateForm()),
+                  );
                 },
                 child: const Icon(Icons.add, color: Colors.white),
               );
