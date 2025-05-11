@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/init.dart';
 import 'package:refmp/routes/menu.dart';
-import 'package:refmp/theme/theme_provider.dart'; // Asegúrate de tener un ThemeProvider
+import 'package:refmp/theme/theme_provider.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.title});
@@ -120,29 +120,47 @@ class _SettingsPage extends State<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Tema",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      themeProvider.isDarkMode
-                          ? Icons.dark_mode
-                          : Icons.light_mode,
-                      color: themeProvider.isDarkMode
-                          ? Colors.white
-                          : Colors.black,
-                    ),
-                    onPressed: () {
-                      themeProvider.toggleTheme();
-                    },
-                  ),
-                ],
+              Text(
+                "Tema:",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.isDarkMode
+                      ? Color.fromARGB(255, 255, 255, 255)
+                      : Color.fromARGB(255, 33, 150, 243),
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                onPressed: () {
+                  themeProvider.toggleTheme();
+                },
+                icon: Icon(
+                  themeProvider.isDarkMode ? Icons.dark_mode : Icons.light_mode,
+                  color:
+                      themeProvider.isDarkMode ? Colors.white : Colors.yellow,
+                ),
+                label: Text(
+                  themeProvider.isDarkMode ? 'Modo oscuro' : 'Modo claro',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Divider(
+                height: 40,
+                thickness: 2,
+                color: themeProvider.isDarkMode
+                    ? const Color.fromARGB(255, 34, 34, 34)
+                    : const Color.fromARGB(255, 236, 234, 234),
+              ),
+              const SizedBox(height: 10),
               ListTile(
                 leading: const Icon(Icons.exit_to_app, color: Colors.red),
                 title: const Text(
@@ -155,6 +173,16 @@ class _SettingsPage extends State<SettingsPage> {
                 onTap: () {
                   _logout(context);
                 },
+              ),
+              SizedBox(
+                height: 10,
+              ),
+              Divider(
+                height: 40,
+                thickness: 2,
+                color: themeProvider.isDarkMode
+                    ? const Color.fromARGB(255, 34, 34, 34)
+                    : const Color.fromARGB(255, 236, 234, 234),
               ),
             ],
           ),
