@@ -237,7 +237,8 @@ class _PlayPageState extends State<PlayPage> {
                         const SizedBox(height: 20),
                         levels.isEmpty
                             ? const Center(
-                                child: Text("No hay niveles disponibles."))
+                                child: Text(
+                                    "No se encontraron niveles disponibles."))
                             : Column(
                                 children: levels.map((level) {
                                   return Padding(
