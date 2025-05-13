@@ -1,4 +1,6 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/games/play.dart';
 import 'package:refmp/routes/navigationBar.dart';
@@ -20,6 +22,8 @@ class _MusicPageState extends State<MusicPage> {
   bool isPlaying = false;
   String? currentSong;
   String searchQuery = "";
+  String? profileImageUrl;
+
   Future<List<Map<String, dynamic>>>? _songsFuture;
 
   int _selectedIndex = 1; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
@@ -71,6 +75,7 @@ class _MusicPageState extends State<MusicPage> {
   void initState() {
     super.initState();
     _songsFuture = fetchSongs();
+    fetchUserProfileImage();
   }
 
   Future<List<Map<String, dynamic>>> fetchSongs() async {
@@ -100,6 +105,62 @@ class _MusicPageState extends State<MusicPage> {
     setState(() {
       _songsFuture = Future.value(newSongs);
     });
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    debugPrint('Conectividad: $connectivityResult');
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+  Future<void> fetchUserProfileImage() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final isOnline = await _checkConnectivity();
+
+      if (!isOnline) {
+        final box = Hive.box('offline_data');
+        const cacheKey = 'user_profile_image';
+        final cachedProfileImage = box.get(cacheKey, defaultValue: null);
+        if (cachedProfileImage != null) {
+          setState(() {
+            profileImageUrl = cachedProfileImage;
+          });
+        }
+        return;
+      }
+
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select('profile_image')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (response != null && response['profile_image'] != null) {
+          setState(() {
+            profileImageUrl = response['profile_image'];
+          });
+
+          final box = Hive.box('offline_data');
+          await box.put('user_profile_image', response['profile_image']);
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al obtener la imagen del perfil: $e');
+    }
   }
 
   void playSong(String url) async {
@@ -395,6 +456,8 @@ class _MusicPageState extends State<MusicPage> {
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
+        profileImageUrl:
+            profileImageUrl, // Ya no será 'student' sino la URL real
       ),
     );
   }
