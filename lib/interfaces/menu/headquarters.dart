@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class HeadquartersPage extends StatefulWidget {
   const HeadquartersPage({super.key, required this.title});
@@ -16,9 +18,27 @@ class HeadquartersPage extends StatefulWidget {
 
 class _HeadquartersPageState extends State<HeadquartersPage> {
   Future<List<dynamic>> _fetchData() async {
-    // Obtener los datos de Supabase
-    final response = await Supabase.instance.client.from("sedes").select();
-    return response;
+    final box = Hive.box('offline_data');
+    const cacheKey = 'sedes_data';
+
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client.from("sedes").select();
+        await box.put(cacheKey, response); // Guarda en cache
+        return response;
+      } catch (e) {
+        // En caso de error online, intenta usar el cache
+        final cachedData = box.get(cacheKey, defaultValue: []);
+        return List<Map<String, dynamic>>.from(cachedData);
+      }
+    } else {
+      // Sin conexión: usar cache
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      return List<Map<String, dynamic>>.from(cachedData);
+    }
   }
 
   void _openMap(String url) async {
@@ -32,16 +52,37 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
   }
 
   Future<bool> _canViewHeadquarters() async {
+    final box = Hive.box('offline_data');
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return false;
 
-    final user = await supabase
-        .from('users')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (user != null) return true;
-    return false;
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+
+    if (isOnline) {
+      try {
+        final user = await supabase
+            .from('users')
+            .select()
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (user != null) {
+          // Guarda en cache que este userId tiene permiso
+          await box.put('can_view_headquarters_$userId', true);
+          return true;
+        } else {
+          await box.put('can_view_headquarters_$userId', false);
+          return false;
+        }
+      } catch (e) {
+        // Si hay un error, intenta usar el cache
+        return box.get('can_view_headquarters_$userId', defaultValue: false);
+      }
+    } else {
+      // Offline: usa el cache si existe
+      return box.get('can_view_headquarters_$userId', defaultValue: false);
+    }
   }
 
   @override

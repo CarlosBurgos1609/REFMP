@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_null_comparison
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,8 @@ import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -38,6 +42,14 @@ class _HomePageState extends State<HomePage>
     fetchUserProfileImage();
     fetchSedes();
     fetchGamesData();
+
+    Connectivity().onConnectivityChanged.listen((result) async {
+      if (result != ConnectivityResult.none) {
+        // Conexión restaurada, recarga los datos
+        await fetchSedes();
+        await fetchGamesData();
+      }
+    });
 
     _pageController = PageController(viewportFraction: 0.9);
     _startAutoScroll();
@@ -90,55 +102,127 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  // Método para verificar la conectividad a internet
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    debugPrint('Conectividad: $connectivityResult');
+    return connectivityResult != ConnectivityResult.none;
+  }
+
   Future<void> fetchUserProfileImage() async {
-    final user = supabase.auth.currentUser;
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
 
-    if (user == null) return;
+      final isOnline = await _checkConnectivity();
 
-    List<String> tables = [
-      'users',
-      'students',
-      'graduates',
-      'teachers',
-      'advisors',
-      'parents'
-    ];
-
-    for (String table in tables) {
-      final response = await supabase
-          .from(table)
-          .select('profile_image')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      if (response != null && response['profile_image'] != null) {
-        setState(() {
-          profileImageUrl = response['profile_image'];
-        });
-        break;
+      if (!isOnline) {
+        // Recuperar datos desde cache si no hay conexión
+        final box = Hive.box('offline_data');
+        const cacheKey = 'user_profile_image';
+        final cachedProfileImage = box.get(cacheKey, defaultValue: null);
+        if (cachedProfileImage != null) {
+          setState(() {
+            profileImageUrl = cachedProfileImage;
+          });
+        }
+        return;
       }
+
+      // Si está en línea, hacer la solicitud a Supabase
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select('profile_image')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (response != null && response['profile_image'] != null) {
+          setState(() {
+            profileImageUrl = response['profile_image'];
+          });
+
+          // Guardar la imagen de perfil en cache
+          final box = Hive.box('offline_data');
+          await box.put('user_profile_image', response['profile_image']);
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al obtener la imagen del perfil: $e');
     }
   }
 
   Future<void> fetchGamesData() async {
+    final box = Hive.box('offline_data');
+    const cacheKey = 'games_data';
+
+    // Mostrar datos del cache primero
+    final cachedGames = box.get(cacheKey);
+    if (cachedGames != null) {
+      setState(() {
+        games = cachedGames;
+      });
+      debugPrint('Juegos cargados desde cache');
+    }
+
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) return;
+
     try {
-      final response = await supabase.from('games').select('*');
-      if (mounted) {
+      final response = await supabase.from('games').select();
+      if (mounted && response != null) {
         setState(() {
           games = response;
         });
+        await box.put(cacheKey, response);
+        debugPrint('Juegos actualizados y guardados en cache');
       }
     } catch (e) {
-      debugPrint('Error al obtener los juegos: $e');
+      debugPrint('Error al obtener juegos: $e');
     }
   }
 
   Future<void> fetchSedes() async {
-    final response = await supabase.from('sedes').select();
-    if (mounted) {
+    final box = Hive.box('offline_data');
+    const cacheKey = 'sedes_data';
+
+    // Mostrar datos del cache primero
+    final cachedSedes = box.get(cacheKey);
+    if (cachedSedes != null) {
+      if (!mounted) return;
       setState(() {
-        sedes = response;
+        sedes = cachedSedes;
       });
+      debugPrint('Sedes cargadas desde cache');
+    }
+
+    // Luego intenta obtener en línea
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) return;
+
+    try {
+      final response = await supabase.from('sedes').select();
+
+      if (!mounted) return; // ⚠️ Evita setState si el widget fue eliminado
+      if (response != null) {
+        setState(() {
+          sedes = response;
+        });
+        await box.put(cacheKey, response);
+        debugPrint('Sedes actualizadas y guardadas en cache');
+      }
+    } catch (e) {
+      debugPrint('Error al obtener sedes: $e');
     }
   }
 

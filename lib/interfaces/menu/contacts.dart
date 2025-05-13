@@ -3,6 +3,9 @@ import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive/hive.dart';
+
 class ContactsPage extends StatefulWidget {
   const ContactsPage({super.key, required this.title});
   final String title;
@@ -12,9 +15,27 @@ class ContactsPage extends StatefulWidget {
 }
 
 class _ContactsPageState extends State<ContactsPage> {
+  Future<bool> isOnline() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult != ConnectivityResult.none;
+  }
+
   Future<List<dynamic>> _fetchHeadquarters() async {
-    final response = await Supabase.instance.client.from('sedes').select();
-    return response;
+    final box = Hive.box('offline_data');
+
+    if (await isOnline()) {
+      try {
+        final response = await Supabase.instance.client.from('sedes').select();
+        await box.put('sedes', response); // Cachear
+        return response;
+      } catch (e) {
+        debugPrint('Error obteniendo sedes online, usando cache: $e');
+        return box.get('sedes', defaultValue: []);
+      }
+    } else {
+      debugPrint('Sin conexión, usando sedes en cache');
+      return box.get('sedes', defaultValue: []);
+    }
   }
 
   void _showHeadquarterDetails(BuildContext context, Map sede) {

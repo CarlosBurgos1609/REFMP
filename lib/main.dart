@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
+import 'package:hive_flutter/adapters.dart';
+import 'package:path_provider/path_provider.dart';
+// import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/init.dart';
@@ -16,6 +20,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   NotificationService.init(navigatorKey);
   await Firebase.initializeApp();
+
+  final appDocumentDir = await getApplicationDocumentsDirectory();
+  Hive.init(appDocumentDir.path);
+  await Hive.openBox('offline_data');
+
   await Supabase.initialize(
     url: 'https://dmhyuogexgghinvfgoup.supabase.co',
     anonKey:

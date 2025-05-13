@@ -9,6 +9,8 @@ import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive/hive.dart';
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key, required this.title});
@@ -37,24 +39,42 @@ class _EventsPageState extends State<EventsPage> {
     fetchEvents();
   }
 
-  Future<void> fetchEvents() async {
-    final response = await supabase
-        .from('events')
-        .select('*, sedes(name)')
-        .order('date', ascending: true)
-        .order('name', ascending: true);
+  Future<bool> isOnline() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult != ConnectivityResult.none;
+  }
 
-    debugPrint('Eventos obtenidos: ${response.length}');
+  Future<void> fetchEvents() async {
+    final box = Hive.box('offline_data');
+
+    List<dynamic> response;
+
+    if (await isOnline()) {
+      try {
+        response = await supabase
+            .from('events')
+            .select('*, sedes(name)')
+            .order('date', ascending: true)
+            .order('name', ascending: true);
+
+        await box.put('events', response); // Guardar en cache
+        debugPrint('Eventos obtenidos ONLINE: ${response.length}');
+      } catch (e) {
+        debugPrint('Error al obtener eventos, usando cache: $e');
+        response = box.get('events') ?? [];
+      }
+    } else {
+      debugPrint('Sin conexión, usando cache');
+      response = box.get('events') ?? [];
+    }
 
     List<Appointment> appointments = [];
     List<Map<String, dynamic>> eventDetails = [];
 
     for (var event in response) {
       try {
-        final rawDate = event['date']; // ya es timestamp con hora
+        final rawDate = event['date'];
         final rawTimeFin = event['time_fin'];
-
-        debugPrint('Procesando evento: $event');
 
         if (rawDate == null) continue;
 

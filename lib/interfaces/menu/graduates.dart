@@ -6,6 +6,8 @@ import 'package:refmp/forms/graduatesForm.dart';
 // import 'package:image_picker/image_picker.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive/hive.dart';
 
 class GraduatesPage extends StatefulWidget {
   const GraduatesPage({super.key, required this.title});
@@ -55,17 +57,46 @@ class _GraduatesPageState extends State<GraduatesPage> {
     return false;
   }
 
-  Future<void> fetchGraduates() async {
-    final response = await Supabase.instance.client
-        .from('graduates')
-        .select(
-            '*, graduate_instruments(instruments(name)), sedes!graduates_sede_id_fkey(name)')
-        .order('first_name', ascending: true);
+  Future<bool> isOnline() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult != ConnectivityResult.none;
+  }
 
-    setState(() {
-      graduates = List<Map<String, dynamic>>.from(response);
-      filteredGraduates = graduates;
-    });
+  Future<void> fetchGraduates() async {
+    final box = Hive.box('offline_data');
+
+    if (await isOnline()) {
+      try {
+        final response = await Supabase.instance.client
+            .from('graduates')
+            .select(
+                '*, graduate_instruments(instruments(name)), sedes!graduates_sede_id_fkey(name)')
+            .order('first_name', ascending: true);
+
+        await box.put('graduates', response); // guarda en Hive
+
+        setState(() {
+          graduates = List<Map<String, dynamic>>.from(response);
+          filteredGraduates = graduates;
+        });
+      } catch (e) {
+        print("Error al obtener desde Supabase, usando cache: $e");
+        final cached = box.get('graduates');
+        if (cached != null) {
+          graduates = List<Map<String, dynamic>>.from(cached);
+          filteredGraduates = graduates;
+          setState(() {});
+        }
+      }
+    } else {
+      print("Sin conexión, cargando desde cache");
+      final cached = box.get('graduates');
+      if (cached != null) {
+        graduates = List<Map<String, dynamic>>.from(cached);
+        filteredGraduates = graduates;
+        setState(() {});
+      }
+    }
   }
 
   void filterGraduates(String query) {

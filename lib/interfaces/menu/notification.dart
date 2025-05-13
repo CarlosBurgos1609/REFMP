@@ -12,6 +12,8 @@ import 'package:refmp/routes/menu.dart';
 import 'package:refmp/services/notification_service.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key, required this.title});
@@ -68,46 +70,114 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   Future<void> fetchAndShowNotifications() async {
+    final box = Hive.box('offline_data');
+    const cacheKey = 'user_notifications';
+
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    final response = await Supabase.instance.client
-        .from('user_notifications')
-        .select('*, notifications(*)')
-        .eq('user_id', userId!)
-        .eq('is_read', false);
 
-    final List data = response;
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
 
-    for (var notif in data) {
-      final notifData = notif['notifications'];
-      if (notifData != null) {
-        await NotificationService.showNotification(
-          id: notif['id'],
-          title: notifData['title'],
-          message: notifData['message'],
-          icon: notifData['icon'],
-          payload: notifData['redirect_to'],
-        );
-
-        await Supabase.instance.client
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client
             .from('user_notifications')
-            .update({'is_read': true}).eq('id', notif['id']);
+            .select('*, notifications(*)')
+            .eq('user_id', userId!)
+            .eq('is_read', false);
+
+        final List data = response;
+        await box.put(cacheKey, data); // Guarda los datos en cache
+
+        for (var notif in data) {
+          final notifData = notif['notifications'];
+          if (notifData != null) {
+            await NotificationService.showNotification(
+              id: notif['id'],
+              title: notifData['title'],
+              message: notifData['message'],
+              icon: notifData['icon'],
+              payload: notifData['redirect_to'],
+            );
+
+            await Supabase.instance.client
+                .from('user_notifications')
+                .update({'is_read': true}).eq('id', notif['id']);
+          }
+        }
+      } catch (e) {
+        // Si ocurre un error al obtener notificaciones, usa los datos en cache
+        final cachedData = box.get(cacheKey, defaultValue: []);
+        for (var notif in cachedData) {
+          final notifData = notif['notifications'];
+          if (notifData != null) {
+            await NotificationService.showNotification(
+              id: notif['id'],
+              title: notifData['title'],
+              message: notifData['message'],
+              icon: notifData['icon'],
+              payload: notifData['redirect_to'],
+            );
+          }
+        }
+      }
+    } else {
+      // Sin conexión: usar notificaciones en cache
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      for (var notif in cachedData) {
+        final notifData = notif['notifications'];
+        if (notifData != null) {
+          await NotificationService.showNotification(
+            id: notif['id'],
+            title: notifData['title'],
+            message: notifData['message'],
+            icon: notifData['icon'],
+            payload: notifData['redirect_to'],
+          );
+        }
       }
     }
 
+    // Después de mostrar las notificaciones, actualiza el historial
     await fetchNotificationHistory();
   }
 
   Future<void> fetchNotificationHistory() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    final response = await Supabase.instance.client
-        .from('user_notifications')
-        .select('*, notifications(*)')
-        .eq('user_id', userId!)
-        .order('created_at', ascending: false);
+    final box = Hive.box('offline_data');
+    const cacheKey = 'notification_history';
 
-    setState(() {
-      _notifications = List<Map<String, dynamic>>.from(response);
-    });
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client
+            .from('user_notifications')
+            .select('*, notifications(*)')
+            .eq('user_id', userId!)
+            .order('created_at', ascending: false);
+
+        final history = List<Map<String, dynamic>>.from(response);
+        await box.put(cacheKey, history); // Guarda el historial en cache
+
+        setState(() {
+          _notifications = history;
+        });
+      } catch (e) {
+        // Si ocurre un error al obtener el historial, usa el cache
+        final cachedHistory = box.get(cacheKey, defaultValue: []);
+        setState(() {
+          _notifications = cachedHistory;
+        });
+      }
+    } else {
+      // Sin conexión: usar historial en cache
+      final cachedHistory = box.get(cacheKey, defaultValue: []);
+      setState(() {
+        _notifications = cachedHistory;
+      });
+    }
   }
 
   Future<void> deleteNotification(int id) async {

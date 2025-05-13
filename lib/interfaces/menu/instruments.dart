@@ -3,6 +3,8 @@ import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class InstrumentsPage extends StatefulWidget {
   const InstrumentsPage({super.key, required this.title});
@@ -16,13 +18,51 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
   final SupabaseClient supabase = Supabase.instance.client;
 
   Future<List<Map<String, dynamic>>> fetchGames() async {
-    final response = await supabase.from('games').select('*');
-    return response;
+    final box = Hive.box('offline_data');
+    const cacheKey = 'games_data';
+
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+
+    if (isOnline) {
+      try {
+        final response = await supabase.from('games').select('*');
+        await box.put(cacheKey, response); // Guarda en cache
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e) {
+        // En caso de error online, intenta usar el cache
+        final cachedData = box.get(cacheKey, defaultValue: []);
+        return List<Map<String, dynamic>>.from(cachedData);
+      }
+    } else {
+      // Sin conexión: usar cache
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      return List<Map<String, dynamic>>.from(cachedData);
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchInstruments() async {
-    final response = await supabase.from('instruments').select('*');
-    return response;
+    final box = Hive.box('offline_data');
+    const cacheKey = 'instruments_data';
+
+    final isOnline =
+        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+
+    if (isOnline) {
+      try {
+        final response = await supabase.from('instruments').select('*');
+        await box.put(cacheKey, response); // Guarda en cache
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e) {
+        // En caso de error online, intenta usar el cache
+        final cachedData = box.get(cacheKey, defaultValue: []);
+        return List<Map<String, dynamic>>.from(cachedData);
+      }
+    } else {
+      // Sin conexión: usar cache
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      return List<Map<String, dynamic>>.from(cachedData);
+    }
   }
 
   String truncateText(String text, int wordLimit) {

@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/edit/edit_profile.dart';
@@ -5,6 +6,7 @@ import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:hive/hive.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.title});
@@ -46,33 +48,69 @@ class _ProfilePageState extends State<ProfilePage> {
       isLoading = true;
     });
 
-    for (String table in userTables) {
-      final response = await supabase
-          .from(table)
-          .select()
-          .eq('user_id', user.id)
-          .maybeSingle();
+    final box = Hive.box('offline_data');
+    const cacheKey = 'user_profile';
 
-      if (response != null) {
-        setState(() {
-          userTable = table;
-          userProfile = {
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      // Si hay conexión a internet, obtener datos de Supabase
+      for (String table in userTables) {
+        final response = await supabase
+            .from(table)
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (response != null) {
+          // Guardar datos en cache
+          await box.put(cacheKey, {
             'first_name': response['first_name'] ?? '',
             'last_name': response['last_name'] ?? '',
             'identification_number': response['identification_number'] ?? '',
             'charge': response['charge'] ?? '',
             'email': response['email'] ?? '',
             'profile_image': response['profile_image'] ?? '',
-          };
-          profileImageUrl = response['profile_image'] ?? '';
+          });
+
+          setState(() {
+            userTable = table;
+            userProfile = {
+              'first_name': response['first_name'] ?? '',
+              'last_name': response['last_name'] ?? '',
+              'identification_number': response['identification_number'] ?? '',
+              'charge': response['charge'] ?? '',
+              'email': response['email'] ?? '',
+              'profile_image': response['profile_image'] ?? '',
+            };
+            profileImageUrl = response['profile_image'] ?? '';
+          });
+          break;
+        }
+      }
+    } else {
+      // Si no hay conexión, recuperar los datos desde el cache
+      final cachedProfile = box.get(cacheKey, defaultValue: null);
+
+      if (cachedProfile != null) {
+        setState(() {
+          userProfile = cachedProfile;
+          profileImageUrl = cachedProfile['profile_image'] ?? '';
+          userTable = 'offline'; // Indicar que los datos provienen del cache
         });
-        break;
       }
     }
 
     setState(() {
       isLoading = false;
     });
+  }
+
+// Método para verificar la conectividad a internet
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    debugPrint('Conectividad: $connectivityResult');
+    return connectivityResult != ConnectivityResult.none;
   }
 
   // 🔹 Subir imagen desde la galería

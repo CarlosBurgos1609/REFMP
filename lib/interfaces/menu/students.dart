@@ -1,5 +1,9 @@
+// ignore_for_file: unnecessary_null_comparison
+
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/connections/register_connections.dart';
@@ -81,16 +85,49 @@ class _StudentsPageState extends State<StudentsPage> {
   }
 
   Future<void> fetchStudents() async {
-    final response = await Supabase.instance.client
-        .from('students')
-        .select(
-            '*, student_instruments(instruments(name)), sedes!students_sede_id_fkey(name)')
-        .order('first_name', ascending: true); // Ordenar por nombre
+    final box = await Hive.openBox('offline_data');
+    const cacheKey = 'students_data';
 
-    setState(() {
-      students = List<Map<String, dynamic>>.from(response);
-      filteredStudents = students;
-    });
+    // Verificar la conectividad
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult == ConnectivityResult.none) {
+      // No hay conexión, carga los datos desde el cache
+      final cachedStudents = box.get(cacheKey);
+      if (cachedStudents != null) {
+        setState(() {
+          students = List<Map<String, dynamic>>.from(cachedStudents);
+          filteredStudents = students;
+        });
+        debugPrint('Estudiantes cargados desde el caché');
+      } else {
+        debugPrint('No hay datos en caché');
+      }
+      return;
+    }
+
+    try {
+      // Si hay conexión, obtiene los estudiantes de Supabase
+      final response = await Supabase.instance.client
+          .from('students')
+          .select(
+              '*, student_instruments(instruments(name)), sedes!students_sede_id_fkey(name)')
+          .order('first_name', ascending: true); // Ordenar por nombre
+
+      if (response != null) {
+        setState(() {
+          students = List<Map<String, dynamic>>.from(response);
+          filteredStudents = students;
+        });
+
+        // Guardar los datos en el caché local para uso futuro
+        await box.put(cacheKey, response);
+        debugPrint('Estudiantes obtenidos y guardados en el caché');
+      } else {
+        debugPrint('Error: No se obtuvieron los estudiantes');
+      }
+    } catch (e) {
+      debugPrint('Error al obtener estudiantes: $e');
+    }
   }
 
   void filterStudents(String query) {
