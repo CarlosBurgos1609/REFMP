@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:refmp/theme/theme_provider.dart';
 
 class CustomNavigationBar extends StatelessWidget {
   final int selectedIndex;
@@ -14,12 +16,15 @@ class CustomNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return BottomNavigationBar(
       currentIndex: selectedIndex,
       onTap: onItemTapped,
       selectedItemColor: Colors.blue,
       unselectedItemColor: Colors.grey,
-      backgroundColor: Colors.white,
+      backgroundColor: themeProvider.isDarkMode
+          ? Color.fromARGB(255, 2, 2, 2)
+          : Color.fromARGB(255, 255, 255, 255),
       type: BottomNavigationBarType.fixed,
       elevation: 8,
       items: [
@@ -84,8 +89,7 @@ class CustomNavigationBar extends StatelessWidget {
       radius: 14,
       backgroundImage: profileImageUrl != null && profileImageUrl!.isNotEmpty
           ? NetworkImage(profileImageUrl!)
-          : const AssetImage('assets/images/default_profile.png')
-              as ImageProvider,
+          : const AssetImage('assets/images/logo1.png') as ImageProvider,
       backgroundColor: Colors.transparent,
     );
 
