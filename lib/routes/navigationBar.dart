@@ -50,7 +50,7 @@ class CustomNavigationBar extends StatelessWidget {
           icon: Icons.card_giftcard_outlined,
           selectedIcon: Icons.card_giftcard_rounded,
           index: 3,
-          label: 'Recompensas',
+          label: 'Objetos',
         ),
         BottomNavigationBarItem(
           icon: _buildProfileIcon(4),
