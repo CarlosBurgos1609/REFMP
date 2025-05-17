@@ -413,7 +413,7 @@ class _MusicPageState extends State<MusicPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(song['artist']),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 15),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
