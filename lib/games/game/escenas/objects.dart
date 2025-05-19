@@ -179,7 +179,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
         centerTitle: true,
       ),
       body: groupedObjets.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(
+              color: Colors.blue,
+            ))
           : RefreshIndicator(
               color: Colors.blue,
               onRefresh: fetchObjets,
