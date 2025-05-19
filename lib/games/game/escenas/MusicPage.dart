@@ -2,6 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
+import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/games/play.dart';
 import 'package:refmp/routes/navigationBar.dart';
@@ -61,12 +62,13 @@ class _MusicPageState extends State<MusicPage> {
         );
         break;
       case 3:
-        // Navigator.pushReplacement(
-        //   context,
-        //   MaterialPageRoute(
-        //     builder: (context) => RewardsPage(instrumentName: widget.instrumentName),
-        //   ),
-        // );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
         break;
       case 4:
         break;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
+import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/theme/theme_provider.dart';
@@ -22,7 +23,7 @@ class _CupPageState extends State<CupPage> {
   Future<List<Map<String, dynamic>>>? _cupFuture;
   String? profileImageUrl;
 
-  int _selectedIndex = 2; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
+  int _selectedIndex = 2;
 
   void _onItemTapped(int index) {
     if (_selectedIndex == index) return; // evitar recargar la misma página
@@ -56,7 +57,13 @@ class _CupPageState extends State<CupPage> {
         );
         break;
       case 3:
-        // Aquí puedes añadir la navegación a RewardsPage cuando esté lista
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
         break;
     }
   }
