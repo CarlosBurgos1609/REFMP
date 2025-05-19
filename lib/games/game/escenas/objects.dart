@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
+import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 // import 'package:provider/provider.dart';
@@ -71,6 +72,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
           MaterialPageRoute(
             builder: (context) =>
                 ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        break;
+      case 4:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfilePageGame(instrumentName: widget.instrumentName),
           ),
         );
         break;

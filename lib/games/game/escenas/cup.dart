@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
+import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/theme/theme_provider.dart';
@@ -62,6 +63,15 @@ class _CupPageState extends State<CupPage> {
           MaterialPageRoute(
             builder: (context) =>
                 ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        break;
+      case 4:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfilePageGame(instrumentName: widget.instrumentName),
           ),
         );
         break;

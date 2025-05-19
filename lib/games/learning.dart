@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
+import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -60,6 +61,15 @@ class _LearningPageState extends State<LearningPage> {
           MaterialPageRoute(
             builder: (context) =>
                 ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        break;
+      case 4:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfilePageGame(instrumentName: widget.instrumentName),
           ),
         );
         break;
