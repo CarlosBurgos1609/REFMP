@@ -233,6 +233,7 @@ class _CupPageState extends State<CupPage> {
               // Clasificación con scroll y refresh
               Expanded(
                 child: RefreshIndicator(
+                  color: Colors.blue,
                   onRefresh: () async {
                     final newData = await fetchCupData();
                     setState(() {
