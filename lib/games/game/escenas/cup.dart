@@ -160,13 +160,12 @@ class _CupPageState extends State<CupPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final user = supabase.auth.currentUser;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Torneo",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
+        title: const Text("Torneo",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
         leading: IconButton(
@@ -192,12 +191,9 @@ class _CupPageState extends State<CupPage> {
           return Column(
             children: [
               const SizedBox(height: 24),
-              // Copa grande azul arriba
-              Icon(
-                Icons.emoji_events_rounded,
-                color: Colors.blue.shade700,
-                size: 150,
-              ),
+              // Copa fija
+              Icon(Icons.emoji_events_rounded,
+                  color: Colors.blue.shade700, size: 150),
               const SizedBox(height: 12),
               Divider(
                 height: 40,
@@ -212,116 +208,137 @@ class _CupPageState extends State<CupPage> {
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: themeProvider.isDarkMode
-                      ? Color.fromARGB(255, 255, 255, 255)
-                      : Color.fromARGB(255, 33, 150, 243),
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
                 ),
               ),
               const SizedBox(height: 16),
 
+              // Clasificación con scroll y refresh
               Expanded(
-                child: ListView.builder(
-                  itemCount: cupList.length,
-                  itemBuilder: (context, index) {
-                    final item = cupList[index];
-                    final String name = item['name'];
-                    final String? profileImage = item['profile_image'];
-                    final int points = item['experience_points'];
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    final newData = await fetchCupData();
+                    setState(() {
+                      _cupFuture = Future.value(newData);
+                    });
+                  },
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: cupList.length,
+                    itemBuilder: (context, index) {
+                      final item = cupList[index];
+                      final String name = item['name'];
+                      final String? profileImage = item['profile_image'];
+                      final int points = item['experience_points'];
 
-                    // ¿Está en el top 3?
-                    bool isTop3 = index < 3;
+                      final bool isCurrentUser = name.toLowerCase().contains(
+                            (user?.userMetadata?['full_name'] ?? '')
+                                .toString()
+                                .toLowerCase(),
+                          );
 
-                    // Icono copa dorada para top 3
-                    Widget medalIcon = Icon(
-                      Icons.emoji_events_rounded,
-                      color: index == 0
-                          ? Colors.amber
-                          : index == 1
-                              ? Colors.grey
-                              : const Color(0xFFCD7F32),
-                      size: 30,
-                    );
+                      final borderColor =
+                          isCurrentUser ? Colors.blue : Colors.grey;
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Número de posición
-                          Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: isTop3 ? Colors.blue : Colors.black87,
-                            ),
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: borderColor, width: 2),
+                            borderRadius: BorderRadius.circular(12),
+                            color: themeProvider.isDarkMode
+                                ? Colors.black54
+                                : Colors.white,
                           ),
-                          const SizedBox(width: 8),
-
-                          // Copa dorada al lado del número si está en top 3
-                          if (isTop3) ...[
-                            medalIcon,
-                            const SizedBox(width: 12),
-                          ],
-
-                          // Imagen perfil redondeada
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundImage: profileImage != null
-                                ? NetworkImage(profileImage)
-                                : null,
-                            child: profileImage == null
-                                ? const Icon(Icons.person, size: 32)
-                                : null,
-                          ),
-                          const SizedBox(width: 16),
-
-                          // Nombre y puntos XP
-                          Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                // Nombre
-                                Flexible(
-                                  child: Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // Posición
+                              Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      index < 3 ? Colors.blue : Colors.black87,
                                 ),
+                              ),
+                              const SizedBox(width: 8),
 
-                                // Puntos experiencia en azul con "XP"
-                                Row(
+                              // Medalla si es top 3
+                              if (index < 3) ...[
+                                Icon(
+                                  Icons.emoji_events_rounded,
+                                  color: index == 0
+                                      ? Colors.amber
+                                      : index == 1
+                                          ? Colors.grey
+                                          : const Color(0xFFCD7F32),
+                                  size: 30,
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+
+                              // Imagen perfil
+                              CircleAvatar(
+                                radius: 28,
+                                backgroundImage: profileImage != null
+                                    ? NetworkImage(profileImage)
+                                    : null,
+                                child: profileImage == null
+                                    ? const Icon(Icons.person, size: 32)
+                                    : null,
+                              ),
+                              const SizedBox(width: 16),
+
+                              // Nombre y puntos
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      "$points ",
-                                      style: TextStyle(
-                                        color: Colors.blue.shade700,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
+                                    Flexible(
+                                      child: Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    Text(
-                                      "XP",
-                                      style: TextStyle(
-                                        color: Colors.blue.shade700,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "$points ",
+                                          style: TextStyle(
+                                            color: Colors.blue.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                        Text(
+                                          "XP",
+                                          style: TextStyle(
+                                            color: Colors.blue.shade700,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
