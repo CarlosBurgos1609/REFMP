@@ -103,7 +103,7 @@ class _LearningPageState extends State<LearningPage> {
         .select('id, name, description, image')
         .eq('instrument_id',
             instrumentId) // Filtramos por el id del instrumento
-        .order('name'); // Ordenamos por el nombre del nivel
+        .order('number', ascending: true); // orden ascendente
 
     return levelsResponse;
   }
@@ -231,14 +231,17 @@ class _LearningPageState extends State<LearningPage> {
                   child: ListTile(
                     leading: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        level['image'],
-                        width: 60,
-                        height: 60,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.school, size: 60),
-                      ),
+                      child: level['image'] != null &&
+                              level['image'].toString().isNotEmpty
+                          ? Image.network(
+                              level['image'],
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(Icons.school, size: 60),
+                            )
+                          : const Icon(Icons.school, size: 60),
                     ),
                     title: Text(
                       level['name'],
