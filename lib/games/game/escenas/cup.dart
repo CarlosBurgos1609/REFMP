@@ -210,7 +210,7 @@ class _CupPageState extends State<CupPage> {
               const SizedBox(height: 24),
               // Copa fija
               Icon(Icons.emoji_events_rounded,
-                  color: Colors.blue.shade700, size: 150),
+                  color: const Color.fromARGB(255, 122, 247, 236), size: 150),
               const SizedBox(height: 12),
               Divider(
                 height: 40,
