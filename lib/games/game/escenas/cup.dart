@@ -1,13 +1,13 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
-import 'package:provider/provider.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/theme/theme_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CupPage extends StatefulWidget {
@@ -260,7 +260,7 @@ class _CupPageState extends State<CupPage> {
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 8),
+                            horizontal: 24, vertical: 4),
                         child: Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: borderColor, width: 2),
@@ -284,7 +284,7 @@ class _CupPageState extends State<CupPage> {
                                       index < 3 ? Colors.blue : Colors.black87,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 5),
 
                               // Medalla si es top 3
                               if (index < 3) ...[
@@ -302,7 +302,7 @@ class _CupPageState extends State<CupPage> {
 
                               // Imagen perfil
                               CircleAvatar(
-                                radius: 28,
+                                radius: 20,
                                 backgroundImage: profileImage != null
                                     ? NetworkImage(profileImage)
                                     : null,
@@ -322,7 +322,7 @@ class _CupPageState extends State<CupPage> {
                                       child: Text(
                                         name,
                                         style: const TextStyle(
-                                          fontSize: 20,
+                                          fontSize: 17,
                                           fontWeight: FontWeight.w600,
                                         ),
                                         overflow: TextOverflow.ellipsis,
@@ -335,7 +335,7 @@ class _CupPageState extends State<CupPage> {
                                           style: TextStyle(
                                             color: Colors.blue.shade700,
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 18,
+                                            fontSize: 14,
                                           ),
                                         ),
                                         Text(
