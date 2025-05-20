@@ -324,8 +324,8 @@ class _ProfilePageGameState extends State<ProfilePageGame>
             child: TabBarView(
               controller: _tabController,
               children: const [
-                Center(child: Text('Canciones favoritas')),
-                Center(child: Text('Objetos obtenidos')),
+                Center(child: Text('🎵 No tienes Canciones favoritas 🎵')),
+                Center(child: Text('🎁 No tines Objetos 🎁')),
                 Center(child: Text('Historial de experiencia')),
               ],
             ),
