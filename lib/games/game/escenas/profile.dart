@@ -326,7 +326,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
               children: const [
                 Center(child: Text('🎵 No tienes Canciones favoritas 🎵')),
                 Center(child: Text('🎁 No tines Objetos 🎁')),
-                Center(child: Text('Historial de experiencia')),
+                Center(child: Text('⌚ Historial de experiencia ⌚')),
               ],
             ),
           ),
