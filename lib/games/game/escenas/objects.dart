@@ -162,6 +162,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
     });
   }
 
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -177,6 +191,29 @@ class _ObjetsPageState extends State<ObjetsPage> {
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
+      ),
+      floatingActionButton: FutureBuilder<bool>(
+        future: _canAddEvent(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox(); // o un indicador de carga pequeño
+          }
+
+          if (snapshot.hasData && snapshot.data == true) {
+            return FloatingActionButton(
+              backgroundColor: Colors.blue,
+              onPressed: () {
+                // Navigator.push(
+                //   context,
+                //   MaterialPageRoute(builder: (context) => SongsFormPage()),
+                // );
+              },
+              child: const Icon(Icons.add, color: Colors.white),
+            );
+          } else {
+            return const SizedBox(); // no mostrar nada si no tiene permiso
+          }
+        },
       ),
       body: groupedObjets.isEmpty
           ? const Center(
