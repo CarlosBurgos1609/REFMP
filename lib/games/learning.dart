@@ -5,6 +5,7 @@ import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
+import 'package:refmp/games/game/escenas/subnivels.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -171,6 +172,20 @@ class _LearningPageState extends State<LearningPage> {
     }
   }
 
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,6 +213,29 @@ class _LearningPageState extends State<LearningPage> {
           icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+      ),
+      floatingActionButton: FutureBuilder<bool>(
+        future: _canAddEvent(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox(); // o un indicador de carga pequeño
+          }
+
+          if (snapshot.hasData && snapshot.data == true) {
+            return FloatingActionButton(
+              backgroundColor: Colors.blue,
+              onPressed: () {
+                // Navigator.push(
+                //   context,
+                //   MaterialPageRoute(builder: (context) => SongsFormPage()),
+                // );
+              },
+              child: const Icon(Icons.add, color: Colors.white),
+            );
+          } else {
+            return const SizedBox(); // no mostrar nada si no tiene permiso
+          }
+        },
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _levelsFuture,
@@ -251,8 +289,16 @@ class _LearningPageState extends State<LearningPage> {
                     subtitle: Text(level['description']),
                     trailing: Icon(Icons.arrow_forward_ios, color: Colors.blue),
                     onTap: () {
-                      // Aquí puedes redirigir a una pantalla con detalles del nivel
-                      // o con las canciones del nivel
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SubnivelesPage(
+                            levelId: level['id'], // UUID del nivel
+                            levelTitle:
+                                level['name'], // Opcional: título para AppBar
+                          ),
+                        ),
+                      );
                     },
                   ),
                 );
