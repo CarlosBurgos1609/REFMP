@@ -1,6 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:refmp/forms/songsForm.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
@@ -281,11 +282,10 @@ class _MusicPageState extends State<MusicPage> {
             return FloatingActionButton(
               backgroundColor: Colors.blue,
               onPressed: () {
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(
-                //       builder: (context) => RegisterGraduateForm()),
-                // );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SongsFormPage()),
+                );
               },
               child: const Icon(Icons.add, color: Colors.white),
             );
