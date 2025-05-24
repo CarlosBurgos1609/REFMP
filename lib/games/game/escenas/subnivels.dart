@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:refmp/games/game/escenas/questions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SubnivelesPage extends StatefulWidget {
@@ -110,63 +111,78 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
                 itemCount: subniveles.length,
                 itemBuilder: (context, index) {
                   final subnivel = subniveles[index];
-                  return Card(
-                    margin: const EdgeInsets.all(12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    elevation: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (subnivel['image'] != null &&
-                            subnivel['image'].toString().isNotEmpty)
-                          ClipRRect(
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(12)),
-                            child: Image.network(
-                              subnivel['image'],
-                              width: double.infinity,
-                              height: 180,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const SizedBox(
-                                height: 180,
-                                child: Center(child: Icon(Icons.broken_image)),
-                              ),
-                            ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                subnivel['title'] ?? 'Sin título',
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                subnivel['description'] ?? '',
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                              const SizedBox(height: 8),
-                              Chip(
-                                label: Text(
-                                  'Tipo: ${subnivel['type'] ?? 'N/A'}',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                                backgroundColor: Colors.blue.shade100,
-                              ),
-                            ],
+                  return InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => QuestionPage(
+                            sublevelId: subnivel['id'],
+                            sublevelTitle: subnivel['title'] ?? 'Sin título',
+                            sublevelType: subnivel[
+                                'type'], // Asegúrate de que esto exista en tu mapa
                           ),
                         ),
-                      ],
+                      );
+                    },
+                    child: Card(
+                      margin: const EdgeInsets.all(12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (subnivel['image'] != null &&
+                              subnivel['image'].toString().isNotEmpty)
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(12)),
+                              child: Image.network(
+                                subnivel['image'],
+                                width: double.infinity,
+                                height: 180,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const SizedBox(
+                                  height: 180,
+                                  child:
+                                      Center(child: Icon(Icons.broken_image)),
+                                ),
+                              ),
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  subnivel['title'] ?? 'Sin título',
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  subnivel['description'] ?? '',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                const SizedBox(height: 8),
+                                Chip(
+                                  label: Text(
+                                    'Tipo: ${subnivel['type'] ?? 'N/A'}',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  backgroundColor: Colors.blue.shade200,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
-                },
-              ),
+                }),
       ),
     );
   }
