@@ -178,20 +178,53 @@ class _QuestionPageState extends State<QuestionPage> {
 
     if (showSummary) {
       return Scaffold(
-        appBar: AppBar(title: Text('Resumen')),
+        appBar: AppBar(
+          title: Text(
+            'Resumen',
+            style: TextStyle(
+                color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 20),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
+            onPressed: () => Navigator.pop(context),
+          ),
+          centerTitle: true,
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('¡Has finalizado!',
                   style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 40,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue)),
               SizedBox(height: 16),
-              Text('Correctas: $correctAnswers'),
-              Text('Incorrectas: $incorrectAnswers'),
-              Text('Puntos de Experiencia ganados: $totalExperience'),
+              Text(
+                'Correctas: $correctAnswers',
+                style: TextStyle(
+                  color: Colors.green.shade300,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Incorrectas: $incorrectAnswers',
+                style: TextStyle(
+                  color: Colors.red.shade900.withOpacity(0.6),
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Puntos de Experiencia ganados: $totalExperience',
+                style: TextStyle(
+                  color: Colors.blue.shade300,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
@@ -241,22 +274,52 @@ class _QuestionPageState extends State<QuestionPage> {
 // 👉 NUEVO: Para tipo "Game"
     if (widget.sublevelType == 'Juego') {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            widget.sublevelTitle,
-            style: const TextStyle(color: Colors.blue),
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-            onPressed: () => Navigator.pop(context),
-          ),
-          centerTitle: true,
-        ),
-        body: const Center(
-          child: Text(
-            'Juego de trompeta',
-            style: TextStyle(fontSize: 24, color: Colors.blue),
-            textAlign: TextAlign.center,
+        body: Transform.rotate(
+          angle: 33, // Gira todo 180°
+          child: SafeArea(
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text(
+                  'Identifica las partes de la trompeta',
+                  style: TextStyle(color: Colors.blue),
+                ),
+                centerTitle: true,
+                backgroundColor: Colors.white,
+                elevation: 1,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_rounded,
+                      color: Colors.blue),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/partitura1.png',
+                      width: 400,
+                      height: 120,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 30),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset('assets/images/piston.png',
+                            width: 70, height: 70),
+                        const SizedBox(width: 20),
+                        Image.asset('assets/images/piston.png',
+                            width: 70, height: 70),
+                        const SizedBox(width: 20),
+                        Image.asset('assets/images/piston.png',
+                            width: 70, height: 70),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       );
