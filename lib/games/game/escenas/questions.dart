@@ -260,8 +260,11 @@ class _QuestionPageState extends State<QuestionPage> {
                 player,
                 const SizedBox(height: 20),
                 const Text(
-                  'Observa el video y aprende sobre este subnivel.',
-                  style: TextStyle(fontSize: 18, color: Colors.blue),
+                  'Observa el video y aprende sobre este Nivel.',
+                  style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.blue,
+                      fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
               ],
