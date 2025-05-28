@@ -47,7 +47,7 @@ class _RegisterPageState extends State<RegisterPage> {
         title: const Text(
           'Registro',
           style: TextStyle(
-            fontSize: 23,
+            fontSize: 22,
             color: Colors.blue,
             fontWeight: FontWeight.bold,
           ),
