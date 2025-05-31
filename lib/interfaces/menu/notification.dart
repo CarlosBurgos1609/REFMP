@@ -250,7 +250,7 @@ class _NotificationPageState extends State<NotificationPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: fetchAndShowNotifications,
                 icon: const Icon(
