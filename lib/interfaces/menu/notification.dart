@@ -14,6 +14,8 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart'; // For debugPrint
 
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key, required this.title});
@@ -27,6 +29,7 @@ class NotificationPage extends StatefulWidget {
 class _NotificationPageState extends State<NotificationPage> {
   bool _notificationsEnabled = false;
   List<Map<String, dynamic>> _notifications = [];
+  StreamSubscription<List<Map<String, dynamic>>>? _subscription;
 
   final Map<String, IconData> iconMap = {
     'alarm': Icons.alarm,
@@ -45,35 +48,105 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   void initState() {
     super.initState();
-    checkPermissionStatus();
-    fetchNotificationHistory();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await checkPermissionStatus();
+      await fetchNotificationHistory();
+      _subscribeToNotifications();
+    } catch (e, stackTrace) {
+      debugPrint('Error in initialization: $e\n$stackTrace');
+    }
   }
 
   Future<void> checkPermissionStatus() async {
-    final status = await Permission.notification.status;
-    setState(() {
-      _notificationsEnabled = status.isGranted;
-    });
-  }
-
-  Future<void> requestPermission(bool value) async {
-    if (value) {
-      final status = await Permission.notification.request();
+    try {
+      final status = await Permission.notification.status;
       setState(() {
         _notificationsEnabled = status.isGranted;
       });
-    } else {
-      setState(() {
-        _notificationsEnabled = false;
-      });
+    } catch (e, stackTrace) {
+      debugPrint('Error checking permission status: $e\n$stackTrace');
+    }
+  }
+
+  Future<void> requestPermission(bool value) async {
+    try {
+      if (value) {
+        final status = await Permission.notification.request();
+        setState(() {
+          _notificationsEnabled = status.isGranted;
+        });
+      } else {
+        setState(() {
+          _notificationsEnabled = false;
+        });
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error requesting permission: $e\n$stackTrace');
+    }
+  }
+
+  void _subscribeToNotifications() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('No authenticated user found for subscription');
+      return;
+    }
+
+    try {
+      _subscription = Supabase.instance.client
+          .from('user_notifications:user_id=eq.$userId&is_deleted=eq.false')
+          .stream(primaryKey: ['id']).listen(
+        (List<Map<String, dynamic>> data) {
+          try {
+            if (data.isNotEmpty) {
+              final newNotif = data.first;
+              final notifData = newNotif['notifications'];
+              if (notifData != null && newNotif['is_read'] == false) {
+                // Convert UUID to int for notification ID
+                final notificationId = newNotif['id'].hashCode & 0x7FFFFFFF;
+                NotificationService.showNotification(
+                  id: notificationId,
+                  title: notifData['title'] ?? 'No title',
+                  message: notifData['message'] ?? 'No message',
+                  icon: notifData['icon'] ?? 'icon',
+                  payload: notifData['redirect_to'],
+                );
+
+                // Mark as read
+                Supabase.instance.client
+                    .from('user_notifications')
+                    .update({'is_read': true}).eq('id', newNotif['id']);
+
+                // Refresh notification history
+                fetchNotificationHistory();
+              }
+            }
+          } catch (e, stackTrace) {
+            debugPrint('Error in subscription callback: $e\n$stackTrace');
+          }
+        },
+        onError: (error, stackTrace) {
+          debugPrint('Subscription error: $error\n$stackTrace');
+        },
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Error setting up subscription: $e\n$stackTrace');
     }
   }
 
   Future<void> fetchAndShowNotifications() async {
-    final box = Hive.box('offline_data');
+    final box = await _getHiveBox();
     const cacheKey = 'user_notifications';
-
     final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId == null) {
+      debugPrint('No authenticated user found for fetching notifications');
+      return;
+    }
 
     final isOnline =
         (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
@@ -83,20 +156,23 @@ class _NotificationPageState extends State<NotificationPage> {
         final response = await Supabase.instance.client
             .from('user_notifications')
             .select('*, notifications(*)')
-            .eq('user_id', userId!)
-            .eq('is_read', false);
+            .eq('user_id', userId)
+            .eq('is_read', false)
+            .eq('is_deleted', false);
 
         final List data = response;
-        await box.put(cacheKey, data); // Guarda los datos en cache
+        await box.put(cacheKey, data); // Save to cache
 
         for (var notif in data) {
           final notifData = notif['notifications'];
           if (notifData != null) {
+            // Convert UUID to int for notification ID
+            final notificationId = notif['id'].hashCode & 0x7FFFFFFF;
             await NotificationService.showNotification(
-              id: notif['id'],
-              title: notifData['title'],
-              message: notifData['message'],
-              icon: notifData['icon'],
+              id: notificationId,
+              title: notifData['title'] ?? 'No title',
+              message: notifData['message'] ?? 'No message',
+              icon: notifData['icon'] ?? 'icon',
               payload: notifData['redirect_to'],
             );
 
@@ -105,48 +181,52 @@ class _NotificationPageState extends State<NotificationPage> {
                 .update({'is_read': true}).eq('id', notif['id']);
           }
         }
-      } catch (e) {
-        // Si ocurre un error al obtener notificaciones, usa los datos en cache
-        final cachedData = box.get(cacheKey, defaultValue: []);
-        for (var notif in cachedData) {
-          final notifData = notif['notifications'];
-          if (notifData != null) {
-            await NotificationService.showNotification(
-              id: notif['id'],
-              title: notifData['title'],
-              message: notifData['message'],
-              icon: notifData['icon'],
-              payload: notifData['redirect_to'],
-            );
-          }
-        }
+      } catch (e, stackTrace) {
+        debugPrint('Error fetching notifications: $e\n$stackTrace');
+        // Use cached data if fetching fails
+        await _showCachedNotifications(box, cacheKey);
       }
     } else {
-      // Sin conexión: usar notificaciones en cache
+      // Offline: use cached notifications
+      await _showCachedNotifications(box, cacheKey);
+    }
+
+    // Refresh notification history
+    await fetchNotificationHistory();
+  }
+
+  Future<void> _showCachedNotifications(Box box, String cacheKey) async {
+    try {
       final cachedData = box.get(cacheKey, defaultValue: []);
       for (var notif in cachedData) {
         final notifData = notif['notifications'];
-        if (notifData != null) {
+        if (notifData != null && notif['is_deleted'] == false) {
+          // Convert UUID to int for notification ID
+          final notificationId = notif['id'].hashCode & 0x7FFFFFFF;
           await NotificationService.showNotification(
-            id: notif['id'],
-            title: notifData['title'],
-            message: notifData['message'],
-            icon: notifData['icon'],
+            id: notificationId,
+            title: notifData['title'] ?? 'No title',
+            message: notifData['message'] ?? 'No message',
+            icon: notifData['icon'] ?? 'icon',
             payload: notifData['redirect_to'],
           );
         }
       }
+    } catch (e, stackTrace) {
+      debugPrint('Error showing cached notifications: $e\n$stackTrace');
     }
-
-    // Después de mostrar las notificaciones, actualiza el historial
-    await fetchNotificationHistory();
   }
 
   Future<void> fetchNotificationHistory() async {
-    final box = Hive.box('offline_data');
+    final box = await _getHiveBox();
     const cacheKey = 'notification_history';
-
     final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId == null) {
+      debugPrint('No authenticated user found for fetching history');
+      return;
+    }
+
     final isOnline =
         (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
 
@@ -155,40 +235,70 @@ class _NotificationPageState extends State<NotificationPage> {
         final response = await Supabase.instance.client
             .from('user_notifications')
             .select('*, notifications(*)')
-            .eq('user_id', userId!)
+            .eq('user_id', userId)
+            .eq('is_deleted', false)
             .order('created_at', ascending: false);
 
         final history = List<Map<String, dynamic>>.from(response);
-        await box.put(cacheKey, history); // Guarda el historial en cache
+        await box.put(cacheKey, history); // Save to cache
 
         setState(() {
           _notifications = history;
         });
-      } catch (e) {
-        // Si ocurre un error al obtener el historial, usa el cache
-        final cachedHistory = box.get(cacheKey, defaultValue: []);
-        setState(() {
-          _notifications = cachedHistory;
-        });
+      } catch (e, stackTrace) {
+        debugPrint('Error fetching notification history: $e\n$stackTrace');
+        // Use cached history if fetching fails
+        _loadCachedHistory(box, cacheKey);
       }
     } else {
-      // Sin conexión: usar historial en cache
-      final cachedHistory = box.get(cacheKey, defaultValue: []);
-      setState(() {
-        _notifications = cachedHistory;
-      });
+      // Offline: use cached history
+      _loadCachedHistory(box, cacheKey);
     }
   }
 
-  Future<void> deleteNotification(int id) async {
-    await Supabase.instance.client
-        .from('user_notifications')
-        .delete()
-        .eq('id', id);
+  void _loadCachedHistory(Box box, String cacheKey) {
+    try {
+      final cachedHistory = box.get(cacheKey, defaultValue: []);
+      setState(() {
+        _notifications = List<Map<String, dynamic>>.from(
+            cachedHistory.where((n) => n['is_deleted'] == false));
+      });
+    } catch (e, stackTrace) {
+      debugPrint('Error loading cached history: $e\n$stackTrace');
+    }
+  }
 
-    setState(() {
-      _notifications.removeWhere((n) => n['id'] == id);
-    });
+  Future<Box> _getHiveBox() async {
+    try {
+      return Hive.box('offline_data');
+    } catch (e, stackTrace) {
+      debugPrint('Error opening Hive box: $e\n$stackTrace');
+      return await Hive.openBox('offline_data');
+    }
+  }
+
+  Future<void> deleteNotification(String id) async {
+    try {
+      await Supabase.instance.client
+          .from('user_notifications')
+          .update({'is_deleted': true}).eq('id', id);
+
+      setState(() {
+        _notifications.removeWhere((n) => n['id'] == id);
+      });
+    } catch (e, stackTrace) {
+      debugPrint('Error deleting notification: $e\n$stackTrace');
+    }
+  }
+
+  @override
+  void dispose() {
+    try {
+      _subscription?.cancel();
+    } catch (e, stackTrace) {
+      debugPrint('Error cancelling subscription: $e\n$stackTrace');
+    }
+    super.dispose();
   }
 
   @override

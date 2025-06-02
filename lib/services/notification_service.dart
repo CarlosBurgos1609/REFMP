@@ -6,7 +6,8 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static void init(GlobalKey<NavigatorState> navigatorKey) {
-    const androidInit = AndroidInitializationSettings('icon');
+    const androidInit = AndroidInitializationSettings(
+        '@mipmap/ic_launcher'); // usa el ícono existente
     const initSettings = InitializationSettings(android: androidInit);
 
     flutterLocalNotificationsPlugin.initialize(
@@ -24,7 +25,7 @@ class NotificationService {
     required int id,
     required String title,
     required String message,
-    String icon = 'icon', // tu icono azul del calendario
+    String icon = '@mipmap/ic_launcher', // usa el ícono existente
     String? imageUrl,
     String? payload,
     String subText = 'Red de Escuelas de Formación Musical de Pasto',
