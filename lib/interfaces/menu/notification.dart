@@ -166,7 +166,6 @@ class _NotificationPageState extends State<NotificationPage> {
         for (var notif in data) {
           final notifData = notif['notifications'];
           if (notifData != null) {
-            // Convert UUID to int for notification ID
             final notificationId = notif['id'].hashCode & 0x7FFFFFFF;
             await NotificationService.showNotification(
               id: notificationId,
