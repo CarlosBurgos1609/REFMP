@@ -518,6 +518,7 @@ class _HomePageState extends State<HomePage>
                                                   const EdgeInsets.all(12.0),
                                               child: Column(
                                                 children: [
+                                                  const SizedBox(height: 15),
                                                   Text(
                                                     game['name'] ??
                                                         "Nombre desconocido",
@@ -536,7 +537,7 @@ class _HomePageState extends State<HomePage>
                                                     style: const TextStyle(
                                                         fontSize: 15),
                                                   ),
-                                                  const SizedBox(height: 12),
+                                                  const SizedBox(height: 15),
                                                   ElevatedButton.icon(
                                                     style: ElevatedButton
                                                         .styleFrom(
