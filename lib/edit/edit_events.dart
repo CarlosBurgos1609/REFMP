@@ -2,8 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:multi_select_flutter/dialog/multi_select_dialog_field.dart';
+import 'package:multi_select_flutter/util/multi_select_item.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/theme/theme_provider.dart';
 
 class EditEventForm extends StatefulWidget {
   final Map<String, dynamic> event;
@@ -20,8 +24,8 @@ class _EditEventFormState extends State<EditEventForm> {
   TextEditingController nameController = TextEditingController();
   TextEditingController locationController = TextEditingController();
   DateTime? selectedDateTime;
-  TimeOfDay? endTime;
-  String? selectedSede;
+  DateTime? selectedEndDateTime;
+  List<String> selectedSedes = [];
 
   List<Map<String, dynamic>> sedes = [];
 
@@ -30,21 +34,8 @@ class _EditEventFormState extends State<EditEventForm> {
     super.initState();
     nameController.text = widget.event['name'] ?? '';
     locationController.text = widget.event['location'] ?? '';
-    selectedDateTime = DateTime.tryParse(widget.event['date'] ?? '');
-
-    // Obtener la hora de fin (asegurándonos de que esté en el formato correcto)
-    final timeFin = widget.event['time_fin'];
-    if (timeFin != null && timeFin is String) {
-      final parts = timeFin.split(":");
-      if (parts.length == 2) {
-        setState(() {
-          endTime = TimeOfDay(
-            hour: int.tryParse(parts[0]) ?? 0,
-            minute: int.tryParse(parts[1]) ?? 0,
-          );
-        });
-      }
-    }
+    selectedDateTime = DateTime.tryParse(widget.event['start_datetime'] ?? '');
+    selectedEndDateTime = DateTime.tryParse(widget.event['end_datetime'] ?? '');
     fetchSedes();
   }
 
@@ -57,61 +48,54 @@ class _EditEventFormState extends State<EditEventForm> {
         .select('sede_id')
         .eq('event_id', widget.event['id']);
 
-    int? sedeId = eventSedeResponse.isNotEmpty
-        ? eventSedeResponse.first['sede_id']
-        : null;
+    List<String> preSelectedSedes = [];
+    for (var eventSede in eventSedeResponse) {
+      final sedeId = eventSede['sede_id'];
+      final sede =
+          sedeList.firstWhere((sede) => sede['id'] == sedeId, orElse: () => {});
+      if (sede.isNotEmpty) {
+        preSelectedSedes.add(sede['name']);
+      }
+    }
 
     setState(() {
       sedes = sedeList;
-      selectedSede = sedeList.firstWhere((sede) => sede['id'] == sedeId,
-          orElse: () => {})['name'];
+      selectedSedes = preSelectedSedes;
     });
   }
 
   Future<void> updateEvent() async {
     if (_formKey.currentState!.validate() &&
         selectedDateTime != null &&
-        endTime != null &&
-        selectedSede != null) {
-      final selectedSedeId =
-          sedes.firstWhere((sede) => sede['name'] == selectedSede)['id'] as int;
-
-      final date = selectedDateTime!;
-      final endDateTime = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        endTime!.hour,
-        endTime!.minute,
-      );
+        selectedEndDateTime != null &&
+        selectedSedes.isNotEmpty) {
+      final selectedSedeIds = selectedSedes.map((sedeName) {
+        return sedes.firstWhere((sede) => sede['name'] == sedeName)['id']
+            as int;
+      }).toList();
 
       await supabase.from('events').update({
         'name': nameController.text,
-        'date': date.toIso8601String(),
-        'time': DateFormat.Hm().format(date),
-        'time_fin':
-            '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
+        'date': selectedDateTime!.toIso8601String(),
+        'time': DateFormat.Hm().format(selectedDateTime!),
+        'time_fin': DateFormat.Hm().format(selectedEndDateTime!),
         'location': locationController.text,
-        'month': date.month,
-        'year': date.year,
-        'start_datetime': date.toIso8601String(),
-        'end_datetime': endDateTime.toIso8601String(),
+        'month': selectedDateTime!.month,
+        'year': selectedDateTime!.year,
+        'start_datetime': selectedDateTime!.toIso8601String(),
+        'end_datetime': selectedEndDateTime!.toIso8601String(),
       }).eq('id', widget.event['id']);
 
-      // Actualizar relación en events_headquarters
-      final existingRelation = await supabase
+      await supabase
           .from('events_headquarters')
-          .select()
+          .delete()
           .eq('event_id', widget.event['id']);
 
-      if (existingRelation.isEmpty) {
+      for (var sedeId in selectedSedeIds) {
         await supabase.from('events_headquarters').insert({
           'event_id': widget.event['id'],
-          'sede_id': selectedSedeId,
+          'sede_id': sedeId,
         });
-      } else {
-        await supabase.from('events_headquarters').update(
-            {'sede_id': selectedSedeId}).eq('event_id', widget.event['id']);
       }
 
       if (mounted) {
@@ -124,6 +108,10 @@ class _EditEventFormState extends State<EditEventForm> {
         context,
         MaterialPageRoute(
             builder: (context) => const EventsPage(title: 'Eventos')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Completa todos los campos requeridos')),
       );
     }
   }
@@ -158,6 +146,7 @@ class _EditEventFormState extends State<EditEventForm> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
@@ -230,23 +219,59 @@ class _EditEventFormState extends State<EditEventForm> {
                     value!.isEmpty ? 'Ingresa un nombre' : null,
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedSede,
-                decoration: customInputDecoration(
-                    'Selecciona la sede', Icons.location_city),
-                items: sedes.map((sede) {
-                  return DropdownMenuItem<String>(
-                    value: sede['name'],
-                    child: Text(sede['name']),
-                  );
-                }).toList(),
-                onChanged: (value) {
+              MultiSelectDialogField(
+                items: sedes
+                    .map((sede) =>
+                        MultiSelectItem<String>(sede['name'], sede['name']))
+                    .toList(),
+                initialValue: selectedSedes,
+                title: const Text(
+                  "Selecciona las sedes",
+                  style: TextStyle(
+                      color: Colors.blue, fontWeight: FontWeight.bold),
+                ),
+                selectedColor: Colors.blue,
+                itemsTextStyle: TextStyle(
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                  fontWeight: FontWeight.w500,
+                ),
+                selectedItemsTextStyle: TextStyle(
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: BoxDecoration(
+                  color: themeProvider.isDarkMode
+                      ? Colors.transparent
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.all(Radius.circular(10)),
+                  border: Border.all(
+                    color: Colors.blue,
+                    width: 1,
+                  ),
+                ),
+                buttonIcon: const Icon(
+                  Icons.location_city,
+                  color: Colors.blue,
+                ),
+                buttonText: const Text(
+                  "Selecciona las sedes",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                onConfirm: (values) {
                   setState(() {
-                    selectedSede = value;
+                    selectedSedes = values.cast<String>();
                   });
                 },
-                validator: (value) =>
-                    value == null ? 'Selecciona una sede' : null,
+                validator: (values) {
+                  if (values == null || values.isEmpty) {
+                    return "Selecciona al menos una sede";
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -264,7 +289,10 @@ class _EditEventFormState extends State<EditEventForm> {
                       ? DateFormat('dd/MM/yyyy – hh:mm a')
                           .format(selectedDateTime!)
                       : 'Seleccionar fecha y hora de inicio',
-                  style: const TextStyle(color: Colors.blue),
+                  style: TextStyle(
+                      color: themeProvider.isDarkMode
+                          ? Colors.white
+                          : Colors.blue),
                 ),
                 onTap: () async {
                   final date = await showDatePicker(
@@ -272,6 +300,28 @@ class _EditEventFormState extends State<EditEventForm> {
                     initialDate: selectedDateTime ?? DateTime.now(),
                     firstDate: DateTime(2024),
                     lastDate: DateTime(2100),
+                    builder: (context, child) {
+                      return Theme(
+                        data: themeProvider.isDarkMode
+                            ? ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.white,
+                                ),
+                                dialogBackgroundColor: Colors.grey[900],
+                              )
+                            : ThemeData.light().copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.blue,
+                                ),
+                                dialogBackgroundColor: Colors.white,
+                              ),
+                        child: child!,
+                      );
+                    },
                   );
 
                   if (date != null) {
@@ -279,6 +329,78 @@ class _EditEventFormState extends State<EditEventForm> {
                       context: context,
                       initialTime: TimeOfDay.fromDateTime(
                           selectedDateTime ?? DateTime.now()),
+                      builder: (context, child) {
+                        return Theme(
+                          data: themeProvider.isDarkMode
+                              ? ThemeData.dark().copyWith(
+                                  colorScheme: const ColorScheme.dark(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.white,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.grey[900],
+                                  ),
+                                )
+                              : ThemeData.light().copyWith(
+                                  colorScheme: const ColorScheme.light(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.blue,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                          child: child!,
+                        );
+                      },
                     );
 
                     if (time != null) {
@@ -298,21 +420,137 @@ class _EditEventFormState extends State<EditEventForm> {
               ListTile(
                 leading: const Icon(Icons.access_time, color: Colors.blue),
                 title: Text(
-                  endTime != null
-                      ? '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}'
-                      : 'Seleccionar hora de fin',
-                  style: const TextStyle(color: Colors.blue),
+                  selectedEndDateTime != null
+                      ? DateFormat('dd/MM/yyyy – hh:mm a')
+                          .format(selectedEndDateTime!)
+                      : 'Seleccionar fecha y hora de fin',
+                  style: TextStyle(
+                      color: themeProvider.isDarkMode
+                          ? Colors.white
+                          : Colors.blue),
                 ),
                 onTap: () async {
-                  final picked = await showTimePicker(
+                  final date = await showDatePicker(
                     context: context,
-                    initialTime: endTime ?? TimeOfDay.now(),
+                    initialDate: selectedEndDateTime ??
+                        selectedDateTime ??
+                        DateTime.now(),
+                    firstDate: DateTime(2024),
+                    lastDate: DateTime(2100),
+                    builder: (context, child) {
+                      return Theme(
+                        data: themeProvider.isDarkMode
+                            ? ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.white,
+                                ),
+                                dialogBackgroundColor: Colors.grey[900],
+                              )
+                            : ThemeData.light().copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.blue,
+                                ),
+                                dialogBackgroundColor: Colors.white,
+                              ),
+                        child: child!,
+                      );
+                    },
                   );
 
-                  if (picked != null) {
-                    setState(() {
-                      endTime = picked;
-                    });
+                  if (date != null) {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(
+                          selectedEndDateTime ?? DateTime.now()),
+                      builder: (context, child) {
+                        return Theme(
+                          data: themeProvider.isDarkMode
+                              ? ThemeData.dark().copyWith(
+                                  colorScheme: const ColorScheme.dark(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.white,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.grey[900],
+                                  ),
+                                )
+                              : ThemeData.light().copyWith(
+                                  colorScheme: const ColorScheme.light(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.blue,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                          child: child!,
+                        );
+                      },
+                    );
+
+                    if (time != null) {
+                      setState(() {
+                        selectedEndDateTime = DateTime(
+                          date.year,
+                          date.month,
+                          date.day,
+                          time.hour,
+                          time.minute,
+                        );
+                      });
+                    }
                   }
                 },
               ),
