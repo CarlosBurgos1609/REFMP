@@ -324,15 +324,23 @@ class _AddEventFormState extends State<AddEventForm> {
                     lastDate: DateTime(2100),
                     builder: (context, child) {
                       return Theme(
-                        data: ThemeData.light().copyWith(
-                          colorScheme: const ColorScheme.light(
-                            primary: Colors
-                                .blue, // ← color de encabezado, botón "OK"
-                            onPrimary: Colors.white, // ← texto sobre fondo azul
-                            onSurface: Colors.blue, // ← texto del calendario
-                          ),
-                          dialogBackgroundColor: Colors.white,
-                        ),
+                        data: themeProvider.isDarkMode
+                            ? ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.white,
+                                ),
+                                dialogBackgroundColor: Colors.grey[900],
+                              )
+                            : ThemeData.light().copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.blue,
+                                ),
+                                dialogBackgroundColor: Colors.white,
+                              ),
                         child: child!,
                       );
                     },
@@ -341,41 +349,77 @@ class _AddEventFormState extends State<AddEventForm> {
                   if (date != null) {
                     final time = await showTimePicker(
                       context: context,
-                      initialTime: TimeOfDay.now(),
+                      initialTime: TimeOfDay.fromDateTime(
+                          selectedDateTime ?? DateTime.now()),
                       builder: (context, child) {
                         return Theme(
-                          data: ThemeData.light().copyWith(
-                            colorScheme: const ColorScheme.light(
-                              primary:
-                                  Colors.blue, // color del reloj y botón OK
-                              onPrimary: Colors.white,
-                              onSurface: Colors.blue,
-                            ),
-                            timePickerTheme: TimePickerThemeData(
-                              dayPeriodShape: const RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(8)),
-                              ),
-                              dayPeriodColor:
-                                  MaterialStateColor.resolveWith((states) {
-                                if (states.contains(MaterialState.selected)) {
-                                  return Colors
-                                      .blueAccent; // fondo AM/PM seleccionado
-                                }
-                                return Colors
-                                    .transparent; // fondo AM/PM no seleccionado
-                              }),
-                              dayPeriodTextColor:
-                                  MaterialStateColor.resolveWith((states) {
-                                if (states.contains(MaterialState.selected)) {
-                                  return Colors
-                                      .white; // texto AM/PM seleccionado
-                                }
-                                return Colors
-                                    .grey; // texto AM/PM no seleccionado
-                              }),
-                            ),
-                          ),
+                          data: themeProvider.isDarkMode
+                              ? ThemeData.dark().copyWith(
+                                  colorScheme: const ColorScheme.dark(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.white,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.grey[900],
+                                  ),
+                                )
+                              : ThemeData.light().copyWith(
+                                  colorScheme: const ColorScheme.light(
+                                    primary: Colors.blue,
+                                    onPrimary: Colors.white,
+                                    onSurface: Colors.blue,
+                                  ),
+                                  timePickerTheme: TimePickerThemeData(
+                                    dayPeriodShape:
+                                        const RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.all(Radius.circular(8)),
+                                    ),
+                                    dayPeriodColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.blueAccent;
+                                      }
+                                      return Colors.transparent;
+                                    }),
+                                    dayPeriodTextColor:
+                                        MaterialStateColor.resolveWith(
+                                            (states) {
+                                      if (states
+                                          .contains(MaterialState.selected)) {
+                                        return Colors.white;
+                                      }
+                                      return Colors.grey;
+                                    }),
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
                           child: child!,
                         );
                       },
