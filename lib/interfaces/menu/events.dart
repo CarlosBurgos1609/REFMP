@@ -57,7 +57,7 @@ class _EventsPageState extends State<EventsPage> {
             .order('date', ascending: true)
             .order('name', ascending: true);
 
-        await box.put('events', response); // Guardar en cache
+        await box.put('events', response);
         debugPrint('Eventos obtenidos ONLINE: ${response.length}');
       } catch (e) {
         debugPrint('Error al obtener eventos, usando cache: $e');
@@ -182,10 +182,8 @@ class _EventsPageState extends State<EventsPage> {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Eliminar el evento de la base de datos
       await supabase.from('events').delete().eq('id', event['id']);
 
-      // 2. Eliminar la imagen del bucket (si existe)
       final imageName = event['image'];
       if (imageName != null && imageName.isNotEmpty) {
         await supabase.storage
@@ -193,7 +191,6 @@ class _EventsPageState extends State<EventsPage> {
             .remove(['events_images/$imageName']);
       }
 
-      // 3. Mostrar un mensaje de éxito
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -202,7 +199,6 @@ class _EventsPageState extends State<EventsPage> {
           ),
         );
 
-        // 4. Redirigir a EventsPage
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -278,6 +274,7 @@ class _EventsPageState extends State<EventsPage> {
               );
             },
           ),
+          centerTitle: true,
         ),
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
@@ -369,13 +366,37 @@ class _EventsPageState extends State<EventsPage> {
                   ),
                   monthViewSettings: MonthViewSettings(
                     appointmentDisplayMode:
-                        // MonthAppointmentDisplayMode.appointment,
                         MonthAppointmentDisplayMode.indicator,
                     showAgenda: true,
+                    monthCellStyle: MonthCellStyle(
+                      textStyle: TextStyle(
+                        color: themeProvider.isDarkMode
+                            ? const Color.fromARGB(255, 236, 234, 234)
+                            : Colors.black,
+                        // fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    navigationDirection: MonthNavigationDirection.horizontal,
                   ),
                   scheduleViewSettings: const ScheduleViewSettings(
                     appointmentItemHeight: 50,
+                    monthHeaderSettings: MonthHeaderSettings(
+                      monthFormat: 'MMMM yyyy',
+                    ),
                   ),
+                  onViewChanged: (ViewChangedDetails details) {
+                    if (_calendarView == CalendarView.month) {
+                      final newDate = details
+                          .visibleDates[details.visibleDates.length ~/ 2];
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() {
+                            _focusedDate = newDate;
+                          });
+                        }
+                      });
+                    }
+                  },
                   onTap: (calendarTapDetails) {
                     if (calendarTapDetails.appointments != null &&
                         calendarTapDetails.appointments!.isNotEmpty) {
@@ -557,8 +578,7 @@ class _EventsPageState extends State<EventsPage> {
 
                                                           if (confirm == true) {
                                                             await _deleteEvent(
-                                                                event,
-                                                                context); // Aquí llamas a _deleteEvent
+                                                                event, context);
                                                           }
                                                         },
                                                         icon: const Icon(
@@ -602,7 +622,7 @@ class _EventsPageState extends State<EventsPage> {
           future: _canAddEvent(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(); // o un indicador de carga pequeño
+              return const SizedBox();
             }
 
             if (snapshot.hasData && snapshot.data == true) {
@@ -618,7 +638,7 @@ class _EventsPageState extends State<EventsPage> {
                 child: const Icon(Icons.add, color: Colors.white),
               );
             } else {
-              return const SizedBox(); // no mostrar nada si no tiene permiso
+              return const SizedBox();
             }
           },
         ),
