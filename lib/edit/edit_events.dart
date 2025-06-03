@@ -49,14 +49,22 @@ class _EditEventFormState extends State<EditEventForm> {
   }
 
   Future<void> fetchSedes() async {
-    final response = await supabase.from('sedes').select();
+    final sedeResponse = await supabase.from('sedes').select();
+    final sedeList = List<Map<String, dynamic>>.from(sedeResponse);
+
+    final eventSedeResponse = await supabase
+        .from('events_headquarters')
+        .select('sede_id')
+        .eq('event_id', widget.event['id']);
+
+    int? sedeId = eventSedeResponse.isNotEmpty
+        ? eventSedeResponse.first['sede_id']
+        : null;
+
     setState(() {
-      sedes = List<Map<String, dynamic>>.from(response);
-      final matched = sedes.firstWhere(
-        (sede) => sede['id'] == widget.event['sede_id'],
-        orElse: () => {},
-      );
-      selectedSede = matched['name'];
+      sedes = sedeList;
+      selectedSede = sedeList.firstWhere((sede) => sede['id'] == sedeId,
+          orElse: () => {})['name'];
     });
   }
 
@@ -86,10 +94,25 @@ class _EditEventFormState extends State<EditEventForm> {
         'location': locationController.text,
         'month': date.month,
         'year': date.year,
-        'sede_id': selectedSedeId,
         'start_datetime': date.toIso8601String(),
         'end_datetime': endDateTime.toIso8601String(),
       }).eq('id', widget.event['id']);
+
+      // Actualizar relación en events_headquarters
+      final existingRelation = await supabase
+          .from('events_headquarters')
+          .select()
+          .eq('event_id', widget.event['id']);
+
+      if (existingRelation.isEmpty) {
+        await supabase.from('events_headquarters').insert({
+          'event_id': widget.event['id'],
+          'sede_id': selectedSedeId,
+        });
+      } else {
+        await supabase.from('events_headquarters').update(
+            {'sede_id': selectedSedeId}).eq('event_id', widget.event['id']);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -157,10 +180,32 @@ class _EditEventFormState extends State<EditEventForm> {
               widget.event['image'] != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        widget.event['image'],
-                        height: 200,
-                        fit: BoxFit.cover,
+                      child: Stack(
+                        children: [
+                          Image.network(
+                            widget.event['image'],
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              color: Colors.black54,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: const Text(
+                                'La imagen no se puede editar',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          )
+                        ],
                       ),
                     )
                   : Container(

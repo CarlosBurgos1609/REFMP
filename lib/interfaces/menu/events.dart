@@ -53,7 +53,7 @@ class _EventsPageState extends State<EventsPage> {
       try {
         response = await supabase
             .from('events')
-            .select('*, sedes(name)')
+            .select('*, events_headquarters(*, sedes(name))')
             .order('date', ascending: true)
             .order('name', ascending: true);
 
@@ -387,7 +387,13 @@ class _EventsPageState extends State<EventsPage> {
                           eventIndex < _eventDetails.length) {
                         final event = _eventDetails[eventIndex];
                         final sedeName =
-                            event['sedes']['name'] ?? 'Sede no encontrada';
+                            (event['events_headquarters'] as List?)?.map((hq) {
+                                  final sede = hq?['sedes'];
+                                  return sede != null && sede['name'] != null
+                                      ? sede['name']
+                                      : 'Sede desconocida';
+                                }).join(', ') ??
+                                'Sin sedes asociadas';
 
                         showModalBottomSheet(
                           context: context,

@@ -5,7 +5,11 @@ import 'package:diacritic/diacritic.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:multi_select_flutter/dialog/multi_select_dialog_field.dart';
+import 'package:multi_select_flutter/util/multi_select_item.dart';
+import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/menu/events.dart';
+import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddEventForm extends StatefulWidget {
@@ -23,7 +27,7 @@ class _AddEventFormState extends State<AddEventForm> {
   TextEditingController locationController = TextEditingController();
   DateTime? selectedDateTime;
   TimeOfDay? endTime;
-  String? selectedSede;
+  List<String> selectedSedes = [];
   File? imageFile;
 
   List<Map<String, dynamic>> sedes = [];
@@ -35,9 +39,12 @@ class _AddEventFormState extends State<AddEventForm> {
   }
 
   Future<void> fetchSedes() async {
-    final response = await supabase.from('sedes').select();
+    final response = await Supabase.instance.client
+        .from('sedes')
+        .select('id, name'); // Asegúrate de que el campo `name` existe
+
     setState(() {
-      sedes = List<Map<String, dynamic>>.from(response);
+      sedes = response;
     });
   }
 
@@ -51,12 +58,21 @@ class _AddEventFormState extends State<AddEventForm> {
   }
 
   Future<void> saveEvent() async {
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo obtener el usuario actual')),
+      );
+      return;
+    }
+    final userId = currentUser.id;
+
     if (!_formKey.currentState!.validate()) return;
 
     if (imageFile == null ||
         selectedDateTime == null ||
         endTime == null ||
-        selectedSede == null) {
+        selectedSedes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Completa todos los campos requeridos')),
       );
@@ -69,16 +85,12 @@ class _AddEventFormState extends State<AddEventForm> {
     final filename = 'event_${uuid}_$cleanName.jpg';
 
     try {
-      await supabase.storage
-          .from('Events')
-          .upload('event_images/$filename', imageFile!);
+      // Subir imagen
+      final storagePath = 'event_images/$filename';
+      await supabase.storage.from('Events').upload(storagePath, imageFile!);
 
-      final imageUrl = supabase.storage
-          .from('Events')
-          .getPublicUrl('event_images/$filename');
-
-      final selectedSedeId =
-          sedes.firstWhere((sede) => sede['name'] == selectedSede)['id'];
+      final imageUrl =
+          supabase.storage.from('Events').getPublicUrl(storagePath);
 
       final date = selectedDateTime!;
       final endDateTime = DateTime(
@@ -89,26 +101,39 @@ class _AddEventFormState extends State<AddEventForm> {
         endTime!.minute,
       );
 
-      await supabase.from('events').insert({
-        'name': nameController.text,
-        'date': date.toIso8601String(),
-        'time': DateFormat.Hm().format(date),
-        'time_fin':
-            '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
-        'location': locationController.text,
-        'image': imageUrl,
-        'month': date.month,
-        'year': date.year,
-        'sede_id': selectedSedeId,
-        'start_datetime': date.toIso8601String(),
-        'end_datetime': endDateTime.toIso8601String(),
-      });
+      // Insertar el evento y recuperar su ID
+      final response = await supabase
+          .from('events')
+          .insert({
+            'name': nameController.text,
+            'date': date.toIso8601String(),
+            'time': DateFormat.Hm().format(date),
+            'time_fin':
+                '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
+            'location': locationController.text,
+            'image': imageUrl,
+            'month': date.month,
+            'year': date.year,
+            'start_datetime': date.toIso8601String(),
+            'end_datetime': endDateTime.toIso8601String(),
+          })
+          .select()
+          .single();
 
-      if (imageFile == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor selecciona una imagen')),
-        );
-        return;
+      final eventId = response['id'];
+
+      // Obtener los IDs de las sedes seleccionadas
+      final selectedSedeIds = selectedSedes.map((sedeName) {
+        final match = sedes.firstWhere((s) => s['name'] == sedeName);
+        return match['id'];
+      }).toList();
+
+      // Insertar en la tabla intermedia
+      for (var sedeId in selectedSedeIds) {
+        await supabase.from('events_headquarters').insert({
+          'event_id': eventId,
+          'sede_id': sedeId,
+        });
       }
 
       if (mounted) {
@@ -119,7 +144,8 @@ class _AddEventFormState extends State<AddEventForm> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-              builder: (context) => const EventsPage(title: 'Eventos')),
+            builder: (context) => const EventsPage(title: 'Eventos'),
+          ),
         );
       }
     } catch (e) {
@@ -161,6 +187,7 @@ class _AddEventFormState extends State<AddEventForm> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
@@ -213,25 +240,58 @@ class _AddEventFormState extends State<AddEventForm> {
                     value!.isEmpty ? 'Ingresa un nombre' : null,
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedSede,
-                decoration: customInputDecoration(
-                  'Selecciona la sede',
-                  Icons.location_city, // ícono dinámico
+              MultiSelectDialogField(
+                items: sedes
+                    .map((sede) =>
+                        MultiSelectItem<String>(sede['name'], sede['name']))
+                    .toList(),
+                title: Text(
+                  "Selecciona las sedes",
+                  style: TextStyle(
+                      color: Colors.blue, fontWeight: FontWeight.bold),
                 ),
-                items: sedes.map((sede) {
-                  return DropdownMenuItem<String>(
-                    value: sede['name'],
-                    child: Text(sede['name']),
-                  );
-                }).toList(),
-                onChanged: (value) {
+                selectedColor: Colors.blue,
+                itemsTextStyle: TextStyle(
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                  fontWeight: FontWeight.w500,
+                ),
+                selectedItemsTextStyle: TextStyle(
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: BoxDecoration(
+                  color: themeProvider.isDarkMode
+                      ? Colors.transparent
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                  border: Border.all(
+                    color: Colors.blue,
+                    width: 1,
+                  ),
+                ),
+                buttonIcon: Icon(
+                  Icons.location_city,
+                  color: Colors.blue,
+                ),
+                buttonText: Text(
+                  "Selecciona las sedes",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                onConfirm: (values) {
                   setState(() {
-                    selectedSede = value;
+                    selectedSedes = values.cast<String>();
                   });
                 },
-                validator: (value) =>
-                    value == null ? 'Selecciona una sede' : null,
+                validator: (values) {
+                  if (values == null || values.isEmpty) {
+                    return "Selecciona al menos una sede";
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -300,7 +360,7 @@ class _AddEventFormState extends State<AddEventForm> {
                                   MaterialStateColor.resolveWith((states) {
                                 if (states.contains(MaterialState.selected)) {
                                   return Colors
-                                      .greenAccent; // fondo AM/PM seleccionado
+                                      .blueAccent; // fondo AM/PM seleccionado
                                 }
                                 return Colors
                                     .transparent; // fondo AM/PM no seleccionado
@@ -367,7 +427,7 @@ class _AddEventFormState extends State<AddEventForm> {
                                 MaterialStateColor.resolveWith((states) {
                               if (states.contains(MaterialState.selected)) {
                                 return Colors
-                                    .greenAccent; // fondo AM/PM seleccionado
+                                    .blueAccent; // fondo AM/PM seleccionado
                               }
                               return Colors
                                   .transparent; // fondo AM/PM no seleccionado

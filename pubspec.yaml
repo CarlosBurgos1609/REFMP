@@ -81,6 +81,8 @@ dependencies:
   video_player: ^2.9.5
   youtube_player_flutter: ^9.1.1
 
+  multi_select_flutter: ^4.1.3
+
   # flutter_native_timezone: ^2.0.0
 
 dev_dependencies:
