@@ -442,7 +442,7 @@ class _EventsPageState extends State<EventsPage> {
                                 Shadow(
                                   color: Colors.black,
                                   offset: Offset(2, 2),
-                                  blurRadius: 5,
+                                  blurRadius: 8,
                                 ),
                               ],
                             ),
