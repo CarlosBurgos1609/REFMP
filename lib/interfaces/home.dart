@@ -504,7 +504,7 @@ class _HomePageState extends State<HomePage>
                                                 game['image'] ?? '',
                                                 fit: BoxFit.cover,
                                                 width: double.infinity,
-                                                height: 160,
+                                                height: 180,
                                                 errorBuilder: (context, error,
                                                         stackTrace) =>
                                                     const Icon(
@@ -518,7 +518,7 @@ class _HomePageState extends State<HomePage>
                                                   const EdgeInsets.all(12.0),
                                               child: Column(
                                                 children: [
-                                                  const SizedBox(height: 15),
+                                                  const SizedBox(height: 10),
                                                   Text(
                                                     game['name'] ??
                                                         "Nombre desconocido",
