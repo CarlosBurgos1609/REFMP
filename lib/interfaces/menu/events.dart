@@ -12,6 +12,23 @@ import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
 
+// Map of month names to image paths
+const Map<String, String> monthImages = {
+  'enero': 'assets/images/enero.png',
+  'febrero': 'assets/images/febrero.png',
+  'marzo': 'assets/images/marzo.png',
+  'abril': 'assets/images/abril.png',
+  'mayo': 'assets/images/mayo.png',
+  'junio': 'assets/images/junio.png',
+  'julio': 'assets/images/julio.png',
+  'agosto': 'assets/images/agosto.png',
+  'septiembre': 'assets/images/septiembre.png',
+  'octubre': 'assets/images/octubre.png',
+  'noviembre': 'assets/images/noviembre.png',
+  'diciembre': 'assets/images/diciembre.png',
+  // Add more months and corresponding image paths here
+};
+
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key, required this.title});
   final String title;
@@ -168,7 +185,7 @@ class _EventsPageState extends State<EventsPage> {
     if (teacherResponse != null) return true;
 
     final advisorResponse = await supabase
-        .from('advisors')
+        .from('াদes')
         .select()
         .eq('user_id', userId)
         .maybeSingle();
@@ -373,17 +390,67 @@ class _EventsPageState extends State<EventsPage> {
                         color: themeProvider.isDarkMode
                             ? const Color.fromARGB(255, 236, 234, 234)
                             : Colors.black,
-                        // fontWeight: FontWeight.bold,
                       ),
                     ),
                     navigationDirection: MonthNavigationDirection.horizontal,
                   ),
-                  scheduleViewSettings: const ScheduleViewSettings(
+                  scheduleViewSettings: ScheduleViewSettings(
                     appointmentItemHeight: 50,
-                    monthHeaderSettings: MonthHeaderSettings(
+                    monthHeaderSettings: const MonthHeaderSettings(
                       monthFormat: 'MMMM yyyy',
+                      height: 200, // Increase height to accommodate the image
+                      textAlign: TextAlign.center,
+                      backgroundColor: Colors.transparent,
                     ),
                   ),
+                  scheduleViewMonthHeaderBuilder: (BuildContext context,
+                      ScheduleViewMonthHeaderDetails details) {
+                    // Extract the month name in lowercase for mapping
+                    final monthName = DateFormat.MMMM('es_ES')
+                        .format(details.date)
+                        .toLowerCase();
+                    // Get the image path for the month, default to a placeholder if not found
+                    final imagePath =
+                        monthImages[monthName] ?? 'assets/aprende.jpg';
+
+                    return Stack(
+                      children: [
+                        // Background image for the month header
+                        Container(
+                          height: 250,
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: AssetImage(imagePath),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        // Overlay the month name text
+                        Positioned(
+                          // bottom: 10,
+                          top: 10,
+                          left: 16,
+                          child: Text(
+                            DateFormat('MMMM yyyy', 'es_ES')
+                                .format(details.date)
+                                .toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  offset: Offset(2, 2),
+                                  blurRadius: 5,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                   onViewChanged: (ViewChangedDetails details) {
                     if (_calendarView == CalendarView.month) {
                       final newDate = details
