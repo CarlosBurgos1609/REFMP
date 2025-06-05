@@ -648,8 +648,8 @@ class _StudentsPageState extends State<StudentsPage> {
             ),
             Positioned(
               right: 8,
-              top: 8,
-              bottom: 8,
+              top: 45,
+              bottom: 40,
               child: Container(
                 width: 30,
                 child: ListView.builder(
@@ -661,7 +661,7 @@ class _StudentsPageState extends State<StudentsPage> {
                           ? () => scrollToLetter(letter)
                           : null,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        padding: const EdgeInsets.symmetric(vertical: 2.2),
                         child: Text(
                           letter,
                           style: TextStyle(
