@@ -34,11 +34,30 @@ class _StudentsPageState extends State<StudentsPage> {
   final ImagePicker _picker = ImagePicker();
   List<Map<String, dynamic>> students = [];
   List<Map<String, dynamic>> filteredStudents = [];
+  Map<String, List<Map<String, dynamic>>> groupedStudents = {};
+  List<String> alphabet =
+      List.generate(26, (index) => String.fromCharCode(65 + index));
+  final ScrollController _scrollController = ScrollController();
+  Map<String, GlobalKey> letterKeys = {};
+  String? selectedSede;
+  String? selectedInstrument;
+  List<String> sedes = [];
+  List<String> instruments = [];
 
   @override
   void initState() {
     super.initState();
     fetchStudents();
+    _searchController.addListener(() {
+      filterStudents(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> pickImage() async {
@@ -88,54 +107,117 @@ class _StudentsPageState extends State<StudentsPage> {
     final box = await Hive.openBox('offline_data');
     const cacheKey = 'students_data';
 
-    // Verificar la conectividad
     final connectivityResult = await (Connectivity().checkConnectivity());
     if (connectivityResult == ConnectivityResult.none) {
-      // No hay conexión, carga los datos desde el cache
       final cachedStudents = box.get(cacheKey);
       if (cachedStudents != null) {
         setState(() {
           students = List<Map<String, dynamic>>.from(cachedStudents);
-          filteredStudents = students;
+          filteredStudents = List.from(students);
+          debugPrint('Loaded ${students.length} students from cache');
+          groupStudents();
+          fetchFilters();
         });
-        debugPrint('Estudiantes cargados desde el caché');
+        return;
       } else {
-        debugPrint('No hay datos en caché');
+        debugPrint('No cached data available');
+        return;
       }
-      return;
     }
 
     try {
-      // Si hay conexión, obtiene los estudiantes de Supabase
       final response = await Supabase.instance.client
           .from('students')
           .select(
-              '*, student_instruments(instruments(name)), sedes!students_sede_id_fkey(name)')
-          .order('first_name', ascending: true); // Ordenar por nombre
+              '*, student_instruments!left(instruments!inner(name)), sedes!students_sede_id_fkey!left(name)')
+          .order('first_name', ascending: true);
 
       if (response != null) {
         setState(() {
           students = List<Map<String, dynamic>>.from(response);
-          filteredStudents = students;
+          filteredStudents = List.from(students);
+          debugPrint('Fetched ${students.length} students from Supabase');
+          groupStudents();
+          fetchFilters();
         });
-
-        // Guardar los datos en el caché local para uso futuro
         await box.put(cacheKey, response);
-        debugPrint('Estudiantes obtenidos y guardados en el caché');
       } else {
-        debugPrint('Error: No se obtuvieron los estudiantes');
+        debugPrint('Error: No students returned from Supabase');
       }
     } catch (e) {
-      debugPrint('Error al obtener estudiantes: $e');
+      debugPrint('Error fetching students: $e');
     }
+  }
+
+  void fetchFilters() {
+    setState(() {
+      sedes = students
+          .map((student) => student['sedes']?['name'] as String?)
+          .where((sede) => sede != null)
+          .toSet()
+          .toList()
+          .cast<String>();
+
+      instruments = students
+          .expand((student) {
+            final instrumentsList =
+                student['student_instruments'] as List<dynamic>?;
+            if (instrumentsList == null || instrumentsList.isEmpty) {
+              return <String>[];
+            }
+            return instrumentsList
+                .where((e) =>
+                    e is Map<String, dynamic> &&
+                    e['instruments'] != null &&
+                    e['instruments']['name'] is String)
+                .map((e) => e['instruments']['name'] as String);
+          })
+          .toSet()
+          .toList();
+      debugPrint('Sedes: $sedes, Instruments: $instruments');
+    });
+  }
+
+  void groupStudents() {
+    groupedStudents.clear();
+    letterKeys.clear();
+    for (var letter in alphabet) {
+      letterKeys[letter] = GlobalKey();
+      final studentsForLetter = filteredStudents.where((student) {
+        final firstName = student['first_name'] as String?;
+        return firstName != null &&
+            firstName.isNotEmpty &&
+            firstName.toUpperCase().startsWith(letter);
+      }).toList();
+      if (studentsForLetter.isNotEmpty) {
+        groupedStudents[letter] = studentsForLetter;
+      }
+    }
+    debugPrint('Grouped students: ${groupedStudents.keys.join(', ')}');
   }
 
   void filterStudents(String query) {
     setState(() {
       filteredStudents = students.where((student) {
-        final firstName = student['first_name'].toLowerCase();
-        return firstName.contains(query.toLowerCase());
+        final firstName =
+            (student['first_name'] as String?)?.toLowerCase() ?? '';
+        final matchesQuery =
+            query.isEmpty || firstName.contains(query.toLowerCase());
+        final matchesSede =
+            selectedSede == null || student['sedes']?['name'] == selectedSede;
+        final matchesInstrument = selectedInstrument == null ||
+            (student['student_instruments'] as List<dynamic>?)?.any(
+                  (e) =>
+                      e is Map<String, dynamic> &&
+                      e['instruments'] != null &&
+                      e['instruments']['name'] == selectedInstrument,
+                ) ==
+                true;
+        return matchesQuery && matchesSede && matchesInstrument;
       }).toList();
+      debugPrint(
+          'Filtered ${filteredStudents.length} students for query: "$query", sede: $selectedSede, instrument: $selectedInstrument');
+      groupStudents();
     });
   }
 
@@ -155,14 +237,9 @@ class _StudentsPageState extends State<StudentsPage> {
         return Wrap(
           children: [
             ListTile(
-              leading: Icon(
-                Icons.info,
-                color: Colors.blue,
-              ),
-              title: Text(
-                'Más información',
-                style: TextStyle(color: Colors.blue),
-              ),
+              leading: Icon(Icons.info, color: Colors.blue),
+              title:
+                  Text('Más información', style: TextStyle(color: Colors.blue)),
               onTap: () {
                 Navigator.pop(context);
                 showStudentDetails(student);
@@ -194,10 +271,7 @@ class _StudentsPageState extends State<StudentsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.blue),
-              ),
+              child: Text('Cancelar', style: TextStyle(color: Colors.blue)),
             ),
             TextButton(
               onPressed: () {
@@ -218,7 +292,7 @@ class _StudentsPageState extends State<StudentsPage> {
       builder: (context) {
         return AlertDialog(
           title: Text(
-            '${student['first_name']} ${student['last_name']}',
+            '${student['first_name'] ?? 'Sin nombre'} ${student['last_name'] ?? ''}',
             style: TextStyle(
               color: Colors.blue,
               fontWeight: FontWeight.bold,
@@ -244,18 +318,10 @@ class _StudentsPageState extends State<StudentsPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Text(
-                  //   student['email'],
-                  //   style: TextStyle(color: Colors.blue, height: 2),
-                  // ),
                   Text(
-                    'Instrumento(s): ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}',
+                    'Instrumento(s): ${student['student_instruments'] != null && (student['student_instruments'] as List).isNotEmpty ? (student['student_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}',
                     style: TextStyle(height: 2),
                   ),
-                  // Text(
-                  //   'Sede(s): ${student['student_sedes'] != null && student['student_sedes'].isNotEmpty ? student['student_sedes'].map((e) => e['sedes']['name']).join(', ') : 'No asignadas'}',
-                  //   style: TextStyle(height: 2),
-                  // ),
                   Text(
                     'Sede(s): ${student['sedes']?['name'] ?? 'No asignada'}',
                     style: TextStyle(height: 2),
@@ -267,10 +333,120 @@ class _StudentsPageState extends State<StudentsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cerrar',
-                style: TextStyle(color: Colors.blue),
+              child: Text('Cerrar', style: TextStyle(color: Colors.blue)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void showFilterDialog() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDarkMode
+        ? const Color.fromARGB(31, 31, 28, 28).withOpacity(0.8)
+        : Colors.white.withOpacity(0.9);
+    final textColor = isDarkMode ? Colors.white : Colors.blue;
+    final iconColor = textColor;
+
+    String? tempSede = selectedSede;
+    String? tempInstrument = selectedInstrument;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: backgroundColor,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Filtros',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(
+                  labelText: 'Sede',
+                  labelStyle: TextStyle(color: textColor),
+                  prefixIcon: Icon(Icons.location_on, color: iconColor),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: textColor),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: textColor),
+                  ),
+                ),
+                dropdownColor: backgroundColor,
+                value: tempSede,
+                iconEnabledColor: iconColor,
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text('Todas', style: TextStyle(color: textColor)),
+                  ),
+                  ...sedes.map((sede) => DropdownMenuItem(
+                        value: sede,
+                        child: Text(sede, style: TextStyle(color: textColor)),
+                      )),
+                ],
+                onChanged: (value) {
+                  tempSede = value;
+                },
               ),
+              SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(
+                  labelText: 'Instrumento',
+                  labelStyle: TextStyle(color: textColor),
+                  prefixIcon: Icon(Icons.music_note, color: iconColor),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: textColor),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: textColor),
+                  ),
+                ),
+                dropdownColor: backgroundColor,
+                value: tempInstrument,
+                iconEnabledColor: iconColor,
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text('Todos', style: TextStyle(color: textColor)),
+                  ),
+                  ...instruments.map((instrument) => DropdownMenuItem(
+                        value: instrument,
+                        child: Text(instrument,
+                            style: TextStyle(color: textColor)),
+                      )),
+                ],
+                onChanged: (value) {
+                  tempInstrument = value;
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancelar', style: TextStyle(color: Colors.red)),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  selectedSede = tempSede;
+                  selectedInstrument = tempInstrument;
+                  filterStudents(_searchController.text);
+                });
+                Navigator.pop(context);
+              },
+              child: Text('Aplicar', style: TextStyle(color: textColor)),
             ),
           ],
         );
@@ -288,22 +464,21 @@ class _StudentsPageState extends State<StudentsPage> {
         .eq('user_id', userId)
         .maybeSingle();
     if (user != null) return true;
-
-    // final teacher = await supabase
-    //     .from('teachers')
-    //     .select()
-    //     .eq('user_id', userId)
-    //     .maybeSingle();
-    // if (teacher != null) return true;
-
-    // final advisor = await supabase
-    //     .from('advisors')
-    //     .select()
-    //     .eq('user_id', userId)
-    //     .maybeSingle();
-    // if (advisor != null) return true;
-
     return false;
+  }
+
+  void scrollToLetter(String letter) {
+    final key = letterKeys[letter];
+    if (key != null && key.currentContext != null) {
+      final RenderBox renderBox =
+          key.currentContext!.findRenderObject() as RenderBox;
+      final position = renderBox.localToGlobal(Offset.zero).dy;
+      _scrollController.animateTo(
+        _scrollController.offset + position - 100,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   @override
@@ -331,16 +506,20 @@ class _StudentsPageState extends State<StudentsPage> {
               icon: Icon(Icons.search, color: Colors.white),
             ),
             style: TextStyle(color: Colors.white),
-            onChanged: filterStudents, // Filtra en tiempo real
           ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.filter_list, color: Colors.white),
+              onPressed: showFilterDialog,
+            ),
+          ],
         ),
         floatingActionButton: FutureBuilder<bool>(
           future: _canAddEvent(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(); // o un indicador de carga pequeño
+              return const SizedBox();
             }
-
             if (snapshot.hasData && snapshot.data == true) {
               return FloatingActionButton(
                 backgroundColor: Colors.blue,
@@ -354,78 +533,155 @@ class _StudentsPageState extends State<StudentsPage> {
                 child: const Icon(Icons.add, color: Colors.white),
               );
             } else {
-              return const SizedBox(); // no mostrar nada si no tiene permiso
+              return const SizedBox();
             }
           },
         ),
         drawer: Menu.buildDrawer(context),
-        body: RefreshIndicator(
-          onRefresh: fetchStudents,
-          color: Colors.blue, // Llamamos la función al refrescar
-          child: ListView.builder(
-            itemCount: filteredStudents.length,
-            itemBuilder: (context, index) {
-              final student = filteredStudents[index];
-              return Column(
-                children: [
-                  ListTile(
-                    leading: GestureDetector(
-                      onTap: () => showStudentDetails(student),
-                      child: CircleAvatar(
-                        backgroundImage: student['profile_image'] != null
-                            ? NetworkImage(student['profile_image'])
-                            : AssetImage('assets/images/refmmp.png')
-                                as ImageProvider,
-                        radius: 25,
-                      ),
-                    ),
-                    title: GestureDetector(
-                      onTap: () => showStudentDetails(student),
+        body: Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: fetchStudents,
+              color: Colors.blue,
+              child: filteredStudents.isEmpty
+                  ? Center(
                       child: Text(
-                        '${student['first_name']} ${student['last_name']}',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.blue),
+                        'No se encontraron estudiantes',
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
                       ),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Text(student['email']),
-                        Text(
-                            'Instrumentos: ${student['student_instruments'] != null && student['student_instruments'].isNotEmpty ? student['student_instruments'].map((e) => e['instruments']['name']).join(', ') : 'No asignados'}'),
-                        Text(
-                            'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
-                      ],
-                    ),
-                    trailing: FutureBuilder<bool>(
-                      future: _canAddEvent(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const SizedBox();
-                        }
-                        if (snapshot.hasData && snapshot.data == true) {
-                          return IconButton(
-                            icon: Icon(Icons.more_vert, color: Colors.blue),
-                            onPressed: () =>
-                                showStudentOptions(context, student),
-                          );
-                        }
-                        return const SizedBox(); // No muestra nada si no tiene permiso
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      itemCount: groupedStudents.keys.length,
+                      itemBuilder: (context, index) {
+                        final letter = groupedStudents.keys.elementAt(index);
+                        final studentsForLetter = groupedStudents[letter]!;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              key: letterKeys[letter],
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                letter,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ),
+                            ...studentsForLetter.map((student) => Column(
+                                  children: [
+                                    ListTile(
+                                      leading: GestureDetector(
+                                        onTap: () =>
+                                            showStudentDetails(student),
+                                        child: CircleAvatar(
+                                          backgroundImage: student[
+                                                      'profile_image'] !=
+                                                  null
+                                              ? NetworkImage(
+                                                  student['profile_image'])
+                                              : AssetImage(
+                                                      'assets/images/refmmp.png')
+                                                  as ImageProvider,
+                                          radius: 25,
+                                        ),
+                                      ),
+                                      title: GestureDetector(
+                                        onTap: () =>
+                                            showStudentDetails(student),
+                                        child: Text(
+                                          '${student['first_name'] ?? 'Sin nombre'} ${student['last_name'] ?? ''}',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue),
+                                        ),
+                                      ),
+                                      subtitle: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                              'Instrumentos: ${student['student_instruments'] != null && (student['student_instruments'] as List).isNotEmpty ? (student['student_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}'),
+                                          Text(
+                                              'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
+                                        ],
+                                      ),
+                                      trailing: FutureBuilder<bool>(
+                                        future: _canAddEvent(),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState ==
+                                              ConnectionState.waiting) {
+                                            return const SizedBox();
+                                          }
+                                          if (snapshot.hasData &&
+                                              snapshot.data == true) {
+                                            return IconButton(
+                                              icon: Icon(Icons.more_vert,
+                                                  color: Colors.blue),
+                                              onPressed: () =>
+                                                  showStudentOptions(
+                                                      context, student),
+                                            );
+                                          }
+                                          return const SizedBox();
+                                        },
+                                      ),
+                                    ),
+                                    Divider(
+                                      thickness: 1,
+                                      height: 10,
+                                      color: themeProvider.isDarkMode
+                                          ? const Color.fromARGB(
+                                              255, 34, 34, 34)
+                                          : const Color.fromARGB(
+                                              255, 236, 234, 234),
+                                    ),
+                                  ],
+                                )),
+                          ],
+                        );
                       },
                     ),
-                  ),
-                  Divider(
-                    thickness: 1,
-                    height: 10,
-                    color: themeProvider.isDarkMode
-                        ? const Color.fromARGB(255, 34, 34, 34)
-                        : const Color.fromARGB(255, 236, 234, 234),
-                  ), // Línea divisoria
-                ],
-              );
-            },
-          ),
+            ),
+            Positioned(
+              right: 8,
+              top: 8,
+              bottom: 8,
+              child: Container(
+                width: 30,
+                child: ListView.builder(
+                  itemCount: alphabet.length,
+                  itemBuilder: (context, index) {
+                    final letter = alphabet[index];
+                    return GestureDetector(
+                      onTap: groupedStudents.containsKey(letter)
+                          ? () => scrollToLetter(letter)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Text(
+                          letter,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: groupedStudents.containsKey(letter)
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: groupedStudents.containsKey(letter)
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
