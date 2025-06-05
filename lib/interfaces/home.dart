@@ -304,10 +304,10 @@ class _HomePageState extends State<HomePage>
                 padding: const EdgeInsets.all(2.0),
                 child: Column(
                   children: [
-                    const SizedBox(height: 10),
+                    // const SizedBox(height: 10),
                     ClipRRect(
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(16)),
+                      borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(16)),
                       child: Image.asset(
                         themeProvider.isDarkMode
                             ? "assets/images/appbar.png"
