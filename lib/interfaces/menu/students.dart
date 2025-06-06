@@ -388,7 +388,8 @@ class _StudentsPageState extends State<StudentsPage> {
                 items: [
                   DropdownMenuItem(
                     value: null,
-                    child: Text('Todas', style: TextStyle(color: textColor)),
+                    child: Text('Todas las sedes',
+                        style: TextStyle(color: textColor)),
                   ),
                   ...sedes.map((sede) => DropdownMenuItem(
                         value: sede,
@@ -418,7 +419,8 @@ class _StudentsPageState extends State<StudentsPage> {
                 items: [
                   DropdownMenuItem(
                     value: null,
-                    child: Text('Todos', style: TextStyle(color: textColor)),
+                    child: Text('Todos los instrumentos',
+                        style: TextStyle(color: textColor, fontSize: 14)),
                   ),
                   ...instruments.map((instrument) => DropdownMenuItem(
                         value: instrument,
