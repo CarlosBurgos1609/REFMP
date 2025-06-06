@@ -270,7 +270,14 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
                     .map((sede) =>
                         MultiSelectItem<int>(sede['id'], sede['name']))
                     .toList(),
-                title: Text('Seleccionar Sedes'),
+                title: Text(
+                  'Seleccionar Sedes',
+                  style: TextStyle(
+                      color:
+                          themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                      fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
                 selectedColor: Colors.blue,
                 itemsTextStyle: TextStyle(
                   color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
@@ -315,7 +322,14 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
                     .map((instrument) => MultiSelectItem<int>(
                         instrument['id'], instrument['name']))
                     .toList(),
-                title: Text('Seleccionar Instrumentos'),
+                title: Text(
+                  'Seleccionar Instrumentos',
+                  style: TextStyle(
+                      color:
+                          themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                      fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
                 selectedColor: Colors.blue,
                 itemsTextStyle: TextStyle(
                   color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
