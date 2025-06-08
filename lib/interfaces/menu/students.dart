@@ -222,9 +222,11 @@ class _StudentsPageState extends State<StudentsPage> {
   }
 
   Future<void> deleteStudent(int studentId) async {
-    await Supabase.instance.client.rpc('delete_student_with_relations_int',
-        params: {'p_student_id': studentId});
-
+    await Supabase.instance.client
+        .from('students')
+        .delete()
+        .eq('id', studentId)
+        .order('first_name', ascending: true);
     fetchStudents();
   }
 
