@@ -424,6 +424,7 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                                 selected: isSelected,
                                 selectedColor: Colors.blue,
                                 backgroundColor: Colors.blue.withOpacity(0.1),
+                                checkmarkColor: Colors.white,
                                 onSelected: (selected) {
                                   setState(() {
                                     _instrumentsChanged = true;
@@ -472,6 +473,7 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                                 selected: isSelected,
                                 selectedColor: Colors.blue,
                                 backgroundColor: Colors.blue.withOpacity(0.1),
+                                checkmarkColor: Colors.white,
                                 onSelected: (selected) {
                                   setState(() {
                                     _sedesChanged = true;
