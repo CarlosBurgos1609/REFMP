@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/edit/edit_students.dart';
 import 'package:refmp/forms/studentsform.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/routes/menu.dart';
@@ -126,17 +127,24 @@ class _StudentsPageState extends State<StudentsPage> {
     }
 
     try {
-      final response = await Supabase.instance.client
-          .from('students')
-          .select(
-              '*, student_instruments!left(instruments!inner(name)), sedes!students_sede_id_fkey!left(name)')
-          .order('first_name', ascending: true);
+      final response =
+          await Supabase.instance.client.from('students').select('''
+          id, first_name, last_name, email, identification_number, profile_image,
+          student_instruments!left(instruments(id, name)),
+          student_sedes!left(sedes(id, name))
+        ''').order('first_name', ascending: true);
 
       if (response != null) {
         setState(() {
           students = List<Map<String, dynamic>>.from(response);
           filteredStudents = List.from(students);
           debugPrint('Fetched ${students.length} students from Supabase');
+          debugPrint(
+              'Sample student: ${students.isNotEmpty ? students.first : 'No students'}');
+          debugPrint(
+              'Student instruments: ${students.isNotEmpty ? students.first['student_instruments'] : 'None'}');
+          debugPrint(
+              'Student sedes: ${students.isNotEmpty ? students.first['student_sedes'] : 'None'}');
           groupStudents();
           fetchFilters();
         });
@@ -146,18 +154,29 @@ class _StudentsPageState extends State<StudentsPage> {
       }
     } catch (e) {
       debugPrint('Error fetching students: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar estudiantes: $e')),
+      );
     }
   }
 
   void fetchFilters() {
     setState(() {
       sedes = students
-          .map((student) => student['sedes']?['name'] as String?)
-          .where((sede) => sede != null)
+          .expand((student) {
+            final sedesList = student['student_sedes'] as List<dynamic>?;
+            if (sedesList == null || sedesList.isEmpty) {
+              return <String>[];
+            }
+            return sedesList
+                .where((e) =>
+                    e is Map<String, dynamic> &&
+                    e['sedes'] != null &&
+                    e['sedes']['name'] is String)
+                .map((e) => e['sedes']['name'] as String);
+          })
           .toSet()
-          .toList()
-          .cast<String>();
-
+          .toList();
       instruments = students
           .expand((student) {
             final instrumentsList =
@@ -203,8 +222,14 @@ class _StudentsPageState extends State<StudentsPage> {
             (student['first_name'] as String?)?.toLowerCase() ?? '';
         final matchesQuery =
             query.isEmpty || firstName.contains(query.toLowerCase());
-        final matchesSede =
-            selectedSede == null || student['sedes']?['name'] == selectedSede;
+        final matchesSede = selectedSede == null ||
+            (student['student_sedes'] as List<dynamic>?)?.any(
+                  (e) =>
+                      e is Map<String, dynamic> &&
+                      e['sedes'] != null &&
+                      e['sedes']['name'] == selectedSede,
+                ) ==
+                true;
         final matchesInstrument = selectedInstrument == null ||
             (student['student_instruments'] as List<dynamic>?)?.any(
                   (e) =>
@@ -222,12 +247,21 @@ class _StudentsPageState extends State<StudentsPage> {
   }
 
   Future<void> deleteStudent(int studentId) async {
-    await Supabase.instance.client
-        .from('students')
-        .delete()
-        .eq('id', studentId)
-        .order('first_name', ascending: true);
-    fetchStudents();
+    try {
+      await Supabase.instance.client
+          .from('students')
+          .delete()
+          .eq('id', studentId);
+      await fetchStudents();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Estudiante eliminado con éxito')),
+      );
+    } catch (e) {
+      debugPrint('Error deleting student: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar estudiante: $e')),
+      );
+    }
   }
 
   void showStudentOptions(BuildContext context, Map<String, dynamic> student) {
@@ -237,17 +271,31 @@ class _StudentsPageState extends State<StudentsPage> {
         return Wrap(
           children: [
             ListTile(
-              leading: Icon(Icons.info, color: Colors.blue),
+              leading: Icon(Icons.info_rounded, color: Colors.blue),
               title:
-                  Text('Más información', style: TextStyle(color: Colors.blue)),
+                  Text('Más Información', style: TextStyle(color: Colors.blue)),
               onTap: () {
                 Navigator.pop(context);
                 showStudentDetails(student);
               },
             ),
             ListTile(
-              leading: Icon(Icons.delete, color: Colors.red),
-              title: Text('Eliminar estudiante',
+              leading: const Icon(Icons.edit, color: Colors.blue),
+              title: const Text('Editar estudiante',
+                  style: TextStyle(color: Colors.blue)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditStudentScreen(student: student),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_rounded, color: Colors.red),
+              title: Text('Eliminar Estudiante',
                   style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
@@ -290,6 +338,16 @@ class _StudentsPageState extends State<StudentsPage> {
     showDialog(
       context: context,
       builder: (context) {
+        final sedesList = student['student_sedes'] as List<dynamic>?;
+        final sedesNames = sedesList != null && sedesList.isNotEmpty
+            ? sedesList
+                .where((e) =>
+                    e is Map<String, dynamic> &&
+                    e['sedes'] != null &&
+                    e['sedes']['name'] is String)
+                .map((e) => e['sedes']['name'] as String)
+                .join(', ')
+            : 'No asignada';
         return AlertDialog(
           title: Text(
             '${student['first_name'] ?? 'Sin nombre'} ${student['last_name'] ?? ''}',
@@ -323,7 +381,7 @@ class _StudentsPageState extends State<StudentsPage> {
                     style: TextStyle(height: 2),
                   ),
                   Text(
-                    'Sede(s): ${student['sedes']?['name'] ?? 'No asignada'}',
+                    'Sede(s): $sedesNames',
                     style: TextStyle(height: 2),
                   ),
                 ],
@@ -606,9 +664,11 @@ class _StudentsPageState extends State<StudentsPage> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                              'Instrumentos: ${student['student_instruments'] != null && (student['student_instruments'] as List).isNotEmpty ? (student['student_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}'),
+                                            'Instrumentos: ${student['student_instruments'] != null && (student['student_instruments'] as List).isNotEmpty ? (student['student_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}',
+                                          ),
                                           Text(
-                                              'Sede: ${student['sedes']?['name'] ?? 'No asignado'}'),
+                                            'Sede(s): ${(student['student_sedes'] as List<dynamic>?)?.isNotEmpty == true ? (student['student_sedes'] as List<dynamic>).map((e) => e['sedes']?['name'] ?? 'No asignado').join(', ') : 'No asignado'}',
+                                          ),
                                         ],
                                       ),
                                       trailing: FutureBuilder<bool>(
