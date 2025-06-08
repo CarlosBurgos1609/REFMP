@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/headquartersforms.dart';
@@ -7,6 +8,7 @@ import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:io';
 
 class HeadquartersPage extends StatefulWidget {
   const HeadquartersPage({super.key, required this.title});
@@ -17,33 +19,51 @@ class HeadquartersPage extends StatefulWidget {
 }
 
 class _HeadquartersPageState extends State<HeadquartersPage> {
-  Future<List<dynamic>> _fetchData() async {
+  Future<List<Map<String, dynamic>>> _fetchData() async {
     final box = Hive.box('offline_data');
     const cacheKey = 'sedes_data';
 
-    final isOnline =
-        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+    final isOnline = await _checkConnectivity();
 
     if (isOnline) {
       try {
         final response = await Supabase.instance.client.from("sedes").select();
-        await box.put(cacheKey, response); // Guarda en cache
-        return response;
+        // Convertir response a List<Map<String, dynamic>>
+        final data = List<Map<String, dynamic>>.from(response);
+        await box.put(cacheKey, data); // Guarda en cache
+        return data;
       } catch (e) {
-        // En caso de error online, intenta usar el cache
+        debugPrint('Error fetching data from Supabase: $e');
         final cachedData = box.get(cacheKey, defaultValue: []);
-        return List<Map<String, dynamic>>.from(cachedData);
+        return List<Map<String, dynamic>>.from(
+            cachedData.map((item) => Map<String, dynamic>.from(item)));
       }
     } else {
-      // Sin conexión: usar cache
       final cachedData = box.get(cacheKey, defaultValue: []);
-      return List<Map<String, dynamic>>.from(cachedData);
+      return List<Map<String, dynamic>>.from(
+          cachedData.map((item) => Map<String, dynamic>.from(item)));
+    }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    debugPrint('Conectividad: $connectivityResult');
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
     }
   }
 
   void _openMap(String url) async {
-    if (await canLaunch(url)) {
-      await launch(url);
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No se pudo abrir el mapa")),
@@ -56,8 +76,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return false;
 
-    final isOnline =
-        (await Connectivity().checkConnectivity()) != ConnectivityResult.none;
+    final isOnline = await _checkConnectivity();
 
     if (isOnline) {
       try {
@@ -68,7 +87,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
             .maybeSingle();
 
         if (user != null) {
-          // Guarda en cache que este userId tiene permiso
           await box.put('can_view_headquarters_$userId', true);
           return true;
         } else {
@@ -76,11 +94,10 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
           return false;
         }
       } catch (e) {
-        // Si hay un error, intenta usar el cache
+        debugPrint('Error checking permissions: $e');
         return box.get('can_view_headquarters_$userId', defaultValue: false);
       }
     } else {
-      // Offline: usa el cache si existe
       return box.get('can_view_headquarters_$userId', defaultValue: false);
     }
   }
@@ -93,7 +110,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
         appBar: AppBar(
           title: Text(
             widget.title,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
@@ -112,7 +129,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
           future: _canViewHeadquarters(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(); // o un indicador de carga pequeño
+              return const SizedBox();
             }
 
             if (snapshot.hasData && snapshot.data == true) {
@@ -127,7 +144,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                 child: const Icon(Icons.add, color: Colors.white),
               );
             } else {
-              return const SizedBox(); // no mostrar nada si no tiene permiso
+              return const SizedBox();
             }
           },
         ),
@@ -139,14 +156,12 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                 setState(() {});
               },
               color: Colors.blue,
-              child: FutureBuilder(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _fetchData(),
-                builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+                builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
-                        child: CircularProgressIndicator(
-                      color: Colors.blue,
-                    ));
+                        child: CircularProgressIndicator(color: Colors.blue));
                   }
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(
@@ -155,13 +170,11 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                     );
                   }
 
-                  // Ordenar alfabéticamente por el campo "name"
                   snapshot.data!.sort(
                       (a, b) => (a["name"] ?? "").compareTo(b["name"] ?? ""));
 
                   return ListView(
                     children: snapshot.data!.map((doc) {
-                      // Asegurar que todos los campos estén presentes
                       final name = doc["name"] ?? "Nombre no disponible";
                       final address =
                           doc["address"] ?? "Dirección no disponible";
@@ -181,11 +194,43 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.network(
-                                photo,
+                              child: SizedBox(
                                 width: double.infinity,
                                 height: 200,
-                                fit: BoxFit.cover,
+                                child: FutureBuilder<bool>(
+                                  future: _checkConnectivity(),
+                                  builder: (context, connectivitySnapshot) {
+                                    final isOnline =
+                                        connectivitySnapshot.data ?? false;
+                                    return isOnline && photo.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: photo,
+                                            width: double.infinity,
+                                            height: 200,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) =>
+                                                const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            color:
+                                                                Colors.blue)),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    Image.asset(
+                                              'assets/images/refmmp.png',
+                                              width: double.infinity,
+                                              height: 200,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        : Image.asset(
+                                            'assets/images/refmmp.png',
+                                            width: double.infinity,
+                                            height: 200,
+                                            fit: BoxFit.cover,
+                                          );
+                                  },
+                                ),
                               ),
                             ),
                             Padding(
@@ -215,8 +260,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                             address,
                                             style: const TextStyle(
                                               color: Colors.blue,
-                                              // decoration:
-                                              //     TextDecoration.underline,
                                             ),
                                           ),
                                         ),

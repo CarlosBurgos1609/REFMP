@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
@@ -21,8 +22,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic> userProfile = {};
   String profileImageUrl = '';
   bool isLoading = true;
-  String?
-      userTable; // Aquí guardamos la tabla en la que está registrado el usuario
+  String? userTable;
 
   final List<String> userTables = [
     'users',
@@ -39,7 +39,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _findUserTable();
   }
 
-  // 🔹 Buscar en qué tabla está registrado el usuario
   Future<void> _findUserTable() async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -54,49 +53,63 @@ class _ProfilePageState extends State<ProfilePage> {
     final isOnline = await _checkConnectivity();
 
     if (isOnline) {
-      // Si hay conexión a internet, obtener datos de Supabase
-      for (String table in userTables) {
-        final response = await supabase
-            .from(table)
-            .select()
-            .eq('user_id', user.id)
-            .maybeSingle();
+      try {
+        for (String table in userTables) {
+          final response = await supabase
+              .from(table)
+              .select()
+              .eq('user_id', user.id)
+              .maybeSingle();
 
-        if (response != null) {
-          // Guardar datos en cache
-          await box.put(cacheKey, {
-            'first_name': response['first_name'] ?? '',
-            'last_name': response['last_name'] ?? '',
-            'identification_number': response['identification_number'] ?? '',
-            'charge': response['charge'] ?? '',
-            'email': response['email'] ?? '',
-            'profile_image': response['profile_image'] ?? '',
-          });
+          if (response != null) {
+            // ignore: unnecessary_cast
+            final responseMap = response as Map<String, dynamic>;
+            await box.put(cacheKey, {
+              'first_name': responseMap['first_name'] ?? '',
+              'last_name': responseMap['last_name'] ?? '',
+              'identification_number':
+                  responseMap['identification_number'] ?? '',
+              'charge': responseMap['charge'] ?? '',
+              'email': responseMap['email'] ?? '',
+              'profile_image': responseMap['profile_image'] ?? '',
+            });
 
+            setState(() {
+              userTable = table;
+              userProfile = {
+                'first_name': responseMap['first_name'] ?? '',
+                'last_name': responseMap['last_name'] ?? '',
+                'identification_number':
+                    responseMap['identification_number'] ?? '',
+                'charge': responseMap['charge'] ?? '',
+                'email': responseMap['email'] ?? '',
+                'profile_image': responseMap['profile_image'] ?? '',
+              };
+              profileImageUrl = responseMap['profile_image'] ?? '';
+            });
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching data from Supabase: $e');
+        final cachedProfile = box.get(cacheKey);
+        if (cachedProfile != null) {
+          final cachedProfileTyped = Map<String, dynamic>.from(cachedProfile);
           setState(() {
-            userTable = table;
-            userProfile = {
-              'first_name': response['first_name'] ?? '',
-              'last_name': response['last_name'] ?? '',
-              'identification_number': response['identification_number'] ?? '',
-              'charge': response['charge'] ?? '',
-              'email': response['email'] ?? '',
-              'profile_image': response['profile_image'] ?? '',
-            };
-            profileImageUrl = response['profile_image'] ?? '';
+            userProfile = cachedProfileTyped;
+            profileImageUrl = cachedProfileTyped['profile_image'] ?? '';
+            userTable = 'offline';
           });
-          break;
         }
       }
     } else {
-      // Si no hay conexión, recuperar los datos desde el cache
-      final cachedProfile = box.get(cacheKey, defaultValue: null);
-
+      final cachedProfile = box.get(cacheKey);
       if (cachedProfile != null) {
+        final cachedProfileTyped = Map<String, dynamic>.from(cachedProfile);
         setState(() {
-          userProfile = cachedProfile;
-          profileImageUrl = cachedProfile['profile_image'] ?? '';
-          userTable = 'offline'; // Indicar que los datos provienen del cache
+          userProfile = cachedProfileTyped;
+          profileImageUrl = cachedProfileTyped['profile_image'] ?? '';
+          userTable = 'offline';
         });
       }
     }
@@ -106,14 +119,12 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
-// Método para verificar la conectividad a internet
   Future<bool> _checkConnectivity() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
+    final connectivityResult = await Connectivity().checkConnectivity();
     debugPrint('Conectividad: $connectivityResult');
     return connectivityResult != ConnectivityResult.none;
   }
 
-  // 🔹 Subir imagen desde la galería
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
@@ -124,7 +135,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // 🔹 Subir imagen a Supabase Storage y actualizar en la tabla correcta
   Future<void> _uploadProfileImage(File imageFile) async {
     try {
       final user = supabase.auth.currentUser;
@@ -138,7 +148,6 @@ class _ProfilePageState extends State<ProfilePage> {
       final publicUrl =
           supabase.storage.from('profiles').getPublicUrl(storagePath);
 
-      // Actualizar URL en la base de datos
       await supabase
           .from(userTable!)
           .update({'profile_image': publicUrl}).eq('user_id', user.id);
@@ -190,29 +199,60 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Column(
                       children: [
                         const SizedBox(height: 20),
-                        // 🔹 Mostrar la tabla donde está el usuario
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         ),
                         const SizedBox(height: 20),
-                        GestureDetector(
-                          onTap: _pickImage,
-                          child: CircleAvatar(
-                            radius: 80,
-                            backgroundColor: Colors.blue,
-                            backgroundImage: profileImageUrl.isNotEmpty
-                                ? NetworkImage(profileImageUrl) as ImageProvider
-                                : const AssetImage('assets/images/refmmp.png'),
-                            child: const Align(
-                              alignment: Alignment.bottomRight,
+                        FutureBuilder<bool>(
+                          future: _checkConnectivity(),
+                          builder: (context, snapshot) {
+                            final isOnline = snapshot.data ?? false;
+                            return GestureDetector(
+                              onTap: _pickImage,
                               child: CircleAvatar(
-                                radius: 20,
-                                backgroundColor: Colors.white,
-                                child:
-                                    Icon(Icons.camera_alt, color: Colors.blue),
+                                radius: 80,
+                                backgroundColor: Colors.blue,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    ClipOval(
+                                      child: SizedBox.expand(
+                                        child: isOnline &&
+                                                profileImageUrl.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: profileImageUrl,
+                                                fit: BoxFit.cover,
+                                                placeholder: (context, url) =>
+                                                    const CircularProgressIndicator(
+                                                  color: Colors.white,
+                                                ),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        Image.asset(
+                                                  'assets/images/refmmp.png',
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              )
+                                            : Image.asset(
+                                                'assets/images/refmmp.png',
+                                                fit: BoxFit.cover,
+                                              ),
+                                      ),
+                                    ),
+                                    const Align(
+                                      alignment: Alignment.bottomRight,
+                                      child: CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: Colors.white,
+                                        child: Icon(Icons.camera_alt,
+                                            color: Colors.blue),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 20),
                         _buildProfileField(
@@ -239,7 +279,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   );
-                  // Refrescar datos al volver
                   _findUserTable();
                 },
                 backgroundColor: Colors.blue,
@@ -250,7 +289,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // 🔹 Método para mostrar campos del perfil
   Widget _buildProfileField(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
