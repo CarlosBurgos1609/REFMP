@@ -222,11 +222,9 @@ class _StudentsPageState extends State<StudentsPage> {
   }
 
   Future<void> deleteStudent(int studentId) async {
-    await Supabase.instance.client
-        .from('students')
-        .delete()
-        .eq('id', studentId)
-        .order('first_name', ascending: true);
+    await Supabase.instance.client.rpc('delete_student_with_relations_int',
+        params: {'p_student_id': studentId});
+
     fetchStudents();
   }
 
@@ -344,7 +342,7 @@ class _StudentsPageState extends State<StudentsPage> {
   void showFilterDialog() {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDarkMode
-        ? const Color.fromARGB(31, 31, 28, 28).withOpacity(0.8)
+        ? const Color.fromARGB(31, 31, 28, 28).withOpacity(0.9)
         : Colors.white.withOpacity(0.9);
     final textColor = isDarkMode ? Colors.white : Colors.blue;
     final iconColor = textColor;
