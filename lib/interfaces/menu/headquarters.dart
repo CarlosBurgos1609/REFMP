@@ -208,12 +208,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                             width: double.infinity,
                                             height: 200,
                                             fit: BoxFit.cover,
-                                            placeholder: (context, url) =>
-                                                const Center(
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                            color:
-                                                                Colors.blue)),
                                             errorWidget:
                                                 (context, url, error) =>
                                                     Image.asset(
