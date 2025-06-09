@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_null_comparison
 
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
@@ -11,6 +12,20 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'dart:io';
+
+// Custom Cache Manager for CachedNetworkImage
+class CustomCacheManager {
+  static const key = 'customCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 30), // Cache images for 30 days
+      maxNrOfCacheObjects: 100, // Limit number of cached objects
+    ),
+  );
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -48,6 +63,7 @@ class _HomePageState extends State<HomePage>
         // Conexión restaurada, recarga los datos
         await fetchSedes();
         await fetchGamesData();
+        await fetchUserProfileImage();
       }
     });
 
@@ -64,7 +80,6 @@ class _HomePageState extends State<HomePage>
     _timer.cancel();
     _gamesPageController.dispose();
     _gamesTimer.cancel();
-
     super.dispose();
   }
 
@@ -102,11 +117,19 @@ class _HomePageState extends State<HomePage>
     });
   }
 
-  // Método para verificar la conectividad a internet
   Future<bool> _checkConnectivity() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
+    final connectivityResult = await Connectivity().checkConnectivity();
     debugPrint('Conectividad: $connectivityResult');
-    return connectivityResult != ConnectivityResult.none;
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
   }
 
   Future<void> fetchUserProfileImage() async {
@@ -114,13 +137,13 @@ class _HomePageState extends State<HomePage>
       final user = supabase.auth.currentUser;
       if (user == null) return;
 
+      final box = Hive.box('offline_data');
+      const cacheKey = 'user_profile_image';
+
       final isOnline = await _checkConnectivity();
 
       if (!isOnline) {
-        // Recuperar datos desde cache si no hay conexión
-        final box = Hive.box('offline_data');
-        const cacheKey = 'user_profile_image';
-        final cachedProfileImage = box.get(cacheKey, defaultValue: null);
+        final cachedProfileImage = box.get(cacheKey);
         if (cachedProfileImage != null) {
           setState(() {
             profileImageUrl = cachedProfileImage;
@@ -129,7 +152,6 @@ class _HomePageState extends State<HomePage>
         return;
       }
 
-      // Si está en línea, hacer la solicitud a Supabase
       List<String> tables = [
         'users',
         'students',
@@ -147,13 +169,13 @@ class _HomePageState extends State<HomePage>
             .maybeSingle();
 
         if (response != null && response['profile_image'] != null) {
+          final imageUrl = response['profile_image'];
+          // Pre-cache the profile image
+          await CustomCacheManager.instance.downloadFile(imageUrl);
           setState(() {
-            profileImageUrl = response['profile_image'];
+            profileImageUrl = imageUrl;
           });
-
-          // Guardar la imagen de perfil en cache
-          final box = Hive.box('offline_data');
-          await box.put('user_profile_image', response['profile_image']);
+          await box.put(cacheKey, imageUrl);
           break;
         }
       }
@@ -166,7 +188,6 @@ class _HomePageState extends State<HomePage>
     final box = Hive.box('offline_data');
     const cacheKey = 'games_data';
 
-    // Mostrar datos del cache primero
     final cachedGames = box.get(cacheKey);
     if (cachedGames != null) {
       setState(() {
@@ -181,6 +202,13 @@ class _HomePageState extends State<HomePage>
     try {
       final response = await supabase.from('games').select();
       if (mounted && response != null) {
+        // Pre-cache game images
+        for (var game in response) {
+          final imageUrl = game['image'];
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            await CustomCacheManager.instance.downloadFile(imageUrl);
+          }
+        }
         setState(() {
           games = response;
         });
@@ -196,7 +224,6 @@ class _HomePageState extends State<HomePage>
     final box = Hive.box('offline_data');
     const cacheKey = 'sedes_data';
 
-    // Mostrar datos del cache primero
     final cachedSedes = box.get(cacheKey);
     if (cachedSedes != null) {
       if (!mounted) return;
@@ -206,15 +233,20 @@ class _HomePageState extends State<HomePage>
       debugPrint('Sedes cargadas desde cache');
     }
 
-    // Luego intenta obtener en línea
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) return;
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) return;
 
     try {
       final response = await supabase.from('sedes').select();
-
-      if (!mounted) return; // ⚠️ Evita setState si el widget fue eliminado
+      if (!mounted) return;
       if (response != null) {
+        // Pre-cache sede images
+        for (var sede in response) {
+          final imageUrl = sede['photo'];
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            await CustomCacheManager.instance.downloadFile(imageUrl);
+          }
+        }
         setState(() {
           sedes = response;
         });
@@ -265,26 +297,28 @@ class _HomePageState extends State<HomePage>
               child: Padding(
                 padding: const EdgeInsets.only(right: 20),
                 child: ClipOval(
-                  child: profileImageUrl != null
-                      ? Image.network(
-                          profileImageUrl!,
+                  child: profileImageUrl != null && profileImageUrl!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: profileImageUrl!,
+                          cacheManager: CustomCacheManager.instance,
                           fit: BoxFit.cover,
                           width: 35,
                           height: 35,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Image.asset(
-                              "assets/images/refmmp.png",
-                              fit: BoxFit.cover,
-                              width: 35,
-                              height: 35,
-                            );
-                          },
+                          placeholder: (context, url) =>
+                              const CircularProgressIndicator(
+                                  color: Colors.white),
+                          errorWidget: (context, url, error) => Image.asset(
+                            "assets/images/refmmp.png",
+                            fit: BoxFit.cover,
+                            width: 35,
+                            height: 35,
+                          ),
                         )
                       : Image.asset(
                           "assets/images/refmmp.png",
                           fit: BoxFit.cover,
-                          width: 45,
-                          height: 45,
+                          width: 35,
+                          height: 35,
                         ),
                 ),
               ),
@@ -293,325 +327,344 @@ class _HomePageState extends State<HomePage>
         ),
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
-            color: Colors.blue,
-            onRefresh: () async {
-              await fetchSedes();
-              await fetchGamesData();
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.all(2.0),
-                child: Column(
-                  children: [
-                    // const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(16)),
-                      child: Image.asset(
-                        themeProvider.isDarkMode
-                            ? "assets/images/appbar.png"
-                            : "assets/images/logofn.png",
-                      ),
+          color: Colors.blue,
+          onRefresh: () async {
+            await fetchSedes();
+            await fetchGamesData();
+            await fetchUserProfileImage();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.all(2.0),
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(16)),
+                    child: Image.asset(
+                      themeProvider.isDarkMode
+                          ? "assets/images/appbar.png"
+                          : "assets/images/logofn.png",
                     ),
-                    const SizedBox(height: 3),
-                    Divider(
-                      height: 40,
-                      thickness: 2,
-                      color: themeProvider.isDarkMode
-                          ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 236, 234, 234),
+                  ),
+                  const SizedBox(height: 3),
+                  Divider(
+                    height: 40,
+                    thickness: 2,
+                    color: themeProvider.isDarkMode
+                        ? const Color.fromARGB(255, 34, 34, 34)
+                        : const Color.fromARGB(255, 236, 234, 234),
+                  ),
+                  const Text(
+                    'Sedes',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
                     ),
-                    const Text(
-                      'Sedes',
-                      style: TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    sedes.isEmpty
-                        ? const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.blue))
-                        : Column(
-                            children: [
-                              SizedBox(
-                                height: 300,
-                                child: PageView.builder(
-                                  controller: _pageController,
-                                  itemCount: sedes.length,
-                                  onPageChanged: (index) {
-                                    setState(() {
-                                      _currentPage = index;
-                                    });
-                                  },
-                                  itemBuilder: (context, index) {
-                                    final sede = sedes[index];
-                                    final name =
-                                        sede["name"] ?? "Nombre no disponible";
-                                    final address = sede["address"] ??
-                                        "Dirección no disponible";
-                                    final photo = sede["photo"];
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 2.0),
-                                      child: Card(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                        ),
-                                        elevation: 4,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            Expanded(
-                                              flex: 5,
-                                              child: ClipRRect(
-                                                borderRadius: const BorderRadius
-                                                    .vertical(
-                                                    top: Radius.circular(20)),
-                                                child: photo != null
-                                                    ? Image.network(
-                                                        photo,
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder: (context,
-                                                            error, stackTrace) {
-                                                          return Image.asset(
-                                                              "assets/images/refmmp.png",
-                                                              fit:
-                                                                  BoxFit.cover);
-                                                        },
-                                                      )
-                                                    : Image.asset(
-                                                        "assets/images/refmmp.png",
-                                                        fit: BoxFit.cover),
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 3,
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      name,
-                                                      style: const TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color: Colors.blue,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      "Dirección: $address",
-                                                      style: const TextStyle(
-                                                          fontSize: 13),
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  sedes.isEmpty
+                      ? const Center(
+                          child: CircularProgressIndicator(color: Colors.blue))
+                      : Column(
+                          children: [
+                            SizedBox(
+                              height: 300,
+                              child: PageView.builder(
+                                controller: _pageController,
+                                itemCount: sedes.length,
+                                onPageChanged: (index) {
+                                  setState(() {
+                                    _currentPage = index;
+                                  });
+                                },
+                                itemBuilder: (context, index) {
+                                  final sede = sedes[index];
+                                  final name =
+                                      sede["name"] ?? "Nombre no disponible";
+                                  final address = sede["address"] ??
+                                      "Dirección no disponible";
+                                  final photo = sede["photo"];
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 2.0),
+                                    child: Card(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
                                       ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(
-                                  sedes.length,
-                                  (index) => AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: _currentPage == index
-                                          ? Colors.blue
-                                          : Colors.grey[400],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                    const SizedBox(height: 20),
-                    Divider(
-                      height: 40,
-                      thickness: 2,
-                      color: themeProvider.isDarkMode
-                          ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 236, 234, 234),
-                    ),
-                    const Text(
-                      "Aprende y Juega",
-                      style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue),
-                    ),
-                    const SizedBox(height: 20),
-                    games.isEmpty
-                        ? const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.blue))
-                        : Column(
-                            children: [
-                              SizedBox(
-                                height: 400,
-                                child: PageView.builder(
-                                  controller: _gamesPageController,
-                                  itemCount: games.length,
-                                  onPageChanged: (index) {
-                                    setState(() {
-                                      _currentGamePage = index;
-                                    });
-                                  },
-                                  itemBuilder: (context, index) {
-                                    final game = games[index];
-                                    final description = game['description'] ??
-                                        'Sin descripción';
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10),
-                                      child: Card(
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(16)),
-                                        elevation: 4,
-                                        child: Column(
-                                          children: [
-                                            ClipRRect(
+                                      elevation: 4,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(
+                                            flex: 5,
+                                            child: ClipRRect(
                                               borderRadius:
                                                   const BorderRadius.vertical(
-                                                      top: Radius.circular(16)),
-                                              child: Image.network(
-                                                game['image'] ?? '',
-                                                fit: BoxFit.cover,
-                                                width: double.infinity,
-                                                height: 180,
-                                                errorBuilder: (context, error,
-                                                        stackTrace) =>
-                                                    const Icon(
-                                                        Icons
-                                                            .image_not_supported,
-                                                        size: 80),
-                                              ),
+                                                      top: Radius.circular(20)),
+                                              child: photo != null &&
+                                                      photo.isNotEmpty
+                                                  ? CachedNetworkImage(
+                                                      imageUrl: photo,
+                                                      cacheManager:
+                                                          CustomCacheManager
+                                                              .instance,
+                                                      fit: BoxFit.cover,
+                                                      placeholder: (context,
+                                                              url) =>
+                                                          const Center(
+                                                              child: CircularProgressIndicator(
+                                                                  color: Colors
+                                                                      .blue)),
+                                                      errorWidget: (context,
+                                                              url, error) =>
+                                                          Image.asset(
+                                                              "assets/images/refmmp.png",
+                                                              fit:
+                                                                  BoxFit.cover),
+                                                    )
+                                                  : Image.asset(
+                                                      "assets/images/refmmp.png",
+                                                      fit: BoxFit.cover),
                                             ),
-                                            Padding(
+                                          ),
+                                          Expanded(
+                                            flex: 3,
+                                            child: Padding(
                                               padding:
-                                                  const EdgeInsets.all(12.0),
+                                                  const EdgeInsets.all(8.0),
                                               child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
-                                                  const SizedBox(height: 10),
                                                   Text(
-                                                    game['name'] ??
-                                                        "Nombre desconocido",
-                                                    textAlign: TextAlign.center,
+                                                    name,
                                                     style: const TextStyle(
-                                                      fontSize: 18,
+                                                      fontSize: 16,
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       color: Colors.blue,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 8),
+                                                  const SizedBox(height: 4),
                                                   Text(
-                                                    description,
-                                                    textAlign: TextAlign.center,
+                                                    "Dirección: $address",
                                                     style: const TextStyle(
-                                                        fontSize: 15),
-                                                  ),
-                                                  const SizedBox(height: 15),
-                                                  ElevatedButton.icon(
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          Colors.blue,
-                                                      shape:
-                                                          RoundedRectangleBorder(
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          10)),
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 20,
-                                                          vertical: 12),
-                                                    ),
-                                                    onPressed: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (_) =>
-                                                              LearningPage(
-                                                                  instrumentName:
-                                                                      game[
-                                                                          'name']),
-                                                        ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(
-                                                        Icons
-                                                            .sports_esports_rounded,
-                                                        color: Colors.white),
-                                                    label: const Text(
-                                                        "Aprende y Juega",
-                                                        style: TextStyle(
-                                                            color:
-                                                                Colors.white)),
+                                                        fontSize: 13),
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(
-                                  games.length,
-                                  (index) => AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: _currentGamePage == index
-                                          ? Colors.blue
-                                          : Colors.grey[400],
                                     ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                sedes.length,
+                                (index) => AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _currentPage == index
+                                        ? Colors.blue
+                                        : Colors.grey[400],
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                  ],
-                ),
+                            ),
+                          ],
+                        ),
+                  const SizedBox(height: 20),
+                  Divider(
+                    height: 40,
+                    thickness: 2,
+                    color: themeProvider.isDarkMode
+                        ? const Color.fromARGB(255, 34, 34, 34)
+                        : const Color.fromARGB(255, 236, 234, 234),
+                  ),
+                  const Text(
+                    "Aprende y Juega",
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue),
+                  ),
+                  const SizedBox(height: 20),
+                  games.isEmpty
+                      ? const Center(
+                          child: CircularProgressIndicator(color: Colors.blue))
+                      : Column(
+                          children: [
+                            SizedBox(
+                              height: 400,
+                              child: PageView.builder(
+                                controller: _gamesPageController,
+                                itemCount: games.length,
+                                onPageChanged: (index) {
+                                  setState(() {
+                                    _currentGamePage = index;
+                                  });
+                                },
+                                itemBuilder: (context, index) {
+                                  final game = games[index];
+                                  final description =
+                                      game['description'] ?? 'Sin descripción';
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10),
+                                    child: Card(
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16)),
+                                      elevation: 4,
+                                      child: Column(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                                    top: Radius.circular(16)),
+                                            child: game['image'] != null &&
+                                                    game['image'].isNotEmpty
+                                                ? CachedNetworkImage(
+                                                    imageUrl: game['image'],
+                                                    cacheManager:
+                                                        CustomCacheManager
+                                                            .instance,
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    height: 180,
+                                                    placeholder: (context,
+                                                            url) =>
+                                                        const Center(
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                                    color: Colors
+                                                                        .blue)),
+                                                    errorWidget: (context, url,
+                                                            error) =>
+                                                        const Icon(
+                                                            Icons
+                                                                .image_not_supported,
+                                                            size: 80),
+                                                  )
+                                                : const Icon(
+                                                    Icons.image_not_supported,
+                                                    size: 80),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(12.0),
+                                            child: Column(
+                                              children: [
+                                                const SizedBox(height: 10),
+                                                Text(
+                                                  game['name'] ??
+                                                      "Nombre desconocido",
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  description,
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                      fontSize: 15),
+                                                ),
+                                                const SizedBox(height: 15),
+                                                ElevatedButton.icon(
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.blue,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10)),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 12),
+                                                  ),
+                                                  onPressed: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            LearningPage(
+                                                                instrumentName:
+                                                                    game[
+                                                                        'name']),
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(
+                                                      Icons
+                                                          .sports_esports_rounded,
+                                                      color: Colors.white),
+                                                  label: const Text(
+                                                      "Aprende y Juega",
+                                                      style: TextStyle(
+                                                          color: Colors.white)),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                games.length,
+                                (index) => AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _currentGamePage == index
+                                        ? Colors.blue
+                                        : Colors.grey[400],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                ],
               ),
-            )),
+            ),
+          ),
+        ),
       ),
     );
   }
