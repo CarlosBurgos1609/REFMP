@@ -115,7 +115,6 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
@@ -125,6 +124,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
               );
             },
           ),
+          centerTitle: true,
         ),
         floatingActionButton: FutureBuilder<bool>(
           future: _canViewHeadquarters(),
@@ -198,34 +198,31 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                               child: SizedBox(
                                 width: double.infinity,
                                 height: 200,
-                                child: FutureBuilder<bool>(
-                                  future: _checkConnectivity(),
-                                  builder: (context, connectivitySnapshot) {
-                                    final isOnline =
-                                        connectivitySnapshot.data ?? false;
-                                    return isOnline && photo.isNotEmpty
-                                        ? CachedNetworkImage(
-                                            imageUrl: photo,
-                                            width: double.infinity,
-                                            height: 200,
-                                            fit: BoxFit.cover,
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    Image.asset(
-                                              'assets/images/refmmp.png',
-                                              width: double.infinity,
-                                              height: 200,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
-                                        : Image.asset(
-                                            'assets/images/refmmp.png',
-                                            width: double.infinity,
-                                            height: 200,
-                                            fit: BoxFit.cover,
-                                          );
-                                  },
-                                ),
+                                child: photo.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: photo,
+                                        width: double.infinity,
+                                        height: 200,
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) =>
+                                            const Center(
+                                          child: CircularProgressIndicator(
+                                              color: Colors.blue),
+                                        ),
+                                        errorWidget: (context, url, error) =>
+                                            Image.asset(
+                                          'assets/images/refmmp.png',
+                                          width: double.infinity,
+                                          height: 200,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      )
+                                    : Image.asset(
+                                        'assets/images/refmmp.png',
+                                        width: double.infinity,
+                                        height: 200,
+                                        fit: BoxFit.cover,
+                                      ),
                               ),
                             ),
                             Padding(
