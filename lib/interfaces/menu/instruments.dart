@@ -133,6 +133,7 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
