@@ -115,6 +115,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
