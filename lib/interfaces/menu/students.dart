@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_null_comparison
 
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart'; // Agregar esta importación
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -61,6 +62,21 @@ class _StudentsPageState extends State<StudentsPage> {
     super.dispose();
   }
 
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    debugPrint('Conectividad: $connectivityResult');
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
+  }
+
   Future<void> pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
@@ -81,7 +97,7 @@ class _StudentsPageState extends State<StudentsPage> {
           .from('students')
           .getPublicUrl(fileName);
     } catch (error) {
-      print('Error al subir la imagen: $error');
+      debugPrint('Error al subir la imagen: $error');
       return null;
     }
   }
@@ -108,55 +124,52 @@ class _StudentsPageState extends State<StudentsPage> {
     final box = await Hive.openBox('offline_data');
     const cacheKey = 'students_data';
 
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    if (connectivityResult == ConnectivityResult.none) {
-      final cachedStudents = box.get(cacheKey);
-      if (cachedStudents != null) {
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final response =
+            await Supabase.instance.client.from('students').select('''
+            id, first_name, last_name, email, identification_number, profile_image,
+            student_instruments!left(instruments(id, name)),
+            student_sedes!left(sedes(id, name))
+          ''').order('first_name', ascending: true);
+
+        if (response != null) {
+          final data = List<Map<String, dynamic>>.from(response);
+          setState(() {
+            students = data;
+            filteredStudents = List.from(students);
+            debugPrint('Fetched ${students.length} students from Supabase');
+            groupStudents();
+            fetchFilters();
+          });
+          await box.put(cacheKey, data); // Guarda en caché
+        } else {
+          debugPrint('Error: No students returned from Supabase');
+        }
+      } catch (e) {
+        debugPrint('Error fetching students from Supabase: $e');
+        final cachedData = box.get(cacheKey, defaultValue: []);
         setState(() {
-          students = List<Map<String, dynamic>>.from(cachedStudents);
+          students = List<Map<String, dynamic>>.from(
+              cachedData.map((item) => Map<String, dynamic>.from(item)));
           filteredStudents = List.from(students);
           debugPrint('Loaded ${students.length} students from cache');
           groupStudents();
           fetchFilters();
         });
-        return;
-      } else {
-        debugPrint('No cached data available');
-        return;
       }
-    }
-
-    try {
-      final response =
-          await Supabase.instance.client.from('students').select('''
-          id, first_name, last_name, email, identification_number, profile_image,
-          student_instruments!left(instruments(id, name)),
-          student_sedes!left(sedes(id, name))
-        ''').order('first_name', ascending: true);
-
-      if (response != null) {
-        setState(() {
-          students = List<Map<String, dynamic>>.from(response);
-          filteredStudents = List.from(students);
-          debugPrint('Fetched ${students.length} students from Supabase');
-          debugPrint(
-              'Sample student: ${students.isNotEmpty ? students.first : 'No students'}');
-          debugPrint(
-              'Student instruments: ${students.isNotEmpty ? students.first['student_instruments'] : 'None'}');
-          debugPrint(
-              'Student sedes: ${students.isNotEmpty ? students.first['student_sedes'] : 'None'}');
-          groupStudents();
-          fetchFilters();
-        });
-        await box.put(cacheKey, response);
-      } else {
-        debugPrint('Error: No students returned from Supabase');
-      }
-    } catch (e) {
-      debugPrint('Error fetching students: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cargar estudiantes: $e')),
-      );
+    } else {
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      setState(() {
+        students = List<Map<String, dynamic>>.from(
+            cachedData.map((item) => Map<String, dynamic>.from(item)));
+        filteredStudents = List.from(students);
+        debugPrint('Loaded ${students.length} students from cache');
+        groupStudents();
+        fetchFilters();
+      });
     }
   }
 
@@ -195,6 +208,24 @@ class _StudentsPageState extends State<StudentsPage> {
           .toList();
       debugPrint('Sedes: $sedes, Instruments: $instruments');
     });
+  }
+
+  Future<void> deleteStudent(int studentId) async {
+    try {
+      await Supabase.instance.client
+          .from('students')
+          .delete()
+          .eq('id', studentId);
+      await fetchStudents();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Estudiante eliminado con éxito')),
+      );
+    } catch (e) {
+      debugPrint('Error deleting student: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar estudiante: $e')),
+      );
+    }
   }
 
   void groupStudents() {
@@ -246,24 +277,6 @@ class _StudentsPageState extends State<StudentsPage> {
     });
   }
 
-  Future<void> deleteStudent(int studentId) async {
-    try {
-      await Supabase.instance.client
-          .from('students')
-          .delete()
-          .eq('id', studentId);
-      await fetchStudents();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Estudiante eliminado con éxito')),
-      );
-    } catch (e) {
-      debugPrint('Error deleting student: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al eliminar estudiante: $e')),
-      );
-    }
-  }
-
   void showStudentOptions(BuildContext context, Map<String, dynamic> student) {
     showModalBottomSheet(
       context: context,
@@ -273,7 +286,7 @@ class _StudentsPageState extends State<StudentsPage> {
             ListTile(
               leading: Icon(Icons.info_rounded, color: Colors.blue),
               title:
-                  Text('Más Información', style: TextStyle(color: Colors.blue)),
+                  Text('Más información', style: TextStyle(color: Colors.blue)),
               onTap: () {
                 Navigator.pop(context);
                 showStudentDetails(student);
@@ -288,14 +301,16 @@ class _StudentsPageState extends State<StudentsPage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => EditStudentScreen(student: student),
-                  ),
+                      builder: (
+                    context,
+                  ) =>
+                          EditStudentScreen(student: student)),
                 );
               },
             ),
             ListTile(
               leading: Icon(Icons.delete_rounded, color: Colors.red),
-              title: Text('Eliminar Estudiante',
+              title: Text('Eliminar estudiante',
                   style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
@@ -313,7 +328,7 @@ class _StudentsPageState extends State<StudentsPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Eliminar estudiante'),
+          title: Text('Confirmar eliminación'),
           content:
               Text('¿Estás seguro de que deseas eliminar a este estudiante?'),
           actions: [
@@ -361,18 +376,31 @@ class _StudentsPageState extends State<StudentsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(500),
+                borderRadius: BorderRadius.circular(50),
                 child: student['profile_image'] != null &&
                         student['profile_image'].isNotEmpty
-                    ? Image.network(
-                        student['profile_image'],
+                    ? CachedNetworkImage(
+                        imageUrl: student['profile_image'],
                         height: 150,
                         width: 150,
                         fit: BoxFit.cover,
+                        placeholder: (context, url) =>
+                            const CircularProgressIndicator(color: Colors.blue),
+                        errorWidget: (context, url, error) => Image.asset(
+                          'assets/images/refmmp.png',
+                          height: 150,
+                          width: 150,
+                          fit: BoxFit.cover,
+                        ),
                       )
-                    : Image.asset('assets/images/refmmp.png', height: 100),
+                    : Image.asset(
+                        'assets/images/refmmp.png',
+                        height: 150,
+                        width: 150,
+                        fit: BoxFit.cover,
+                      ),
               ),
-              SizedBox(height: 40),
+              SizedBox(height: 20),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -638,15 +666,38 @@ class _StudentsPageState extends State<StudentsPage> {
                                         onTap: () =>
                                             showStudentDetails(student),
                                         child: CircleAvatar(
-                                          backgroundImage: student[
-                                                      'profile_image'] !=
-                                                  null
-                                              ? NetworkImage(
-                                                  student['profile_image'])
-                                              : AssetImage(
-                                                      'assets/images/refmmp.png')
-                                                  as ImageProvider,
                                           radius: 25,
+                                          child: ClipOval(
+                                            child: student['profile_image'] !=
+                                                        null &&
+                                                    student['profile_image']
+                                                        .isNotEmpty
+                                                ? CachedNetworkImage(
+                                                    imageUrl: student[
+                                                        'profile_image'],
+                                                    width: 50,
+                                                    height: 50,
+                                                    fit: BoxFit.cover,
+                                                    placeholder: (context,
+                                                            url) =>
+                                                        const CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                    errorWidget:
+                                                        (context, url, error) =>
+                                                            Image.asset(
+                                                      'assets/images/refmmp.png',
+                                                      width: 50,
+                                                      height: 50,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  )
+                                                : Image.asset(
+                                                    'assets/images/refmmp.png',
+                                                    width: 50,
+                                                    height: 50,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                          ),
                                         ),
                                       ),
                                       title: GestureDetector(
