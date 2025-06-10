@@ -8,6 +8,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:hive/hive.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+// Custom Cache Manager for CachedNetworkImage
+class CustomCacheManager {
+  static const key = 'customCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 30), // Cache images for 30 days
+      maxNrOfCacheObjects: 100, // Limit number of cached objects
+    ),
+  );
+}
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, required this.title});
@@ -36,12 +49,17 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    _findUserTable();
+    _loadProfileData();
   }
 
-  Future<void> _findUserTable() async {
+  Future<void> _loadProfileData() async {
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      setState(() {
+        isLoading = false;
+      });
+      return;
+    }
 
     setState(() {
       isLoading = true;
@@ -50,8 +68,19 @@ class _ProfilePageState extends State<ProfilePage> {
     final box = Hive.box('offline_data');
     const cacheKey = 'user_profile';
 
-    final isOnline = await _checkConnectivity();
+    // Load cached data immediately
+    final cachedProfile = box.get(cacheKey);
+    if (cachedProfile != null) {
+      final cachedProfileTyped = Map<String, dynamic>.from(cachedProfile);
+      setState(() {
+        userProfile = cachedProfileTyped;
+        profileImageUrl = cachedProfileTyped['profile_image'] ?? '';
+        userTable = 'offline';
+      });
+    }
 
+    // Check connectivity and fetch online data if available
+    final isOnline = await _checkConnectivity();
     if (isOnline) {
       try {
         for (String table in userTables) {
@@ -64,6 +93,11 @@ class _ProfilePageState extends State<ProfilePage> {
           if (response != null) {
             // ignore: unnecessary_cast
             final responseMap = response as Map<String, dynamic>;
+            final imageUrl = responseMap['profile_image'] ?? '';
+            // Pre-cache the profile image
+            if (imageUrl.isNotEmpty) {
+              await CustomCacheManager.instance.downloadFile(imageUrl);
+            }
             await box.put(cacheKey, {
               'first_name': responseMap['first_name'] ?? '',
               'last_name': responseMap['last_name'] ?? '',
@@ -71,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   responseMap['identification_number'] ?? '',
               'charge': responseMap['charge'] ?? '',
               'email': responseMap['email'] ?? '',
-              'profile_image': responseMap['profile_image'] ?? '',
+              'profile_image': imageUrl,
             });
 
             setState(() {
@@ -83,16 +117,16 @@ class _ProfilePageState extends State<ProfilePage> {
                     responseMap['identification_number'] ?? '',
                 'charge': responseMap['charge'] ?? '',
                 'email': responseMap['email'] ?? '',
-                'profile_image': responseMap['profile_image'] ?? '',
+                'profile_image': imageUrl,
               };
-              profileImageUrl = responseMap['profile_image'] ?? '';
+              profileImageUrl = imageUrl;
             });
             break;
           }
         }
       } catch (e) {
         debugPrint('Error fetching data from Supabase: $e');
-        final cachedProfile = box.get(cacheKey);
+        // Fallback to cached data if online fetch fails
         if (cachedProfile != null) {
           final cachedProfileTyped = Map<String, dynamic>.from(cachedProfile);
           setState(() {
@@ -101,16 +135,6 @@ class _ProfilePageState extends State<ProfilePage> {
             userTable = 'offline';
           });
         }
-      }
-    } else {
-      final cachedProfile = box.get(cacheKey);
-      if (cachedProfile != null) {
-        final cachedProfileTyped = Map<String, dynamic>.from(cachedProfile);
-        setState(() {
-          userProfile = cachedProfileTyped;
-          profileImageUrl = cachedProfileTyped['profile_image'] ?? '';
-          userTable = 'offline';
-        });
       }
     }
 
@@ -122,7 +146,16 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<bool> _checkConnectivity() async {
     final connectivityResult = await Connectivity().checkConnectivity();
     debugPrint('Conectividad: $connectivityResult');
-    return connectivityResult != ConnectivityResult.none;
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
   }
 
   Future<void> _pickImage() async {
@@ -138,7 +171,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _uploadProfileImage(File imageFile) async {
     try {
       final user = supabase.auth.currentUser;
-      if (user == null || userTable == null) return;
+      if (user == null || userTable == null || userTable == 'offline') return;
 
       final fileName = 'profile_${user.id}.png';
       final storagePath = 'profile_pictures/$fileName';
@@ -152,8 +185,18 @@ class _ProfilePageState extends State<ProfilePage> {
           .from(userTable!)
           .update({'profile_image': publicUrl}).eq('user_id', user.id);
 
+      // Update cache
+      final box = Hive.box('offline_data');
+      final cachedProfile = box.get('user_profile') ?? {};
+      cachedProfile['profile_image'] = publicUrl;
+      await box.put('user_profile', cachedProfile);
+
+      // Pre-cache the new image
+      await CustomCacheManager.instance.downloadFile(publicUrl);
+
       setState(() {
         profileImageUrl = publicUrl;
+        userProfile['profile_image'] = publicUrl;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,60 +242,51 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Column(
                       children: [
                         const SizedBox(height: 20),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        ),
-                        const SizedBox(height: 20),
-                        FutureBuilder<bool>(
-                          future: _checkConnectivity(),
-                          builder: (context, snapshot) {
-                            final isOnline = snapshot.data ?? false;
-                            return GestureDetector(
-                              onTap: _pickImage,
-                              child: CircleAvatar(
-                                radius: 80,
-                                backgroundColor: Colors.blue,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    ClipOval(
-                                      child: SizedBox.expand(
-                                        child: isOnline &&
-                                                profileImageUrl.isNotEmpty
-                                            ? CachedNetworkImage(
-                                                imageUrl: profileImageUrl,
-                                                fit: BoxFit.cover,
-                                                placeholder: (context, url) =>
-                                                    const CircularProgressIndicator(
-                                                  color: Colors.white,
-                                                ),
-                                                errorWidget:
-                                                    (context, url, error) =>
-                                                        Image.asset(
-                                                  'assets/images/refmmp.png',
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              )
-                                            : Image.asset(
-                                                'assets/images/refmmp.png',
-                                                fit: BoxFit.cover,
-                                              ),
-                                      ),
-                                    ),
-                                    const Align(
-                                      alignment: Alignment.bottomRight,
-                                      child: CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: Colors.white,
-                                        child: Icon(Icons.camera_alt,
-                                            color: Colors.blue),
-                                      ),
-                                    ),
-                                  ],
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: CircleAvatar(
+                            radius: 80,
+                            backgroundColor: Colors.blue,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ClipOval(
+                                  child: SizedBox.expand(
+                                    child: profileImageUrl.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: profileImageUrl,
+                                            cacheManager:
+                                                CustomCacheManager.instance,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) =>
+                                                const CircularProgressIndicator(
+                                              color: Colors.white,
+                                            ),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    Image.asset(
+                                              'assets/images/refmmp.png',
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        : Image.asset(
+                                            'assets/images/refmmp.png',
+                                            fit: BoxFit.cover,
+                                          ),
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                                const Align(
+                                  alignment: Alignment.bottomRight,
+                                  child: CircleAvatar(
+                                    radius: 20,
+                                    backgroundColor: Colors.white,
+                                    child: Icon(Icons.camera_alt,
+                                        color: Colors.blue),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 20),
                         _buildProfileField(
@@ -266,7 +300,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ],
                     ),
                   ),
-        floatingActionButton: userTable == null
+        floatingActionButton: userTable == null || userTable == 'offline'
             ? null
             : FloatingActionButton(
                 onPressed: () async {
@@ -279,7 +313,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   );
-                  _findUserTable();
+                  await _loadProfileData();
                 },
                 backgroundColor: Colors.blue,
                 child: const Icon(Icons.edit, color: Colors.white),
