@@ -324,6 +324,7 @@ class _NotificationPageState extends State<NotificationPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
