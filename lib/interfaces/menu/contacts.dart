@@ -108,6 +108,7 @@ class _ContactsPageState extends State<ContactsPage> {
             style: const TextStyle(
                 fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) => IconButton(
