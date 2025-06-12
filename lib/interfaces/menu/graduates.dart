@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_null_comparison
 
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart'; // Agregar esta importación
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -65,6 +66,21 @@ class _GraduatesPageState extends State<GraduatesPage> {
     super.dispose();
   }
 
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    debugPrint('Conectividad: $connectivityResult');
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
+  }
+
   Future<void> pickImage() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
@@ -85,7 +101,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
           .from('graduates')
           .getPublicUrl(fileName);
     } catch (error) {
-      print('Error al subir la imagen: $error');
+      debugPrint('Error al subir la imagen: $error');
       return null;
     }
   }
@@ -112,45 +128,51 @@ class _GraduatesPageState extends State<GraduatesPage> {
     final box = await Hive.openBox('offline_data');
     const cacheKey = 'graduates_data';
 
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    if (connectivityResult == ConnectivityResult.none) {
-      final cachedGraduates = box.get(cacheKey);
-      if (cachedGraduates != null) {
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client
+            .from('graduates')
+            .select(
+                '*, graduate_instruments!left(instruments!inner(name)), sedes!graduates_sede_id_fkey!left(name)')
+            .order('first_name', ascending: true);
+
+        if (response != null) {
+          final data = List<Map<String, dynamic>>.from(response);
+          setState(() {
+            graduates = data;
+            filteredGraduates = List.from(graduates);
+            debugPrint('Fetched ${graduates.length} graduates from Supabase');
+            groupGraduates();
+            fetchFilters();
+          });
+          await box.put(cacheKey, data); // Guarda en caché
+        } else {
+          debugPrint('Error: No graduates returned from Supabase');
+        }
+      } catch (e) {
+        debugPrint('Error fetching graduates from Supabase: $e');
+        final cachedData = box.get(cacheKey, defaultValue: []);
         setState(() {
-          graduates = List<Map<String, dynamic>>.from(cachedGraduates);
+          graduates = List<Map<String, dynamic>>.from(
+              cachedData.map((item) => Map<String, dynamic>.from(item)));
           filteredGraduates = List.from(graduates);
           debugPrint('Loaded ${graduates.length} graduates from cache');
           groupGraduates();
           fetchFilters();
         });
-        return;
-      } else {
-        debugPrint('No cached data available');
-        return;
       }
-    }
-
-    try {
-      final response = await Supabase.instance.client
-          .from('graduates')
-          .select(
-              '*, graduate_instruments!left(instruments!inner(name)), sedes!graduates_sede_id_fkey!left(name)')
-          .order('first_name', ascending: true);
-
-      if (response != null) {
-        setState(() {
-          graduates = List<Map<String, dynamic>>.from(response);
-          filteredGraduates = List.from(graduates);
-          debugPrint('Fetched ${graduates.length} graduates from Supabase');
-          groupGraduates();
-          fetchFilters();
-        });
-        await box.put(cacheKey, response);
-      } else {
-        debugPrint('Error: No graduates returned from Supabase');
-      }
-    } catch (e) {
-      debugPrint('Error fetching graduates: $e');
+    } else {
+      final cachedData = box.get(cacheKey, defaultValue: []);
+      setState(() {
+        graduates = List<Map<String, dynamic>>.from(
+            cachedData.map((item) => Map<String, dynamic>.from(item)));
+        filteredGraduates = List.from(graduates);
+        debugPrint('Loaded ${graduates.length} graduates from cache');
+        groupGraduates();
+        fetchFilters();
+      });
     }
   }
 
@@ -227,12 +249,21 @@ class _GraduatesPageState extends State<GraduatesPage> {
   }
 
   Future<void> deleteGraduate(int graduateId) async {
-    await Supabase.instance.client
-        .from('graduates')
-        .delete()
-        .eq('id', graduateId)
-        .order('first_name', ascending: true);
-    fetchGraduates();
+    try {
+      await Supabase.instance.client
+          .from('graduates')
+          .delete()
+          .eq('id', graduateId);
+      await fetchGraduates();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Egresado eliminado con éxito')),
+      );
+    } catch (e) {
+      debugPrint('Error deleting graduate: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar egresado: $e')),
+      );
+    }
   }
 
   void showGraduateOptions(
@@ -243,17 +274,17 @@ class _GraduatesPageState extends State<GraduatesPage> {
         return Wrap(
           children: [
             ListTile(
-              leading: Icon(Icons.info, color: Colors.blue),
-              title:
-                  Text('Más información', style: TextStyle(color: Colors.blue)),
+              leading: const Icon(Icons.info, color: Colors.blue),
+              title: const Text('Más información',
+                  style: TextStyle(color: Colors.blue)),
               onTap: () {
                 Navigator.pop(context);
                 showGraduateDetails(graduate);
               },
             ),
             ListTile(
-              leading: Icon(Icons.delete, color: Colors.red),
-              title: Text('Eliminar egresado',
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Eliminar egresado',
                   style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
@@ -271,20 +302,22 @@ class _GraduatesPageState extends State<GraduatesPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Eliminar egresado'),
-          content:
-              Text('¿Estás seguro de que deseas eliminar a este egresado?'),
+          title: const Text('Confirmar eliminación'),
+          content: const Text(
+              '¿Estás seguro de que deseas eliminar a este egresado?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cancelar', style: TextStyle(color: Colors.blue)),
+              child:
+                  const Text('Cancelar', style: TextStyle(color: Colors.blue)),
             ),
             TextButton(
               onPressed: () {
                 deleteGraduate(graduateId);
                 Navigator.pop(context);
               },
-              child: Text('Eliminar', style: TextStyle(color: Colors.red)),
+              child:
+                  const Text('Eliminar', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -299,7 +332,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
         return AlertDialog(
           title: Text(
             '${graduate['first_name'] ?? 'Sin nombre'} ${graduate['last_name'] ?? ''}',
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.blue,
               fontWeight: FontWeight.bold,
             ),
@@ -309,28 +342,41 @@ class _GraduatesPageState extends State<GraduatesPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(500),
+                borderRadius: BorderRadius.circular(50),
                 child: graduate['profile_image'] != null &&
                         graduate['profile_image'].isNotEmpty
-                    ? Image.network(
-                        graduate['profile_image'],
+                    ? CachedNetworkImage(
+                        imageUrl: graduate['profile_image'],
                         height: 150,
                         width: 150,
                         fit: BoxFit.cover,
+                        placeholder: (context, url) =>
+                            const CircularProgressIndicator(color: Colors.blue),
+                        errorWidget: (context, url, error) => Image.asset(
+                          'assets/images/refmmp.png',
+                          height: 150,
+                          width: 150,
+                          fit: BoxFit.cover,
+                        ),
                       )
-                    : Image.asset('assets/images/refmmp.png', height: 100),
+                    : Image.asset(
+                        'assets/images/refmmp.png',
+                        height: 150,
+                        width: 150,
+                        fit: BoxFit.cover,
+                      ),
               ),
-              SizedBox(height: 40),
+              const SizedBox(height: 20),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Instrumento(s): ${graduate['graduate_instruments'] != null && (graduate['graduate_instruments'] as List).isNotEmpty ? (graduate['graduate_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}',
-                    style: TextStyle(height: 2),
+                    style: const TextStyle(height: 2),
                   ),
                   Text(
                     'Sede(s): ${graduate['sedes']?['name'] ?? 'No asignada'}',
-                    style: TextStyle(height: 2),
+                    style: const TextStyle(height: 2),
                   ),
                 ],
               ),
@@ -339,7 +385,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cerrar', style: TextStyle(color: Colors.blue)),
+              child: const Text('Cerrar', style: TextStyle(color: Colors.blue)),
             ),
           ],
         );
@@ -365,12 +411,12 @@ class _GraduatesPageState extends State<GraduatesPage> {
           backgroundColor: backgroundColor,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
+          title: const Text(
             'Filtros',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: textColor,
+              color: Colors.blue,
             ),
           ),
           content: Column(
@@ -392,9 +438,9 @@ class _GraduatesPageState extends State<GraduatesPage> {
                 value: tempSede,
                 iconEnabledColor: iconColor,
                 items: [
-                  DropdownMenuItem(
+                  const DropdownMenuItem(
                     value: null,
-                    child: Text('Todas', style: TextStyle(color: textColor)),
+                    child: Text('Todas', style: TextStyle(color: Colors.blue)),
                   ),
                   ...sedes.map((sede) => DropdownMenuItem(
                         value: sede,
@@ -405,7 +451,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
                   tempSede = value;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   labelText: 'Instrumento',
@@ -422,9 +468,9 @@ class _GraduatesPageState extends State<GraduatesPage> {
                 value: tempInstrument,
                 iconEnabledColor: iconColor,
                 items: [
-                  DropdownMenuItem(
+                  const DropdownMenuItem(
                     value: null,
-                    child: Text('Todos', style: TextStyle(color: textColor)),
+                    child: Text('Todos', style: TextStyle(color: Colors.blue)),
                   ),
                   ...instruments.map((instrument) => DropdownMenuItem(
                         value: instrument,
@@ -441,7 +487,8 @@ class _GraduatesPageState extends State<GraduatesPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cancelar', style: TextStyle(color: Colors.red)),
+              child:
+                  const Text('Cancelar', style: TextStyle(color: Colors.red)),
             ),
             TextButton(
               onPressed: () {
@@ -452,7 +499,8 @@ class _GraduatesPageState extends State<GraduatesPage> {
                 });
                 Navigator.pop(context);
               },
-              child: Text('Aplicar', style: TextStyle(color: textColor)),
+              child:
+                  const Text('Aplicar', style: TextStyle(color: Colors.blue)),
             ),
           ],
         );
@@ -464,13 +512,31 @@ class _GraduatesPageState extends State<GraduatesPage> {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return false;
 
-    final user = await supabase
-        .from('users')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (user != null) return true;
-    return false;
+    final box = Hive.box('offline_data');
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final user = await supabase
+            .from('users')
+            .select()
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (user != null) {
+          await box.put('can_add_event_$userId', true);
+          return true;
+        } else {
+          await box.put('can_add_event_$userId', false);
+          return false;
+        }
+      } catch (e) {
+        debugPrint('Error checking permissions: $e');
+        return box.get('can_add_event_$userId', defaultValue: false);
+      }
+    } else {
+      return box.get('can_add_event_$userId', defaultValue: false);
+    }
   }
 
   void scrollToLetter(String letter) {
@@ -481,7 +547,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
       final position = renderBox.localToGlobal(Offset.zero).dy;
       _scrollController.animateTo(
         _scrollController.offset + position - 100,
-        duration: Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     }
@@ -505,17 +571,17 @@ class _GraduatesPageState extends State<GraduatesPage> {
           ),
           title: TextField(
             controller: _searchController,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: 'Buscar egresado...',
               hintStyle: TextStyle(color: Colors.white),
               border: InputBorder.none,
               icon: Icon(Icons.search, color: Colors.white),
             ),
-            style: TextStyle(color: Colors.white),
+            style: const TextStyle(color: Colors.white),
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.filter_list, color: Colors.white),
+              icon: const Icon(Icons.filter_list, color: Colors.white),
               onPressed: showFilterDialog,
             ),
           ],
@@ -550,7 +616,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
               onRefresh: fetchGraduates,
               color: Colors.blue,
               child: filteredGraduates.isEmpty
-                  ? Center(
+                  ? const Center(
                       child: Text(
                         'No se encontraron egresados',
                         style: TextStyle(fontSize: 18, color: Colors.grey),
@@ -570,7 +636,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
                               padding: const EdgeInsets.all(8.0),
                               child: Text(
                                 letter,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.blue,
@@ -584,15 +650,38 @@ class _GraduatesPageState extends State<GraduatesPage> {
                                         onTap: () =>
                                             showGraduateDetails(graduate),
                                         child: CircleAvatar(
-                                          backgroundImage: graduate[
-                                                      'profile_image'] !=
-                                                  null
-                                              ? NetworkImage(
-                                                  graduate['profile_image'])
-                                              : AssetImage(
-                                                      'assets/images/refmmp.png')
-                                                  as ImageProvider,
                                           radius: 25,
+                                          child: ClipOval(
+                                            child: graduate['profile_image'] !=
+                                                        null &&
+                                                    graduate['profile_image']
+                                                        .isNotEmpty
+                                                ? CachedNetworkImage(
+                                                    imageUrl: graduate[
+                                                        'profile_image'],
+                                                    width: 50,
+                                                    height: 50,
+                                                    fit: BoxFit.cover,
+                                                    placeholder: (context,
+                                                            url) =>
+                                                        const CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                    errorWidget:
+                                                        (context, url, error) =>
+                                                            Image.asset(
+                                                      'assets/images/refmmp.png',
+                                                      width: 50,
+                                                      height: 50,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  )
+                                                : Image.asset(
+                                                    'assets/images/refmmp.png',
+                                                    width: 50,
+                                                    height: 50,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                          ),
                                         ),
                                       ),
                                       title: GestureDetector(
@@ -600,7 +689,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
                                             showGraduateDetails(graduate),
                                         child: Text(
                                           '${graduate['first_name'] ?? 'Sin nombre'} ${graduate['last_name'] ?? ''}',
-                                          style: TextStyle(
+                                          style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: Colors.blue),
                                         ),
@@ -625,7 +714,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
                                           if (snapshot.hasData &&
                                               snapshot.data == true) {
                                             return IconButton(
-                                              icon: Icon(Icons.more_vert,
+                                              icon: const Icon(Icons.more_vert,
                                                   color: Colors.blue),
                                               onPressed: () =>
                                                   showGraduateOptions(
