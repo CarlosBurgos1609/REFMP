@@ -104,6 +104,7 @@ class _SettingsPage extends State<SettingsPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           leading: Builder(
             builder: (context) {
