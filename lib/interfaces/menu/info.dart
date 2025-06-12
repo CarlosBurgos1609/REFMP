@@ -34,8 +34,9 @@ class _InfoPageState extends State<InfoPage> {
         appBar: AppBar(
           title: Text(
             widget.title,
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
+          centerTitle: true,
           backgroundColor: Colors.blue,
           elevation: 0,
           leading: Builder(
