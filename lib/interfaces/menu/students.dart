@@ -762,7 +762,7 @@ class _StudentsPageState extends State<StudentsPage> {
             Positioned(
               right: 8,
               top: 45,
-              bottom: 40,
+              bottom: 70,
               child: Container(
                 width: 30,
                 child: ListView.builder(
@@ -778,7 +778,7 @@ class _StudentsPageState extends State<StudentsPage> {
                         child: Text(
                           letter,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: groupedStudents.containsKey(letter)
                                 ? FontWeight.bold
                                 : FontWeight.normal,
