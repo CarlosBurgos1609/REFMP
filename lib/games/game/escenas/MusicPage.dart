@@ -388,6 +388,7 @@ class _MusicPageState extends State<MusicPage> {
         );
         break;
       case 1:
+        // Already on MusicPage, no action needed
         break;
       case 2:
         Navigator.pushReplacement(
@@ -499,7 +500,7 @@ class _MusicPageState extends State<MusicPage> {
                   DropdownMenuItem(
                     value: null,
                     child: Text('Todas las dificultades',
-                        style: TextStyle(color: textColor)),
+                        style: TextStyle(color: textColor, fontSize: 14)),
                   ),
                   ...difficulties.map((difficulty) => DropdownMenuItem(
                         value: difficulty,
@@ -522,7 +523,7 @@ class _MusicPageState extends State<MusicPage> {
               onPressed: () {
                 setState(() {
                   selectedDifficulty = tempDifficulty;
-                  _songsFuture = fetchSongs(); // Refresh songs to apply filter
+                  _songsFuture = fetchSongs();
                 });
                 Navigator.pop(context);
               },
@@ -547,7 +548,7 @@ class _MusicPageState extends State<MusicPage> {
               hintText: "Buscar Canciones de ${widget.instrumentName} ...",
               hintStyle: const TextStyle(
                 color: Colors.white,
-                fontSize: 14,
+                fontSize: 11,
               ),
               border: InputBorder.none,
               suffixIcon: const Icon(
@@ -618,6 +619,7 @@ class _MusicPageState extends State<MusicPage> {
                 return matchesQuery && matchesDifficulty;
               }).toList();
 
+              // Update groupedSongs when songs are fetched
               groupSongs(songs);
 
               return RefreshIndicator(
@@ -840,7 +842,8 @@ class _MusicPageState extends State<MusicPage> {
           Positioned(
             right: 8,
             top: 45,
-            bottom: 80,
+            bottom:
+                80, // Increased padding to avoid overlap with FloatingActionButton
             child: Container(
               width: 30,
               child: ListView.builder(
