@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
@@ -28,13 +31,276 @@ class _ProfilePageGameState extends State<ProfilePageGame>
   String? fullName;
   String? userName;
 
-  int experiencePoints = 0;
+  int pointsXpTotally = 0;
+  int pointsXpWeekend = 0;
+  int coins = 0;
 
   late TabController _tabController;
   int _selectedIndex = 4;
+  String? _userTable;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _initializeHiveAndFetch();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeHiveAndFetch() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+      debugPrint('Hive box offline_data opened successfully');
+      await fetchData();
+    } catch (e) {
+      debugPrint('Error initializing Hive: $e');
+    }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    debugPrint('Conectividad: $connectivityResult');
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
+  }
+
+  Future<void> fetchUserProfileImage() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        debugPrint('No user logged in');
+        return;
+      }
+
+      final box = Hive.box('offline_data');
+      final isOnline = await _checkConnectivity();
+      final cacheKey = 'user_data_${user.id}_profile_image';
+
+      if (!isOnline) {
+        final cachedProfileImage = box.get(cacheKey);
+        if (cachedProfileImage != null) {
+          setState(() {
+            profileImageUrl = cachedProfileImage;
+          });
+          debugPrint('Loaded profile image from cache: $cachedProfileImage');
+        } else {
+          debugPrint('No cached profile image found for key: $cacheKey');
+        }
+        return;
+      }
+
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select('profile_image')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (response != null && response['profile_image'] != null) {
+          setState(() {
+            profileImageUrl = response['profile_image'];
+          });
+          await box.put(cacheKey, response['profile_image']);
+          debugPrint(
+              'Profile image saved to cache: ${response['profile_image']}');
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al obtener la imagen del perfil: $e');
+    }
+  }
+
+  Future<void> fetchData() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('No user logged in');
+      return;
+    }
+
+    final box = Hive.box('offline_data');
+    final cacheKeyPrefix = 'user_data_${user.id}';
+    final isOnline = await _checkConnectivity();
+
+    debugPrint('Fetching user data, Online: $isOnline');
+
+    if (!isOnline) {
+      setState(() {
+        profileImageUrl = box.get('${cacheKeyPrefix}_profile_image');
+        firstName = box.get('${cacheKeyPrefix}_first_name', defaultValue: '');
+        lastName = box.get('${cacheKeyPrefix}_last_name', defaultValue: '');
+        userName = '${firstName ?? ''} ${lastName ?? ''}'.trim();
+        fullName =
+            box.get('${cacheKeyPrefix}_nickname', defaultValue: 'Sin nickname');
+        pointsXpTotally =
+            box.get('${cacheKeyPrefix}_points_xp_totally', defaultValue: 0);
+        pointsXpWeekend =
+            box.get('${cacheKeyPrefix}_points_xp_weekend', defaultValue: 0);
+        coins = box.get('${cacheKeyPrefix}_coins', defaultValue: 0);
+      });
+      debugPrint('Loaded user data from cache with prefix: $cacheKeyPrefix');
+      return;
+    }
+
+    try {
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select(
+                'profile_image, first_name, last_name, nickname, points_xp_totally, points_xp_weekend, coins')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (response != null) {
+          setState(() {
+            profileImageUrl = response['profile_image'];
+            firstName = response['first_name'];
+            lastName = response['last_name'];
+            userName = '${firstName ?? ''} ${lastName ?? ''}'.trim();
+            fullName = response['nickname'] ?? 'Sin nickname';
+            pointsXpTotally = response['points_xp_totally'] ?? 0;
+            pointsXpWeekend = response['points_xp_weekend'] ?? 0;
+            coins = response['coins'] ?? 0;
+            _userTable = table;
+          });
+
+          // Guardar en Hive
+          await box.put(
+              '${cacheKeyPrefix}_profile_image', response['profile_image']);
+          await box.put('${cacheKeyPrefix}_first_name', response['first_name']);
+          await box.put('${cacheKeyPrefix}_last_name', response['last_name']);
+          await box.put('${cacheKeyPrefix}_nickname', response['nickname']);
+          await box.put('${cacheKeyPrefix}_points_xp_totally',
+              response['points_xp_totally']);
+          await box.put('${cacheKeyPrefix}_points_xp_weekend',
+              response['points_xp_weekend']);
+          await box.put('${cacheKeyPrefix}_coins', response['coins']);
+          debugPrint('User data saved to Hive with prefix: $cacheKeyPrefix');
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al cargar datos: $e');
+      // Intentar cargar desde caché si hay error
+      setState(() {
+        profileImageUrl = box.get('${cacheKeyPrefix}_profile_image');
+        firstName = box.get('${cacheKeyPrefix}_first_name', defaultValue: '');
+        lastName = box.get('${cacheKeyPrefix}_last_name', defaultValue: '');
+        userName = '${firstName ?? ''} ${lastName ?? ''}'.trim();
+        fullName =
+            box.get('${cacheKeyPrefix}_nickname', defaultValue: 'Sin nickname');
+        pointsXpTotally =
+            box.get('${cacheKeyPrefix}_points_xp_totally', defaultValue: 0);
+        pointsXpWeekend =
+            box.get('${cacheKeyPrefix}_points_xp_weekend', defaultValue: 0);
+        coins = box.get('${cacheKeyPrefix}_coins', defaultValue: 0);
+      });
+      debugPrint('Loaded user data from cache due to error');
+    }
+  }
+
+  void _editFullName() async {
+    final controller = TextEditingController(text: fullName);
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Center(
+          child: Text(
+            "Editar Nickname",
+            style: TextStyle(color: Colors.blue),
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: "Nuevo Nickname"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Cancelar",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final user = supabase.auth.currentUser;
+              if (user != null && _userTable != null) {
+                final isOnline = await _checkConnectivity();
+                if (!isOnline) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            "No hay conexión. Los cambios se guardarán cuando estés en línea.")),
+                  );
+                }
+
+                setState(() {
+                  fullName = controller.text;
+                });
+
+                final box = Hive.box('offline_data');
+                await box.put('user_data_${user.id}_nickname', controller.text);
+
+                if (isOnline) {
+                  try {
+                    await supabase.from(_userTable!).update(
+                        {'nickname': controller.text}).eq('user_id', user.id);
+                    debugPrint(
+                        'Nickname updated in Supabase: ${controller.text}');
+                  } catch (e) {
+                    debugPrint('Error updating nickname: $e');
+                  }
+                }
+                Navigator.pop(context);
+              }
+            },
+            child: const Text(
+              "Guardar",
+              style: TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _onItemTapped(int index) {
-    if (_selectedIndex == index) return; // evitar recargar la misma página
+    if (_selectedIndex == index) return;
 
     switch (index) {
       case 0:
@@ -85,147 +351,6 @@ class _ProfilePageGameState extends State<ProfilePageGame>
     }
   }
 
-  Future<bool> _checkConnectivity() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    debugPrint('Conectividad: $connectivityResult');
-    return connectivityResult != ConnectivityResult.none;
-  }
-
-  Future<void> fetchUserProfileImage() async {
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
-      final isOnline = await _checkConnectivity();
-
-      if (!isOnline) {
-        final box = Hive.box('offline_data');
-        const cacheKey = 'user_profile_image';
-        final cachedProfileImage = box.get(cacheKey, defaultValue: null);
-        if (cachedProfileImage != null) {
-          setState(() {
-            profileImageUrl = cachedProfileImage;
-          });
-        }
-        return;
-      }
-
-      List<String> tables = [
-        'users',
-        'students',
-        'graduates',
-        'teachers',
-        'advisors',
-        'parents'
-      ];
-
-      for (String table in tables) {
-        final response = await supabase
-            .from(table)
-            .select('profile_image')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-        if (response != null && response['profile_image'] != null) {
-          setState(() {
-            profileImageUrl = response['profile_image'];
-          });
-
-          final box = Hive.box('offline_data');
-          await box.put('user_profile_image', response['profile_image']);
-          break;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error al obtener la imagen del perfil: $e');
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    fetchData();
-    fetchUserProfileImage();
-  }
-
-  Future<void> fetchData() async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-
-    try {
-      // Obtener imagen de perfil y nombre
-      final responseUser = await supabase
-          .from('users')
-          .select('profile_image, first_name, last_name')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      final responseCup = await supabase
-          .from('cup')
-          .select('full_name, experience_points')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      setState(() {
-        profileImageUrl = responseUser?['profile_image'];
-        firstName = responseUser?['first_name'];
-        lastName = responseUser?['last_name'];
-        userName = '${firstName ?? ''} ${lastName ?? ''}';
-        fullName = responseCup?['full_name'] ?? 'Sin nickname';
-        experiencePoints = responseCup?['experience_points'] ?? 0;
-      });
-    } catch (e) {
-      debugPrint('Error al cargar datos: $e');
-    }
-  }
-
-  void _editFullName() async {
-    final controller = TextEditingController(text: fullName);
-
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Center(
-          child: Text(
-            "Editar Nickname",
-            style: TextStyle(color: Colors.blue),
-          ),
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: "Nuevo Nickname"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "Cancelar",
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final user = supabase.auth.currentUser;
-              if (user != null) {
-                await supabase.from('cup').update(
-                    {'full_name': controller.text}).eq('user_id', user.id);
-                setState(() {
-                  fullName = controller.text;
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text(
-              "Guardar",
-              style: TextStyle(color: Colors.blue),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProfileHeader() {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return Column(
@@ -233,21 +358,28 @@ class _ProfilePageGameState extends State<ProfilePageGame>
         const SizedBox(height: 24),
         profileImageUrl != null
             ? ClipOval(
-                child: Image.network(
-                  profileImageUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: profileImageUrl!,
                   width: 100,
                   height: 100,
                   fit: BoxFit.cover,
+                  placeholder: (context, url) =>
+                      const CircularProgressIndicator(color: Colors.blue),
+                  errorWidget: (context, url, error) => const CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.blue,
+                    child: Icon(Icons.person, size: 60, color: Colors.white),
+                  ),
                 ),
               )
             : const CircleAvatar(
-                radius: 60,
+                radius: 50,
                 backgroundColor: Colors.blue,
                 child: Icon(Icons.person, size: 60, color: Colors.white),
               ),
         const SizedBox(height: 12),
         Text(
-          userName ?? 'Usuario sin nombre',
+          userName?.isNotEmpty ?? false ? userName! : 'Usuario sin nombre',
           style: const TextStyle(
               fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blue),
         ),
@@ -256,24 +388,159 @@ class _ProfilePageGameState extends State<ProfilePageGame>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              fullName ?? 'Sin nickname',
+              fullName?.isNotEmpty ?? false ? fullName! : 'Sin nickname',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(width: 8),
             GestureDetector(
               onTap: _editFullName,
-              child: const Icon(Icons.edit, size: 18, color: Colors.grey),
+              child: Icon(Icons.edit, size: 18, color: Colors.grey[400]),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Puntos de experiencia: $experiencePoints',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.blueGrey,
-          ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Contenedor para EXP Totales
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: themeProvider.isDarkMode
+                    ? Colors.blue
+                    : Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.bolt,
+                        color: Colors.yellow,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$pointsXpTotally',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: themeProvider.isDarkMode
+                              ? Colors.grey[200]
+                              : Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'EXP Totales',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[200]
+                          : Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Contenedor para EXP Semanal
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: themeProvider.isDarkMode
+                    ? Colors.blue
+                    : Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.bolt,
+                        color: Colors.yellow,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$pointsXpWeekend',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: themeProvider.isDarkMode
+                              ? Colors.grey[200]
+                              : Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'EXP Semanal',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[200]
+                          : Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Contenedor para Monedas
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: themeProvider.isDarkMode
+                    ? Colors.blue
+                    : Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.monetization_on,
+                        color: Colors.yellow,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$coins',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: themeProvider.isDarkMode
+                              ? Colors.grey[200]
+                              : Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Monedas',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[200]
+                          : Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Divider(
@@ -312,7 +579,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
           TabBar(
             controller: _tabController,
             labelColor: Colors.blue,
-            unselectedLabelColor: Colors.grey,
+            unselectedLabelColor: Colors.grey[300],
             indicatorColor: Colors.blue,
             tabs: const [
               Tab(icon: Icon(Icons.favorite_rounded), text: "Favoritos"),
@@ -325,8 +592,8 @@ class _ProfilePageGameState extends State<ProfilePageGame>
               controller: _tabController,
               children: const [
                 Center(child: Text('🎵 No tienes Canciones favoritas 🎵')),
-                Center(child: Text('🎁 No tines Objetos 🎁')),
-                Center(child: Text('⌚No tienes Historial de experiencia ⌚')),
+                Center(child: Text('🎁 No tienes Objetos 🎁')),
+                Center(child: Text('⌚ No tienes Historial de experiencia ⌚')),
               ],
             ),
           ),
