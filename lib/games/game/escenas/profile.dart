@@ -408,7 +408,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: themeProvider.isDarkMode
-                    ? Colors.blue
+                    ? Colors.blue.withOpacity(0.9)
                     : Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -454,7 +454,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: themeProvider.isDarkMode
-                    ? Colors.blue
+                    ? Colors.blue.withOpacity(0.9)
                     : Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -500,7 +500,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: themeProvider.isDarkMode
-                    ? Colors.blue
+                    ? Colors.blue.withOpacity(0.9)
                     : Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -556,6 +556,7 @@ class _ProfilePageGameState extends State<ProfilePageGame>
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -579,7 +580,9 @@ class _ProfilePageGameState extends State<ProfilePageGame>
           TabBar(
             controller: _tabController,
             labelColor: Colors.blue,
-            unselectedLabelColor: Colors.grey[300],
+            unselectedLabelColor: themeProvider.isDarkMode
+                ? Colors.grey.withOpacity(0.4)
+                : Colors.grey[300],
             indicatorColor: Colors.blue,
             tabs: const [
               Tab(icon: Icon(Icons.favorite_rounded), text: "Favoritos"),
