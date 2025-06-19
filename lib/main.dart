@@ -93,7 +93,7 @@ class MyApp extends StatelessWidget {
           }
           if (snapshot.hasData && snapshot.data?.session != null) {
             return const HomePage(
-              title: 'Bienvenido',
+              title: 'Bienvenid@',
             );
           } else {
             return const Init();
