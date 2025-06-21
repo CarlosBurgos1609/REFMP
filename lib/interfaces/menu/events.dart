@@ -19,7 +19,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 final customCacheManager = CacheManager(
   Config(
     'eventsImageCache',
-    stalePeriod: const Duration(days: 30), // Cache images for 30 days
+    stalePeriod: const Duration(days: 30),
     maxNrOfCacheObjects: 100,
   ),
 );
@@ -57,6 +57,7 @@ class _EventsPageState extends State<EventsPage> {
   CalendarView _calendarView = CalendarView.month;
   File? eventImage;
   bool _isOnline = false;
+  late Box _hiveBox;
 
   @override
   void initState() {
@@ -66,7 +67,11 @@ class _EventsPageState extends State<EventsPage> {
     initializeDateFormatting('es_ES', null).then((_) {
       setState(() {});
     });
-    fetchEvents();
+    // Open Hive box once in initState
+    Hive.openBox('offline_data').then((box) {
+      _hiveBox = box;
+      fetchEvents();
+    });
   }
 
   @override
@@ -95,8 +100,6 @@ class _EventsPageState extends State<EventsPage> {
           'events_images/event_${DateTime.now().millisecondsSinceEpoch}.png';
       await supabase.storage.from('Events').upload(fileName, imageFile);
       final imageUrl = supabase.storage.from('Events').getPublicUrl(fileName);
-      // Pre-cache the image
-      await customCacheManager.downloadFile(imageUrl);
       return imageUrl;
     } catch (error) {
       debugPrint('Error al subir la imagen: $error');
@@ -105,7 +108,6 @@ class _EventsPageState extends State<EventsPage> {
   }
 
   Future<void> fetchEvents() async {
-    final box = await Hive.openBox('offline_data');
     const cacheKey = 'events_data';
 
     _isOnline = await isOnline();
@@ -117,42 +119,36 @@ class _EventsPageState extends State<EventsPage> {
         response = await supabase
             .from('events')
             .select('*, events_headquarters(*, sedes(name))')
-            .order('date', ascending: true)
-            .order('name', ascending: true);
+            .order('date',
+                ascending: false); // Sort from most recent to least recent
 
-        // Pre-cache images
-        for (var event in response) {
-          if (event['image'] != null && event['image'].isNotEmpty) {
-            await customCacheManager.downloadFile(event['image']);
-          }
-        }
-
-        await box.put(cacheKey, response);
+        await _hiveBox.put(cacheKey, response);
         debugPrint('Eventos obtenidos ONLINE: ${response.length}');
       } catch (e) {
         debugPrint('Error al obtener eventos desde Supabase: $e');
-        response = box.get(cacheKey, defaultValue: []) ?? [];
+        response = _hiveBox.get(cacheKey, defaultValue: []) ?? [];
         debugPrint('Cargados ${response.length} eventos desde cache');
       }
     } else {
       debugPrint('Sin conexión, usando cache');
-      response = box.get(cacheKey, defaultValue: []) ?? [];
+      response = _hiveBox.get(cacheKey, defaultValue: []) ?? [];
       debugPrint('Cargados ${response.length} eventos desde cache');
     }
 
     List<Appointment> appointments = [];
     List<Map<String, dynamic>> eventDetails = [];
 
-    for (var i = 0; i < response.length; i++) {
+    // Process events using Future.wait for faster loading
+    await Future.wait(response.asMap().entries.map((entry) async {
+      final i = entry.key;
+      final event = entry.value;
       try {
-        final event = response[i];
         final rawDate = event['date'];
-        final rawTimeFin = event['time_fin'];
-
-        if (rawDate == null) continue;
+        if (rawDate == null) return;
 
         DateTime startDateTime = DateTime.parse(rawDate);
         DateTime endDateTime;
+        final rawTimeFin = event['time_fin'];
 
         if (rawTimeFin != null && rawTimeFin.toString().isNotEmpty) {
           final dateOnly = DateTime(
@@ -194,7 +190,7 @@ class _EventsPageState extends State<EventsPage> {
       } catch (e) {
         debugPrint("Error procesando evento: $e");
       }
-    }
+    }));
 
     if (!mounted) return;
     setState(() {
@@ -209,28 +205,13 @@ class _EventsPageState extends State<EventsPage> {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
 
-    final user = await supabase
-        .from('users')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (user != null) return true;
+    final futures = await Future.wait([
+      supabase.from('users').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
+    ]);
 
-    final teacher = await supabase
-        .from('teachers')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (teacher != null) return true;
-
-    final advisor = await supabase
-        .from('advisors')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (advisor != null) return true;
-
-    return false;
+    return futures.any((result) => result != null);
   }
 
   Future<bool> _canDeleteEvent(int eventId) async {
@@ -239,28 +220,13 @@ class _EventsPageState extends State<EventsPage> {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
 
-    final userResponse = await supabase
-        .from('users')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (userResponse != null) return true;
+    final futures = await Future.wait([
+      supabase.from('users').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
+    ]);
 
-    final teacherResponse = await supabase
-        .from('teachers')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (teacherResponse != null) return true;
-
-    final advisorResponse = await supabase
-        .from('advisors')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (advisorResponse != null) return true;
-
-    return false;
+    return futures.any((result) => result != null);
   }
 
   Future<void> _deleteEvent(
