@@ -34,34 +34,92 @@ class _EditEventFormState extends State<EditEventForm> {
     super.initState();
     nameController.text = widget.event['name'] ?? '';
     locationController.text = widget.event['location'] ?? '';
-    selectedDateTime = DateTime.tryParse(widget.event['start_datetime'] ?? '');
-    selectedEndDateTime = DateTime.tryParse(widget.event['end_datetime'] ?? '');
+
+    // Parsear la fecha y hora desde los campos correctos
+    final dateString = widget.event['date'];
+    final timeString = widget.event['time'];
+    final timeFinString = widget.event['time_fin'];
+
+    if (dateString != null) {
+      try {
+        // Parsear la fecha
+        final baseDate = DateTime.parse(dateString);
+
+        // Parsear la hora de inicio
+        if (timeString != null && timeString.isNotEmpty) {
+          final timeParts = timeString.split(':');
+          selectedDateTime = DateTime(
+            baseDate.year,
+            baseDate.month,
+            baseDate.day,
+            int.parse(timeParts[0]),
+            int.parse(timeParts[1]),
+          );
+        } else {
+          selectedDateTime = baseDate; // Usar solo la fecha si no hay hora
+        }
+
+        // Parsear la hora de fin
+        if (timeFinString != null && timeFinString.isNotEmpty) {
+          final timeFinParts = timeFinString.split(':');
+          selectedEndDateTime = DateTime(
+            baseDate.year,
+            baseDate.month,
+            baseDate.day,
+            int.parse(timeFinParts[0]),
+            int.parse(timeFinParts[1]),
+          );
+        } else {
+          selectedEndDateTime =
+              baseDate.add(const Duration(hours: 1)); // Valor por defecto
+        }
+      } catch (e) {
+        debugPrint('Error al parsear fecha/hora: $e');
+        selectedDateTime = DateTime.now();
+        selectedEndDateTime = DateTime.now().add(const Duration(hours: 1));
+      }
+    } else {
+      selectedDateTime = DateTime.now();
+      selectedEndDateTime = DateTime.now().add(const Duration(hours: 1));
+    }
+
     fetchSedes();
   }
 
   Future<void> fetchSedes() async {
-    final sedeResponse = await supabase.from('sedes').select();
-    final sedeList = List<Map<String, dynamic>>.from(sedeResponse);
+    try {
+      final sedeResponse = await supabase.from('sedes').select();
+      final sedeList = List<Map<String, dynamic>>.from(sedeResponse);
 
-    final eventSedeResponse = await supabase
-        .from('events_headquarters')
-        .select('sede_id')
-        .eq('event_id', widget.event['id']);
+      final eventSedeResponse = await supabase
+          .from('events_headquarters')
+          .select('sede_id')
+          .eq('event_id', widget.event['id']);
 
-    List<String> preSelectedSedes = [];
-    for (var eventSede in eventSedeResponse) {
-      final sedeId = eventSede['sede_id'];
-      final sede =
-          sedeList.firstWhere((sede) => sede['id'] == sedeId, orElse: () => {});
-      if (sede.isNotEmpty) {
-        preSelectedSedes.add(sede['name']);
+      List<String> preSelectedSedes = [];
+      for (var eventSede in eventSedeResponse) {
+        final sedeId = eventSede['sede_id'];
+        final sede = sedeList.firstWhere((sede) => sede['id'] == sedeId,
+            orElse: () => {});
+        if (sede.isNotEmpty) {
+          preSelectedSedes.add(sede['name']);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          sedes = sedeList;
+          selectedSedes = preSelectedSedes;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al obtener sedes: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar sedes: $e')),
+        );
       }
     }
-
-    setState(() {
-      sedes = sedeList;
-      selectedSedes = preSelectedSedes;
-    });
   }
 
   Future<void> updateEvent() async {
@@ -69,46 +127,64 @@ class _EditEventFormState extends State<EditEventForm> {
         selectedDateTime != null &&
         selectedEndDateTime != null &&
         selectedSedes.isNotEmpty) {
-      final selectedSedeIds = selectedSedes.map((sedeName) {
-        return sedes.firstWhere((sede) => sede['name'] == sedeName)['id']
-            as int;
-      }).toList();
-
-      await supabase.from('events').update({
-        'name': nameController.text,
-        'date': selectedDateTime!.toIso8601String(),
-        'time': DateFormat.Hm().format(selectedDateTime!),
-        'time_fin': DateFormat.Hm().format(selectedEndDateTime!),
-        'location': locationController.text,
-        'month': selectedDateTime!.month,
-        'year': selectedDateTime!.year,
-        'start_datetime': selectedDateTime!.toIso8601String(),
-        'end_datetime': selectedEndDateTime!.toIso8601String(),
-      }).eq('id', widget.event['id']);
-
-      await supabase
-          .from('events_headquarters')
-          .delete()
-          .eq('event_id', widget.event['id']);
-
-      for (var sedeId in selectedSedeIds) {
-        await supabase.from('events_headquarters').insert({
-          'event_id': widget.event['id'],
-          'sede_id': sedeId,
-        });
-      }
-
-      if (mounted) {
+      if (selectedEndDateTime!.isBefore(selectedDateTime!)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Evento actualizado con éxito')),
+          const SnackBar(
+              content: Text(
+                  'La hora de fin no puede ser anterior a la hora de inicio')),
         );
+        return;
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-            builder: (context) => const EventsPage(title: 'Eventos')),
-      );
+      try {
+        final selectedSedeIds = selectedSedes.map((sedeName) {
+          return sedes.firstWhere((sede) => sede['name'] == sedeName)['id']
+              as int;
+        }).toList();
+
+        // Actualizar el evento en la base de datos
+        await supabase.from('events').update({
+          'name': nameController.text,
+          'date': selectedDateTime!.toIso8601String(),
+          'time': DateFormat.Hm().format(selectedDateTime!),
+          'time_fin': DateFormat.Hm().format(selectedEndDateTime!),
+          'location': locationController.text,
+          'month': selectedDateTime!.month,
+          'year': selectedDateTime!.year,
+        }).eq('id', widget.event['id']);
+
+        // Eliminar sedes asociadas existentes
+        await supabase
+            .from('events_headquarters')
+            .delete()
+            .eq('event_id', widget.event['id']);
+
+        // Insertar nuevas sedes asociadas
+        for (var sedeId in selectedSedeIds) {
+          await supabase.from('events_headquarters').insert({
+            'event_id': widget.event['id'],
+            'sede_id': sedeId,
+          });
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Evento actualizado con éxito')),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const EventsPage(title: 'Eventos')),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error al actualizar evento: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al actualizar el evento: $e')),
+          );
+        }
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Completa todos los campos requeridos')),
@@ -158,6 +234,7 @@ class _EditEventFormState extends State<EditEventForm> {
           'Editar Evento',
           style: TextStyle(color: Colors.white),
         ),
+        centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
