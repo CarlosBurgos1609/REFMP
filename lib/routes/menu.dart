@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/interfaces/menu/graduates.dart';
 import 'package:refmp/interfaces/menu/info.dart';
+import 'package:refmp/interfaces/menu/learn.dart';
 import 'package:refmp/interfaces/menu/settings.dart';
 import 'package:refmp/interfaces/menu/contacts.dart';
 import 'package:refmp/interfaces/menu/events.dart';
@@ -109,8 +110,7 @@ class Menu {
           builder: (context) => const InfoPage(title: "Información")),
       12: MaterialPageRoute(
           settings: const RouteSettings(name: 'Aprende y Juega'),
-          builder: (context) =>
-              const InstrumentsPage(title: "Aprende y Juega")),
+          builder: (context) => const LearnPage(title: "Aprende y Juega")),
     };
 
     // Actualiza el índice de la página actual
