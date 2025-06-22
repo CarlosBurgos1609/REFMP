@@ -232,7 +232,6 @@ class _HomePageState extends State<HomePage>
       });
       debugPrint('Sedes cargadas desde cache');
     }
-
     final isOnline = await _checkConnectivity();
     if (!isOnline) return;
 

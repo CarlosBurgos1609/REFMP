@@ -26,7 +26,8 @@ class Menu {
     6: 'Contactos',
     8: 'Configuración',
     10: 'Egresados',
-    11: 'Información'
+    11: 'Información',
+    12: 'Aprende'
   };
 
   static IconData _getIcon(int index) {
@@ -55,6 +56,8 @@ class Menu {
         return Icons.supervised_user_circle_sharp;
       case 11:
         return Icons.info_outline_rounded;
+      case 12:
+        return Icons.sports_esports_rounded;
       default:
         return Icons.error;
     }
@@ -104,6 +107,10 @@ class Menu {
       11: MaterialPageRoute(
           settings: const RouteSettings(name: 'Información'),
           builder: (context) => const InfoPage(title: "Información")),
+      12: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Aprende y Juega'),
+          builder: (context) =>
+              const InstrumentsPage(title: "Aprende y Juega")),
     };
 
     // Actualiza el índice de la página actual
@@ -258,7 +265,7 @@ class Menu {
                 ),
               ),
               //falta ubicaciones que es el 7
-              ...[0, 1, 2, 4, 5].map((index) {
+              ...[0, 1, 2, 4, 5, 12].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
