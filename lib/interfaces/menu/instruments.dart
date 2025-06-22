@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
-import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
@@ -31,38 +30,6 @@ class InstrumentsPage extends StatefulWidget {
 
 class _InstrumentsPageState extends State<InstrumentsPage> {
   final SupabaseClient supabase = Supabase.instance.client;
-
-  Future<List<Map<String, dynamic>>> fetchGames() async {
-    final box = Hive.box('offline_data');
-    const cacheKey = 'games_data';
-
-    final isOnline = await _checkConnectivity();
-
-    if (isOnline) {
-      try {
-        final response = await supabase.from('games').select('*');
-        final data = List<Map<String, dynamic>>.from(response);
-        await box.put(cacheKey, data); // Guarda en cache
-        // Pre-cache images
-        for (var game in data) {
-          final imageUrl = game['image'];
-          if (imageUrl != null && imageUrl.isNotEmpty) {
-            await CustomCacheManager.instance.downloadFile(imageUrl);
-          }
-        }
-        return data;
-      } catch (e) {
-        debugPrint('Error fetching games: $e');
-        final cachedData = box.get(cacheKey, defaultValue: []);
-        return List<Map<String, dynamic>>.from(
-            cachedData.map((item) => Map<String, dynamic>.from(item)));
-      }
-    } else {
-      final cachedData = box.get(cacheKey, defaultValue: []);
-      return List<Map<String, dynamic>>.from(
-          cachedData.map((item) => Map<String, dynamic>.from(item)));
-    }
-  }
 
   Future<List<Map<String, dynamic>>> fetchInstruments() async {
     final box = Hive.box('offline_data');
@@ -152,140 +119,6 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
           color: Colors.blue,
           child: ListView(
             children: [
-              const SizedBox(height: 20),
-              const Center(
-                child: Text(
-                  "Aprende y Juega",
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue),
-                ),
-              ),
-              const SizedBox(height: 10),
-              FutureBuilder(
-                future: fetchGames(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: Colors.blue),
-                    );
-                  }
-                  if (snapshot.hasError) {
-                    return const Center(
-                        child: Text("Error al cargar los juegos"));
-                  }
-                  final games = snapshot.data ?? [];
-
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: games.length,
-                    itemBuilder: (context, index) {
-                      final game = games[index];
-                      final description = truncateText(
-                          game['description'] ?? "Sin descripción", 20);
-
-                      return Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 4,
-                          child: Column(
-                            children: [
-                              ClipRRect(
-                                borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(16)),
-                                child: game['image']?.isNotEmpty ?? false
-                                    ? CachedNetworkImage(
-                                        imageUrl: game['image'],
-                                        cacheManager:
-                                            CustomCacheManager.instance,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: 180,
-                                        placeholder: (context, url) =>
-                                            const Center(
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        color: Colors.blue)),
-                                        errorWidget: (context, url, error) =>
-                                            const Icon(
-                                                Icons.image_not_supported,
-                                                size: 80),
-                                      )
-                                    : const Icon(Icons.image_not_supported,
-                                        size: 80),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      game['name'] ?? "Nombre desconocido",
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      description,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 15),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 20, vertical: 12),
-                                      ),
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => LearningPage(
-                                                instrumentName: game['name']),
-                                          ),
-                                        );
-                                      },
-                                      icon: const Icon(
-                                          Icons.sports_esports_rounded,
-                                          color: Colors.white),
-                                      label: const Text("Aprende y Juega",
-                                          style:
-                                              TextStyle(color: Colors.white)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              const Divider(height: 20, thickness: 2, color: Colors.blue),
-              const SizedBox(height: 10),
-              const Center(
-                child: Text(
-                  "Instrumentos",
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue),
-                ),
-              ),
               const SizedBox(height: 20),
               FutureBuilder(
                 future: fetchInstruments(),
@@ -487,6 +320,12 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
             ),
           ),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -515,14 +354,12 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                           : const Icon(Icons.image_not_supported, size: 200),
                     ),
                     const SizedBox(height: 20),
-                    const Center(
-                      child: Text(
-                        "Descripción",
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Text(
+                      "Descripción",
+                      style: TextStyle(
+                        fontSize: 19,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
