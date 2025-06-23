@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/headquartersforms.dart';
+import 'package:refmp/interfaces/headquartersInfo.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';
@@ -28,9 +29,8 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
     if (isOnline) {
       try {
         final response = await Supabase.instance.client.from("sedes").select();
-        // Convertir response a List<Map<String, dynamic>>
         final data = List<Map<String, dynamic>>.from(response);
-        await box.put(cacheKey, data); // Guarda en cache
+        await box.put(cacheKey, data); // Guarda todos los campos en cache
         return data;
       } catch (e) {
         debugPrint('Error fetching data from Supabase: $e');
@@ -127,7 +127,8 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
           centerTitle: true,
         ),
         floatingActionButton: FutureBuilder<bool>(
-          future: _canViewHeadquarters(),
+          future: Future.wait([_canViewHeadquarters(), _checkConnectivity()])
+              .then((results) => results[0] && results[1]),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox();
@@ -176,6 +177,7 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
 
                   return ListView(
                     children: snapshot.data!.map((doc) {
+                      final id = doc["id"]?.toString() ?? "";
                       final name = doc["name"] ?? "Nombre no disponible";
                       final address =
                           doc["address"] ?? "Dirección no disponible";
@@ -187,90 +189,103 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                       final photo =
                           doc["photo"] ?? "https://via.placeholder.com/150";
 
-                      return Card(
-                        margin: const EdgeInsets.all(10),
-                        elevation: 5,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: SizedBox(
-                                width: double.infinity,
-                                height: 200,
-                                child: photo.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: photo,
-                                        width: double.infinity,
-                                        height: 200,
-                                        fit: BoxFit.cover,
-                                        placeholder: (context, url) =>
-                                            const Center(
-                                          child: CircularProgressIndicator(
-                                              color: Colors.blue),
-                                        ),
-                                        errorWidget: (context, url, error) =>
-                                            Image.asset(
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HeadquartersInfo(
+                                id: id,
+                                name: name,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Card(
+                          margin: const EdgeInsets.all(10),
+                          elevation: 5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: 200,
+                                  child: photo.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: photo,
+                                          width: double.infinity,
+                                          height: 200,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) =>
+                                              const Center(
+                                            child: CircularProgressIndicator(
+                                                color: Colors.blue),
+                                          ),
+                                          errorWidget: (context, url, error) =>
+                                              Image.asset(
+                                            'assets/images/refmmp.png',
+                                            width: double.infinity,
+                                            height: 200,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : Image.asset(
                                           'assets/images/refmmp.png',
                                           width: double.infinity,
                                           height: 200,
                                           fit: BoxFit.cover,
                                         ),
-                                      )
-                                    : Image.asset(
-                                        'assets/images/refmmp.png',
-                                        width: double.infinity,
-                                        height: 200,
-                                        fit: BoxFit.cover,
-                                      ),
+                                ),
                               ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                        color: Colors.blue,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(description),
-                                  const SizedBox(height: 5),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.location_on,
-                                          color: Colors.blue),
-                                      const SizedBox(width: 5),
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: () => _openMap(ubication),
-                                          child: Text(
-                                            address,
-                                            style: const TextStyle(
-                                              color: Colors.blue,
+                              Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                          color: Colors.blue,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(description),
+                                    const SizedBox(height: 5),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.location_on,
+                                            color: Colors.blue),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () => _openMap(ubication),
+                                            child: Text(
+                                              address,
+                                              style: const TextStyle(
+                                                color: Colors.blue,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.phone,
-                                          color: Colors.blue),
-                                      const SizedBox(width: 5),
-                                      Text(contactNumber),
-                                    ],
-                                  ),
-                                ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.phone,
+                                            color: Colors.blue),
+                                        const SizedBox(width: 5),
+                                        Text(contactNumber),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     }).toList(),
