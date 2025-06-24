@@ -197,6 +197,8 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                               builder: (context) => HeadquartersInfo(
                                 id: id,
                                 name: name,
+                                sedeData:
+                                    doc, // Pasar todos los datos de la sede
                               ),
                             ),
                           );

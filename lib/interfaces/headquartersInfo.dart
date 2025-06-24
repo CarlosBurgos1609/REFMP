@@ -6,17 +6,31 @@ import 'package:refmp/interfaces/instrumentsDetails.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+
+class CustomCacheManager {
+  static const key = 'customCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 30),
+      maxNrOfCacheObjects: 100,
+    ),
+  );
+}
 
 class HeadquartersInfo extends StatefulWidget {
   final String id;
   final String name;
+  final Map<String, dynamic>? sedeData;
 
   const HeadquartersInfo({
     super.key,
     required this.id,
     required this.name,
+    this.sedeData,
   });
 
   @override
@@ -24,93 +38,30 @@ class HeadquartersInfo extends StatefulWidget {
 }
 
 class _HeadquartersInfoState extends State<HeadquartersInfo> {
+  late Future<Map<String, dynamic>> sedeFuture;
+  late Future<List<Map<String, dynamic>>> instrumentsFuture;
+
   @override
   void initState() {
     super.initState();
-    _precacheImages();
+    _initializeHive();
+    sedeFuture = _fetchSedeData();
+    instrumentsFuture = _fetchInstruments();
+    Connectivity().onConnectivityChanged.listen((result) async {
+      if (result != ConnectivityResult.none) {
+        setState(() {
+          sedeFuture = _fetchSedeData();
+          instrumentsFuture = _fetchInstruments();
+        });
+      }
+    });
   }
 
-  Future<void> _precacheImages() async {
-    final isOnline = await _checkConnectivity();
-    if (isOnline) {
-      final sedeData = await _fetchSedeData();
-      final instruments = await _fetchInstruments();
-      final photo = sedeData['photo'] ?? '';
-      if (photo.isNotEmpty) {
-        // No usamos CustomCacheManager; CachedNetworkImage maneja el caché internamente
-        await precacheImage(CachedNetworkImageProvider(photo), context);
-      }
-      for (var instrument in instruments) {
-        final image = instrument['image'] ?? '';
-        if (image.isNotEmpty) {
-          await precacheImage(CachedNetworkImageProvider(image), context);
-        }
-      }
+  Future<void> _initializeHive() async {
+    if (!Hive.isBoxOpen('offline_data')) {
+      await Hive.openBox('offline_data');
+      debugPrint('Hive box offline_data opened successfully');
     }
-  }
-
-  Future<Map<String, dynamic>> _fetchSedeData() async {
-    final box = await Hive.openBox('offline_data');
-    final cacheKey = 'sedes_data_${widget.id}';
-    final isOnline = await _checkConnectivity();
-
-    if (isOnline) {
-      try {
-        final response = await Supabase.instance.client
-            .from("sedes")
-            .select()
-            .eq('id', widget.id)
-            .maybeSingle();
-        if (response != null) {
-          final data = Map<String, dynamic>.from(response);
-          debugPrint('Fetched sede data from Supabase: $data');
-          await box.put(cacheKey, data);
-          return data;
-        }
-      } catch (e) {
-        debugPrint('Error fetching sede data from Supabase: $e');
-      }
-    }
-
-    final cachedData = box.get(cacheKey, defaultValue: {'name': widget.name});
-    debugPrint('Loaded sede data from cache: $cachedData');
-    return Map<String, dynamic>.from(cachedData);
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchInstruments() async {
-    final box = await Hive.openBox('offline_data');
-    final cacheKey = 'sede_instruments_${widget.id}';
-    final isOnline = await _checkConnectivity();
-
-    if (isOnline) {
-      try {
-        final response =
-            await Supabase.instance.client.from('sede_instruments').select('''
-              instruments (
-                id,
-                name,
-                image
-              )
-            ''').eq('sede_id', widget.id);
-        final data = List<Map<String, dynamic>>.from(response)
-            .map((item) => {
-                  'id': item['instruments']['id'] ?? 0,
-                  'name':
-                      item['instruments']['name'] ?? 'Instrumento desconocido',
-                  'image': item['instruments']['image'] ?? '',
-                })
-            .toList();
-        debugPrint('Fetched instruments from Supabase: $data');
-        await box.put(cacheKey, data);
-        return data;
-      } catch (e) {
-        debugPrint('Error fetching instruments from Supabase: $e');
-      }
-    }
-
-    final cachedData = box.get(cacheKey, defaultValue: []);
-    debugPrint('Loaded instruments from cache: $cachedData');
-    return List<Map<String, dynamic>>.from(cachedData);
   }
 
   Future<bool> _checkConnectivity() async {
@@ -128,6 +79,119 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     }
   }
 
+  Future<String> _downloadAndCacheImage(String url, String cacheKey) async {
+    final box = Hive.box('offline_data');
+    final cachedPath = box.get(cacheKey);
+
+    if (cachedPath != null && await File(cachedPath).exists()) {
+      debugPrint('Using cached image: $cachedPath');
+      return cachedPath;
+    }
+
+    try {
+      final fileInfo = await CustomCacheManager.instance.downloadFile(url);
+      final filePath = fileInfo.file.path;
+      await box.put(cacheKey, filePath);
+      debugPrint('Image downloaded and cached: $filePath');
+      return filePath;
+    } catch (e) {
+      debugPrint('Error downloading image: $e');
+      throw e;
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchSedeData() async {
+    if (widget.sedeData != null) {
+      return widget.sedeData!;
+    }
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'sedes_data_${widget.id}';
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client
+            .from("sedes")
+            .select()
+            .eq('id', widget.id)
+            .maybeSingle();
+        if (response != null) {
+          final data = Map<String, dynamic>.from(response);
+          final photo = data['photo'] ?? '';
+          if (photo.isNotEmpty) {
+            try {
+              final localPath =
+                  await _downloadAndCacheImage(photo, 'photo_$cacheKey');
+              data['local_photo_path'] = localPath;
+            } catch (e) {
+              debugPrint('Error caching sede photo: $e');
+            }
+          }
+          await box.put(cacheKey, data);
+          debugPrint('Sede data saved to Hive with key: $cacheKey');
+          return data;
+        }
+      } catch (e) {
+        debugPrint('Error fetching sede data from Supabase: $e');
+      }
+    }
+
+    final cachedData = box.get(cacheKey, defaultValue: {'name': widget.name});
+    debugPrint('Loaded sede data from cache: $cachedData');
+    return Map<String, dynamic>.from(cachedData);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchInstruments() async {
+    final box = Hive.box('offline_data');
+    final cacheKey = 'sede_instruments_${widget.id}';
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final response =
+            await Supabase.instance.client.from('sede_instruments').select('''
+              instruments (
+                id,
+                name,
+                image
+              )
+            ''').eq('sede_id', widget.id);
+        final data = List<Map<String, dynamic>>.from(response).map((item) {
+          final image = item['instruments']['image'] ?? '';
+          return {
+            'id': item['instruments']['id'] ?? 0,
+            'name': item['instruments']['name'] ?? 'Instrumento desconocido',
+            'image': image,
+          };
+        }).toList();
+
+        for (var instrument in data) {
+          final image = instrument['image'] ?? '';
+          if (image.isNotEmpty) {
+            try {
+              final localPath = await _downloadAndCacheImage(
+                  image, 'instrument_image_${instrument['id']}');
+              instrument['local_image_path'] = localPath;
+            } catch (e) {
+              debugPrint('Error caching instrument image: $e');
+            }
+          }
+        }
+        await box.put(cacheKey, data);
+        debugPrint('Instruments saved to Hive with key: $cacheKey');
+        return data;
+      } catch (e) {
+        debugPrint('Error fetching instruments from Supabase: $e');
+      }
+    }
+
+    final cachedData = box.get(cacheKey, defaultValue: []);
+    debugPrint('Loaded instruments from cache: $cachedData');
+    return List<Map<String, dynamic>>.from(
+        cachedData.map((item) => Map<String, dynamic>.from(item)));
+  }
+
   void _openMap(String address) async {
     final uri = Uri.parse('https://maps.google.com/?q=$address');
     if (await canLaunchUrl(uri)) {
@@ -143,14 +207,14 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: FutureBuilder(
-        future: Future.wait([_fetchSedeData(), _fetchInstruments()]),
+        future: Future.wait([sedeFuture, instrumentsFuture]),
         builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-                child: CircularProgressIndicator(color: Colors.blue));
+              child: CircularProgressIndicator(color: Colors.blue),
+            );
           }
 
-          // Manejo robusto de datos offline
           final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
               ? snapshot.data![0] as Map<String, dynamic>
               : {'name': widget.name};
@@ -159,7 +223,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
               : [];
 
           final name = sedeData['name'] ?? widget.name;
-          final photo = sedeData['photo'] ?? '';
+          final photo = sedeData['local_photo_path'] ?? sedeData['photo'] ?? '';
           final typeHeadquarters =
               sedeData['type_headquarters'] ?? 'No disponible';
           final description = sedeData['description'] ?? 'Sin descripción';
@@ -191,22 +255,28 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                   centerTitle: true,
                   titlePadding: const EdgeInsets.only(bottom: 16.0),
                   background: photo.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: photo,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white),
-                          ),
-                          errorWidget: (context, url, error) => Image.asset(
-                            'assets/images/refmmp.png',
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : Image.asset(
-                          'assets/images/refmmp.png',
-                          fit: BoxFit.cover,
-                        ),
+                      ? (File(photo).existsSync()
+                          ? Image.file(
+                              File(photo),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Image.asset('assets/images/refmmp.png',
+                                      fit: BoxFit.cover),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: sedeData['photo'] ?? '',
+                              cacheManager: CustomCacheManager.instance,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                    color: Colors.white),
+                              ),
+                              errorWidget: (context, url, error) => Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover),
+                            ))
+                      : Image.asset('assets/images/refmmp.png',
+                          fit: BoxFit.cover),
                 ),
               ),
               SliverToBoxAdapter(
@@ -215,25 +285,19 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Tipo de sede:',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Tipo de sede:',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(typeHeadquarters),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Descripción:',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Descripción:',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(description),
                       const SizedBox(height: 20),
@@ -244,34 +308,26 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                           Expanded(
                             child: GestureDetector(
                               onTap: () => _openMap(address),
-                              child: Text(
-                                address,
-                                style: const TextStyle(color: Colors.blue),
-                              ),
+                              child: Text(address,
+                                  style: const TextStyle(color: Colors.blue)),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Número de contacto:',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Número de contacto:',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(contactNumber),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Instrumentos:',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Instrumentos:',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 8.0,
@@ -282,7 +338,9 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                 final instrumentName = instrument['name'] ??
                                     'Instrumento desconocido';
                                 final instrumentImage =
-                                    instrument['image'] ?? '';
+                                    instrument['local_image_path'] ??
+                                        instrument['image'] ??
+                                        '';
                                 final instrumentId =
                                     instrument['id'] as int? ?? 0;
 
@@ -311,11 +369,19 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                   child: Chip(
                                     avatar: instrumentImage.isNotEmpty
                                         ? CircleAvatar(
-                                            backgroundImage:
-                                                CachedNetworkImageProvider(
-                                              instrumentImage,
-                                            ),
+                                            backgroundImage: File(
+                                                        instrumentImage)
+                                                    .existsSync()
+                                                ? FileImage(
+                                                    File(instrumentImage))
+                                                : CachedNetworkImageProvider(
+                                                    instrument['image'] ?? '',
+                                                    cacheManager:
+                                                        CustomCacheManager
+                                                            .instance,
+                                                  ),
                                             radius: 12,
+                                            backgroundColor: Colors.transparent,
                                           )
                                         : null,
                                     label: Text(
