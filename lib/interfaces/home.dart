@@ -236,7 +236,8 @@ class _HomePageState extends State<HomePage>
     if (!isOnline) return;
 
     try {
-      final response = await supabase.from('sedes').select();
+      final response =
+          await supabase.from('sedes').select().order('name', ascending: true);
       if (!mounted) return;
       if (response != null) {
         // Pre-cache sede images
