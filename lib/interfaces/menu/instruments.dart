@@ -40,7 +40,10 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
 
     if (isOnline) {
       try {
-        final response = await supabase.from('instruments').select('*');
+        final response = await supabase
+            .from('instruments')
+            .select('*')
+            .order('name', ascending: true);
         final data = List<Map<String, dynamic>>.from(response);
         await box.put(cacheKey, data);
         for (var instrument in data) {
