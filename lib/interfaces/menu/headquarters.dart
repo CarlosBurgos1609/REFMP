@@ -28,7 +28,10 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
 
     if (isOnline) {
       try {
-        final response = await Supabase.instance.client.from("sedes").select();
+        final response = await Supabase.instance.client
+            .from("sedes")
+            .select()
+            .order('name', ascending: true);
         final data = List<Map<String, dynamic>>.from(response);
         await box.put(cacheKey, data); // Guarda todos los campos en cache
         return data;
