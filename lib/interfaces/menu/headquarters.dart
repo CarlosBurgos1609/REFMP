@@ -102,6 +102,14 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
     }
   }
 
+  String truncateText(String text, int wordLimit) {
+    final words = text.split(' ');
+    if (words.length > wordLimit) {
+      return '${words.take(wordLimit).join(' ')}...';
+    }
+    return text;
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -181,8 +189,8 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                       final name = doc["name"] ?? "Nombre no disponible";
                       final address =
                           doc["address"] ?? "Dirección no disponible";
-                      final description =
-                          doc["description"] ?? "Sin descripción";
+                      final description = truncateText(
+                          doc["description"] ?? "Sin descripción", 16);
                       final contactNumber =
                           doc["contact_number"] ?? "No disponible";
                       final ubication = doc["ubication"] ?? "";
