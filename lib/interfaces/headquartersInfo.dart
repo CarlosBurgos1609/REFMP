@@ -9,6 +9,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import 'package:flutter/services.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -45,16 +46,19 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   void initState() {
     super.initState();
     _initializeHive();
-    sedeFuture = _fetchSedeData();
-    instrumentsFuture = _fetchInstruments();
+    _refreshData();
     Connectivity().onConnectivityChanged.listen((result) async {
       if (result != ConnectivityResult.none) {
         setState(() {
-          sedeFuture = _fetchSedeData();
-          instrumentsFuture = _fetchInstruments();
+          _refreshData();
         });
       }
     });
+  }
+
+  void _refreshData() {
+    sedeFuture = _fetchSedeData();
+    instrumentsFuture = _fetchInstruments();
   }
 
   Future<void> _initializeHive() async {
@@ -192,8 +196,14 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         cachedData.map((item) => Map<String, dynamic>.from(item)));
   }
 
-  void _openMap(String address) async {
-    final uri = Uri.parse('https://maps.google.com/?q=$address');
+  void _openMap(String? ubication) async {
+    if (ubication == null || ubication.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ubicación no disponible")),
+      );
+      return;
+    }
+    final uri = Uri.parse(ubication);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
@@ -203,216 +213,307 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     }
   }
 
+  void _showDescriptionDialog(String description) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+        ),
+        title: const Text(
+          'Descripción Completa',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.blue),
+        ),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: 400,
+            minHeight:
+                50, // Minimum height to ensure dialog doesn't collapse too much
+          ),
+          child: SingleChildScrollView(
+            child: Text(description),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cerrar',
+              style: TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String truncateText(String text, int wordLimit) {
+    final words = text.split(' ');
+    if (words.length > wordLimit) {
+      return '${words.take(wordLimit).join(' ')}...';
+    }
+    return text;
+  }
+
+  String formatPhoneNumber(String number) {
+    if (number.length >= 10) {
+      return '${number.substring(0, 3)} ${number.substring(3)}';
+    }
+    return number;
+  }
+
+  void _copyPhoneNumber(String number) {
+    final cleanNumber = number.replaceAll(' ', '');
+    Clipboard.setData(ClipboardData(text: cleanNumber));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Número copiado al portapapeles")),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder(
-        future: Future.wait([sedeFuture, instrumentsFuture]),
-        builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Colors.blue),
-            );
-          }
-
-          final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
-              ? snapshot.data![0] as Map<String, dynamic>
-              : {'name': widget.name};
-          final instruments = snapshot.data != null && snapshot.data!.length > 1
-              ? snapshot.data![1] as List<Map<String, dynamic>>
-              : [];
-
-          final name = sedeData['name'] ?? widget.name;
-          final photo = sedeData['local_photo_path'] ?? sedeData['photo'] ?? '';
-          final typeHeadquarters =
-              sedeData['type_headquarters'] ?? 'No disponible';
-          final description = sedeData['description'] ?? 'Sin descripción';
-          final address = sedeData['address'] ?? 'Dirección no disponible';
-          final contactNumber = sedeData['contact_number'] ?? 'No disponible';
-
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 250.0,
-                floating: false,
-                pinned: true,
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_rounded,
-                      color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                backgroundColor: Colors.blue,
-                flexibleSpace: FlexibleSpaceBar(
-                  title: Text(
-                    name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  centerTitle: true,
-                  titlePadding: const EdgeInsets.only(bottom: 16.0),
-                  background: photo.isNotEmpty
-                      ? (File(photo).existsSync()
-                          ? Image.file(
-                              File(photo),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Image.asset('assets/images/refmmp.png',
-                                      fit: BoxFit.cover),
-                            )
-                          : CachedNetworkImage(
-                              imageUrl: sedeData['photo'] ?? '',
-                              cacheManager: CustomCacheManager.instance,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.white),
-                              ),
-                              errorWidget: (context, url, error) => Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover),
-                            ))
-                      : Image.asset('assets/images/refmmp.png',
-                          fit: BoxFit.cover),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('| Tipo de sede',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text(typeHeadquarters, style: TextStyle(fontSize: 14)),
-                      const SizedBox(height: 20),
-                      const Text('| Instrumentos',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8.0,
-                        runSpacing: 8.0,
-                        children: instruments.isEmpty
-                            ? [const Text('No hay instrumentos disponibles')]
-                            : instruments.map((instrument) {
-                                final instrumentName = instrument['name'] ??
-                                    'Instrumento desconocido';
-                                final instrumentImage =
-                                    instrument['local_image_path'] ??
-                                        instrument['image'] ??
-                                        '';
-                                final instrumentId =
-                                    instrument['id'] as int? ?? 0;
-
-                                return GestureDetector(
-                                  onTap: () {
-                                    if (instrumentId != 0) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              InstrumentDetailPage(
-                                            instrumentId: instrumentId,
-                                          ),
-                                        ),
-                                      );
-                                    } else {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                              "ID de instrumento no válido"),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  child: Chip(
-                                    avatar: instrumentImage.isNotEmpty
-                                        ? CircleAvatar(
-                                            backgroundImage: File(
-                                                        instrumentImage)
-                                                    .existsSync()
-                                                ? FileImage(
-                                                    File(instrumentImage))
-                                                : CachedNetworkImageProvider(
-                                                    instrument['image'] ?? '',
-                                                    cacheManager:
-                                                        CustomCacheManager
-                                                            .instance,
-                                                  ),
-                                            radius: 12,
-                                            backgroundColor: Colors.white,
-                                          )
-                                        : null,
-                                    label: Text(
-                                      instrumentName,
-                                      style: const TextStyle(
-                                          fontSize: 12, color: Colors.white),
-                                    ),
-                                    backgroundColor: Colors.blue.shade300,
-                                    labelPadding: const EdgeInsets.symmetric(
-                                        horizontal: 8.0),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20.0),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text('| Descripción',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text(description),
-                      const SizedBox(height: 20),
-                      const Text('| Número de contacto',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text(contactNumber),
-                      const SizedBox(height: 20),
-                      const Text('| Ubicación',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, color: Colors.blue),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => _openMap(address),
-                              child: Text(address,
-                                  style: const TextStyle(color: Colors.blue)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 200),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
+      body: RefreshIndicator(
+        color: Colors.blue,
+        onRefresh: () async {
+          setState(() {
+            _refreshData();
+          });
+          await Future.wait([sedeFuture, instrumentsFuture]);
         },
+        child: FutureBuilder(
+          future: Future.wait([sedeFuture, instrumentsFuture]),
+          builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(color: Colors.blue),
+              );
+            }
+
+            final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
+                ? snapshot.data![0] as Map<String, dynamic>
+                : {'name': widget.name};
+            final instruments =
+                snapshot.data != null && snapshot.data!.length > 1
+                    ? snapshot.data![1] as List<Map<String, dynamic>>
+                    : [];
+
+            final name = sedeData['name'] ?? widget.name;
+            final photo =
+                sedeData['local_photo_path'] ?? sedeData['photo'] ?? '';
+            final typeHeadquarters =
+                sedeData['type_headquarters'] ?? 'No disponible';
+            final description = sedeData['description'] ?? 'Sin descripción';
+            final truncatedDescription = truncateText(description, 50);
+            final contactNumber = sedeData['contact_number'] ?? 'No disponible';
+            final ubication = sedeData['ubication'] ?? '';
+
+            return CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 250.0,
+                  floating: false,
+                  pinned: true,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_rounded,
+                        color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  backgroundColor: Colors.blue,
+                  flexibleSpace: FlexibleSpaceBar(
+                    title: Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    centerTitle: true,
+                    titlePadding: const EdgeInsets.only(bottom: 16.0),
+                    background: photo.isNotEmpty
+                        ? (File(photo).existsSync()
+                            ? Image.file(
+                                File(photo),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Image.asset('assets/images/refmmp.png',
+                                        fit: BoxFit.cover),
+                              )
+                            : CachedNetworkImage(
+                                imageUrl: sedeData['photo'] ?? '',
+                                cacheManager: CustomCacheManager.instance,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    Image.asset('assets/images/refmmp.png',
+                                        fit: BoxFit.cover),
+                              ))
+                        : Image.asset('assets/images/refmmp.png',
+                            fit: BoxFit.cover),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('| Tipo de sede',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 5),
+                        Text(typeHeadquarters, style: TextStyle(fontSize: 14)),
+                        const SizedBox(height: 20),
+                        const Text('| Instrumentos',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8.0,
+                          runSpacing: 8.0,
+                          children: instruments.isEmpty
+                              ? [const Text('No hay instrumentos disponibles')]
+                              : instruments.map((instrument) {
+                                  final instrumentName = instrument['name'] ??
+                                      'Instrumento desconocido';
+                                  final instrumentImage =
+                                      instrument['local_image_path'] ??
+                                          instrument['image'] ??
+                                          '';
+                                  final instrumentId =
+                                      instrument['id'] as int? ?? 0;
+
+                                  return GestureDetector(
+                                    onTap: () {
+                                      if (instrumentId != 0) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                InstrumentDetailPage(
+                                              instrumentId: instrumentId,
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                "ID de instrumento no válido"),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Chip(
+                                      avatar: instrumentImage.isNotEmpty
+                                          ? CircleAvatar(
+                                              backgroundImage: File(
+                                                          instrumentImage)
+                                                      .existsSync()
+                                                  ? FileImage(
+                                                      File(instrumentImage))
+                                                  : CachedNetworkImageProvider(
+                                                      instrument['image'] ?? '',
+                                                      cacheManager:
+                                                          CustomCacheManager
+                                                              .instance,
+                                                    ),
+                                              radius: 12,
+                                              backgroundColor: Colors.white,
+                                            )
+                                          : null,
+                                      label: Text(
+                                        instrumentName,
+                                        style: const TextStyle(
+                                            fontSize: 12, color: Colors.white),
+                                      ),
+                                      backgroundColor: Colors.blue.shade300,
+                                      labelPadding: const EdgeInsets.symmetric(
+                                          horizontal: 8.0),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(20.0),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                        ),
+                        const SizedBox(height: 15),
+                        const Text('| Descripción',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 5),
+                        GestureDetector(
+                          onTap: () => _showDescriptionDialog(description),
+                          child: Text(
+                            truncatedDescription,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text('| Número de contacto',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            const Text("🇨🇴"),
+                            const Text(" +57 "),
+                            Text(formatPhoneNumber(contactNumber)),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 20),
+                              onPressed: () => _copyPhoneNumber(contactNumber),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
+                        const Text('| Ubicación',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _openMap(ubication),
+                                child: Text(
+                                  sedeData['address'] ??
+                                      'Dirección no disponible',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 500),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
