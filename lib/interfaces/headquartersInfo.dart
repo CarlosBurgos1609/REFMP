@@ -285,45 +285,15 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Tipo de sede:',
+                      const Text('| Tipo de sede',
                           style: TextStyle(
                               color: Colors.blue,
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
-                      Text(typeHeadquarters),
+                      Text(typeHeadquarters, style: TextStyle(fontSize: 14)),
                       const SizedBox(height: 20),
-                      const Text('Descripción:',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text(description),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, color: Colors.blue),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => _openMap(address),
-                              child: Text(address,
-                                  style: const TextStyle(color: Colors.blue)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      const Text('Número de contacto:',
-                          style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text(contactNumber),
-                      const SizedBox(height: 20),
-                      const Text('Instrumentos:',
+                      const Text('| Instrumentos',
                           style: TextStyle(
                               color: Colors.blue,
                               fontSize: 16,
@@ -381,14 +351,15 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                                             .instance,
                                                   ),
                                             radius: 12,
-                                            backgroundColor: Colors.transparent,
+                                            backgroundColor: Colors.white,
                                           )
                                         : null,
                                     label: Text(
                                       instrumentName,
-                                      style: const TextStyle(fontSize: 12),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.white),
                                     ),
-                                    backgroundColor: Colors.blue.shade100,
+                                    backgroundColor: Colors.blue.shade300,
                                     labelPadding: const EdgeInsets.symmetric(
                                         horizontal: 8.0),
                                     shape: RoundedRectangleBorder(
@@ -397,6 +368,42 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                   ),
                                 );
                               }).toList(),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text('| Descripción',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text(description),
+                      const SizedBox(height: 20),
+                      const Text('| Número de contacto',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text(contactNumber),
+                      const SizedBox(height: 20),
+                      const Text('| Ubicación',
+                          style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, color: Colors.blue),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _openMap(address),
+                              child: Text(address,
+                                  style: const TextStyle(color: Colors.blue)),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 200),
                     ],
