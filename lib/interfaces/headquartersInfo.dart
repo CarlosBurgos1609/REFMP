@@ -626,7 +626,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                         const Text('| Director',
                             style: TextStyle(
                                 color: Colors.blue,
-                                fontSize: 16,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
                         directorData == null
@@ -694,13 +694,15 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            directorData['name'] ??
-                                                'Nombre no disponible',
-                                            style: const TextStyle(
-                                              color: Colors.blue,
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
+                                          Center(
+                                            child: Text(
+                                              directorData['name'] ??
+                                                  'Nombre no disponible',
+                                              style: const TextStyle(
+                                                color: Colors.blue,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(height: 5),
@@ -717,60 +719,142 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                                   const TextStyle(fontSize: 14),
                                             ),
                                           ),
-                                          if (directorData['instrument'] !=
-                                              null) ...[
-                                            const SizedBox(height: 5),
-                                            Chip(
-                                              avatar: directorData['instrument']
-                                                          [
-                                                          'local_image_path'] !=
-                                                      null
-                                                  ? CircleAvatar(
-                                                      backgroundImage: File(
-                                                                  directorData[
-                                                                          'instrument']
-                                                                      [
-                                                                      'local_image_path'])
-                                                              .existsSync()
-                                                          ? FileImage(File(
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            'Instrumentos:',
+                                            style: TextStyle(
+                                              color: themeProvider.isDarkMode
+                                                  ? Color.fromARGB(
+                                                      255, 255, 255, 255)
+                                                  : Color.fromARGB(
+                                                      255, 33, 150, 243),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          Wrap(
+                                            spacing: 8.0,
+                                            runSpacing: 8.0,
+                                            children: directorData[
+                                                        'instrument'] !=
+                                                    null
+                                                ? [
+                                                    GestureDetector(
+                                                      onTap: () {
+                                                        final instrumentId =
+                                                            directorData[
+                                                                        'instrument']
+                                                                    ['id'] ??
+                                                                0;
+                                                        if (instrumentId != 0) {
+                                                          Navigator.push(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (context) =>
+                                                                  InstrumentDetailPage(
+                                                                instrumentId:
+                                                                    instrumentId,
+                                                              ),
+                                                            ),
+                                                          );
+                                                        } else {
+                                                          ScaffoldMessenger.of(
+                                                                  context)
+                                                              .showSnackBar(
+                                                            const SnackBar(
+                                                              content: Text(
+                                                                  "ID de instrumento no válido"),
+                                                            ),
+                                                          );
+                                                        }
+                                                      },
+                                                      child: Chip(
+                                                        avatar: (() {
+                                                          final localPath =
                                                               directorData[
                                                                       'instrument']
                                                                   [
-                                                                  'local_image_path']))
-                                                          : CachedNetworkImageProvider(
+                                                                  'local_image_path'];
+                                                          final networkImage =
                                                               directorData[
                                                                           'instrument']
                                                                       [
                                                                       'image'] ??
-                                                                  '',
-                                                              cacheManager:
-                                                                  CustomCacheManager
-                                                                      .instance,
-                                                            ),
-                                                      radius: 12,
-                                                      backgroundColor:
-                                                          Colors.white,
+                                                                  '';
+
+                                                          if (localPath !=
+                                                                  null &&
+                                                              localPath
+                                                                  .toString()
+                                                                  .isNotEmpty) {
+                                                            final file =
+                                                                File(localPath);
+                                                            return CircleAvatar(
+                                                              backgroundImage: file
+                                                                      .existsSync()
+                                                                  ? FileImage(
+                                                                      file)
+                                                                  : CachedNetworkImageProvider(
+                                                                      networkImage,
+                                                                      cacheManager:
+                                                                          CustomCacheManager
+                                                                              .instance,
+                                                                    ),
+                                                              radius: 12,
+                                                              backgroundColor:
+                                                                  Colors.white,
+                                                            );
+                                                          } else if (networkImage
+                                                              .isNotEmpty) {
+                                                            return CircleAvatar(
+                                                              backgroundImage:
+                                                                  CachedNetworkImageProvider(
+                                                                networkImage,
+                                                                cacheManager:
+                                                                    CustomCacheManager
+                                                                        .instance,
+                                                              ),
+                                                              radius: 12,
+                                                              backgroundColor:
+                                                                  Colors.white,
+                                                            );
+                                                          } else {
+                                                            return null;
+                                                          }
+                                                        })(),
+                                                        label: Text(
+                                                          directorData[
+                                                                      'instrument']
+                                                                  ['name'] ??
+                                                              'Instrumento desconocido',
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize: 12,
+                                                                  color: Colors
+                                                                      .white),
+                                                        ),
+                                                        backgroundColor: Colors
+                                                            .blue.shade300,
+                                                        labelPadding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    8.0),
+                                                        shape:
+                                                            RoundedRectangleBorder(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(
+                                                                      20.0),
+                                                        ),
+                                                      ),
                                                     )
-                                                  : null,
-                                              label: Text(
-                                                directorData['instrument']
-                                                        ['name'] ??
-                                                    'Instrumento desconocido',
-                                                style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white),
-                                              ),
-                                              backgroundColor:
-                                                  Colors.blue.shade300,
-                                              labelPadding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 8.0),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(20.0),
-                                              ),
-                                            ),
-                                          ],
+                                                  ]
+                                                : [
+                                                    const Text(
+                                                        'No hay instrumento asignado')
+                                                  ],
+                                          ),
                                         ],
                                       ),
                                     ),
