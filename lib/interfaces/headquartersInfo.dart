@@ -10,6 +10,8 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:refmp/theme/theme_provider.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -41,6 +43,7 @@ class HeadquartersInfo extends StatefulWidget {
 class _HeadquartersInfoState extends State<HeadquartersInfo> {
   late Future<Map<String, dynamic>> sedeFuture;
   late Future<List<Map<String, dynamic>>> instrumentsFuture;
+  late Future<Map<String, dynamic>?> directorFuture;
 
   @override
   void initState() {
@@ -59,6 +62,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   void _refreshData() {
     sedeFuture = _fetchSedeData();
     instrumentsFuture = _fetchInstruments();
+    directorFuture = _fetchDirectorData();
   }
 
   Future<void> _initializeHive() async {
@@ -85,18 +89,29 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
 
   Future<String> _downloadAndCacheImage(String url, String cacheKey) async {
     final box = Hive.box('offline_data');
-    final cachedPath = box.get(cacheKey);
+    final cachedData = box.get(cacheKey, defaultValue: null);
 
-    if (cachedPath != null && await File(cachedPath).exists()) {
-      debugPrint('Using cached image: $cachedPath');
-      return cachedPath;
+    // Check if cached data exists and matches the current URL
+    if (cachedData != null &&
+        cachedData['url'] == url &&
+        await File(cachedData['path']).exists()) {
+      debugPrint('Using cached image: ${cachedData['path']}');
+      return cachedData['path'];
     }
 
+    // If URL has changed or no cache exists, download the new image
     try {
+      // Delete old cached file if it exists
+      if (cachedData != null && await File(cachedData['path']).exists()) {
+        await File(cachedData['path']).delete();
+        debugPrint('Deleted old cached image: ${cachedData['path']}');
+      }
+
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
-      await box.put(cacheKey, filePath);
-      debugPrint('Image downloaded and cached: $filePath');
+      // Store both the file path and the URL in the cache
+      await box.put(cacheKey, {'path': filePath, 'url': url});
+      debugPrint('Image downloaded and cached: $filePath for URL: $url');
       return filePath;
     } catch (e) {
       debugPrint('Error downloading image: $e');
@@ -196,6 +211,97 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         cachedData.map((item) => Map<String, dynamic>.from(item)));
   }
 
+  Future<Map<String, dynamic>?> _fetchDirectorData() async {
+    final box = Hive.box('offline_data');
+    final cacheKey = 'director_data_${widget.id}';
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        // Fetch director data directly from director_headquarters with related director info
+        final response = await Supabase.instance.client
+            .from('director_headquarters')
+            .select('''
+            directors (
+              id,
+              name,
+              descripcion,
+              image_presentation
+            )
+          ''')
+            .eq('sede_id', widget.id)
+            .maybeSingle();
+
+        if (response == null || response['directors'] == null) {
+          debugPrint('No director found for sede_id: ${widget.id}');
+          await box.put(cacheKey, null);
+          return null;
+        }
+
+        final directorData = Map<String, dynamic>.from(response['directors']);
+        // Map 'descripcion' to 'description' for consistency in the app
+        directorData['description'] = directorData['descripcion'];
+        debugPrint('Director data fetched: $directorData');
+
+        // Cache the director's image if it exists
+        final image = directorData['image_presentation'] ?? '';
+        if (image.isNotEmpty) {
+          try {
+            final localPath = await _downloadAndCacheImage(
+                image, 'director_image_${directorData['id']}');
+            directorData['local_image_path'] = localPath;
+          } catch (e) {
+            debugPrint('Error caching director image: $e');
+          }
+        }
+
+        // Fetch the instrument associated with the director (optional)
+        final directorId = directorData['id'];
+        final instrumentResponse = await Supabase.instance.client
+            .from('director_instruments')
+            .select('''
+            instruments (
+              id,
+              name,
+              image
+            )
+          ''')
+            .eq('director_id', directorId)
+            .maybeSingle();
+
+        if (instrumentResponse != null &&
+            instrumentResponse['instruments'] != null) {
+          final instrumentData =
+              Map<String, dynamic>.from(instrumentResponse['instruments']);
+          final instrumentImage = instrumentData['image'] ?? '';
+          if (instrumentImage.isNotEmpty) {
+            try {
+              final localPath = await _downloadAndCacheImage(instrumentImage,
+                  'director_instrument_image_${instrumentData['id']}');
+              instrumentData['local_image_path'] = localPath;
+            } catch (e) {
+              debugPrint('Error caching director instrument image: $e');
+            }
+          }
+          directorData['instrument'] = instrumentData;
+          debugPrint('Instrument data fetched for director: $instrumentData');
+        } else {
+          debugPrint('No instrument found for director_id: $directorId');
+        }
+
+        await box.put(cacheKey, directorData);
+        debugPrint('Director data saved to Hive with key: $cacheKey');
+        return directorData;
+      } catch (e) {
+        debugPrint('Error fetching director data from Supabase: $e');
+      }
+    }
+
+    final cachedData = box.get(cacheKey);
+    debugPrint('Loaded director data from cache: $cachedData');
+    return cachedData != null ? Map<String, dynamic>.from(cachedData) : null;
+  }
+
   void _openMap(String? ubication) async {
     if (ubication == null || ubication.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -228,8 +334,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         content: ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: 400,
-            minHeight:
-                50, // Minimum height to ensure dialog doesn't collapse too much
+            minHeight: 50,
           ),
           child: SingleChildScrollView(
             child: Text(description),
@@ -273,6 +378,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       body: RefreshIndicator(
         color: Colors.blue,
@@ -280,10 +386,10 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
           setState(() {
             _refreshData();
           });
-          await Future.wait([sedeFuture, instrumentsFuture]);
+          await Future.wait([sedeFuture, instrumentsFuture, directorFuture]);
         },
         child: FutureBuilder(
-          future: Future.wait([sedeFuture, instrumentsFuture]),
+          future: Future.wait([sedeFuture, instrumentsFuture, directorFuture]),
           builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
@@ -298,6 +404,10 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                 snapshot.data != null && snapshot.data!.length > 1
                     ? snapshot.data![1] as List<Map<String, dynamic>>
                     : [];
+            final directorData =
+                snapshot.data != null && snapshot.data!.length > 2
+                    ? snapshot.data![2] as Map<String, dynamic>?
+                    : null;
 
             final name = sedeData['name'] ?? widget.name;
             final photo =
@@ -505,7 +615,168 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 500),
+                        const SizedBox(height: 10),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
+                        const Text('| Director',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 10),
+                        directorData == null
+                            ? const Text(
+                                'No hay información de director disponible')
+                            : Card(
+                                margin: const EdgeInsets.all(10),
+                                elevation: 5,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        return ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          child: directorData[
+                                                          'local_image_path'] !=
+                                                      null &&
+                                                  File(directorData[
+                                                          'local_image_path'])
+                                                      .existsSync()
+                                              ? Image.file(
+                                                  File(directorData[
+                                                      'local_image_path']),
+                                                  width: double.infinity,
+                                                  fit: BoxFit.fitWidth,
+                                                  errorBuilder: (context, error,
+                                                          stackTrace) =>
+                                                      Image.asset(
+                                                    'assets/images/refmmp.png',
+                                                    width: double.infinity,
+                                                    fit: BoxFit.fitWidth,
+                                                  ),
+                                                )
+                                              : CachedNetworkImage(
+                                                  imageUrl: directorData[
+                                                          'image_presentation'] ??
+                                                      '',
+                                                  cacheManager:
+                                                      CustomCacheManager
+                                                          .instance,
+                                                  width: double.infinity,
+                                                  fit: BoxFit.fitWidth,
+                                                  placeholder: (context, url) =>
+                                                      const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                  ),
+                                                  errorWidget:
+                                                      (context, url, error) =>
+                                                          Image.asset(
+                                                    'assets/images/refmmp.png',
+                                                    width: double.infinity,
+                                                    fit: BoxFit.fitWidth,
+                                                  ),
+                                                ),
+                                        );
+                                      },
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(10),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            directorData['name'] ??
+                                                'Nombre no disponible',
+                                            style: const TextStyle(
+                                              color: Colors.blue,
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          GestureDetector(
+                                            onTap: () => _showDescriptionDialog(
+                                                directorData['description'] ??
+                                                    'Sin descripción'),
+                                            child: Text(
+                                              truncateText(
+                                                  directorData['description'] ??
+                                                      'Sin descripción',
+                                                  30),
+                                              style:
+                                                  const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                          if (directorData['instrument'] !=
+                                              null) ...[
+                                            const SizedBox(height: 5),
+                                            Chip(
+                                              avatar: directorData['instrument']
+                                                          [
+                                                          'local_image_path'] !=
+                                                      null
+                                                  ? CircleAvatar(
+                                                      backgroundImage: File(
+                                                                  directorData[
+                                                                          'instrument']
+                                                                      [
+                                                                      'local_image_path'])
+                                                              .existsSync()
+                                                          ? FileImage(File(
+                                                              directorData[
+                                                                      'instrument']
+                                                                  [
+                                                                  'local_image_path']))
+                                                          : CachedNetworkImageProvider(
+                                                              directorData[
+                                                                          'instrument']
+                                                                      [
+                                                                      'image'] ??
+                                                                  '',
+                                                              cacheManager:
+                                                                  CustomCacheManager
+                                                                      .instance,
+                                                            ),
+                                                      radius: 12,
+                                                      backgroundColor:
+                                                          Colors.white,
+                                                    )
+                                                  : null,
+                                              label: Text(
+                                                directorData['instrument']
+                                                        ['name'] ??
+                                                    'Instrumento desconocido',
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white),
+                                              ),
+                                              backgroundColor:
+                                                  Colors.blue.shade300,
+                                              labelPadding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8.0),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(20.0),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                       ],
                     ),
                   ),
