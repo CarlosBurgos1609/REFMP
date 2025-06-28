@@ -698,8 +698,12 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                             child: Text(
                                               directorData['name'] ??
                                                   'Nombre no disponible',
-                                              style: const TextStyle(
-                                                color: Colors.blue,
+                                              style: TextStyle(
+                                                color: themeProvider.isDarkMode
+                                                    ? Color.fromARGB(
+                                                        255, 255, 255, 255)
+                                                    : Color.fromARGB(
+                                                        255, 33, 150, 243),
                                                 fontSize: 20,
                                                 fontWeight: FontWeight.bold,
                                               ),
