@@ -211,10 +211,16 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
               final localPath = await _downloadAndCacheImage(
                   photo, 'teacher_photo_${teacher['id']}');
               teacher['local_photo_path'] = localPath;
+              debugPrint(
+                  'Teacher image cached at: $localPath for ID: ${teacher['id']}');
             } catch (e) {
-              debugPrint('Error caching teacher photo: $e');
+              debugPrint(
+                  'Error caching teacher photo for ID ${teacher['id']}: $e');
+              teacher['local_photo_path'] =
+                  null; // Ensure it's set to null on error
             }
           }
+
           try {
             final instrumentResponse = await supabase
                 .from('teacher_instruments')
@@ -237,19 +243,26 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                   final localPath = await _downloadAndCacheImage(
                       image, 'teacher_instrument_image_${instrument['id']}');
                   instrument['local_image_path'] = localPath;
+                  debugPrint(
+                      'Instrument image cached at: $localPath for ID: ${instrument['id']}');
                 } catch (e) {
-                  debugPrint('Error caching teacher instrument image: $e');
+                  debugPrint(
+                      'Error caching instrument image for ID ${instrument['id']}: $e');
+                  instrument['local_image_path'] =
+                      null; // Ensure it's set to null on error
                 }
               }
             }
             teacher['instruments'] = instruments;
           } catch (e) {
-            debugPrint('Error fetching teacher instruments: $e');
+            debugPrint(
+                'Error fetching teacher instruments for ID ${teacher['id']}: $e');
             teacher['instruments'] = [];
           }
         }
+
         await box.put(cacheKey, data);
-        debugPrint('Teachers saved to Hive with key: $cacheKey');
+        debugPrint('Teachers saved to Hive with key: $cacheKey - Data: $data');
         return data;
       } catch (e) {
         debugPrint('Error fetching teachers from Supabase: $e');
@@ -421,7 +434,15 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                             style: const TextStyle(fontSize: 14),
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 5),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
+                        const SizedBox(height: 3),
                         const Text('| Sedes',
                             style: TextStyle(
                                 color: Colors.blue,
@@ -497,7 +518,7 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                                   );
                                 }).toList(),
                         ),
-                        const SizedBox(height: 15),
+                        const SizedBox(height: 5),
                         Divider(
                           height: 40,
                           thickness: 2,
@@ -505,6 +526,7 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                               ? const Color.fromARGB(255, 34, 34, 34)
                               : const Color.fromARGB(255, 236, 234, 234),
                         ),
+                        const SizedBox(height: 3),
                         const Text('| Profesores',
                             style: TextStyle(
                                 color: Colors.blue,
@@ -610,8 +632,10 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
               final image =
                   data['local_photo_path'] ?? data['image_presentation'] ?? '';
               final description = data['description'] ?? 'Sin descripción';
-              final instruments =
-                  data['instruments'] as List<Map<String, dynamic>>? ?? [];
+              final instruments = (data['instruments'] as List?)
+                      ?.map((item) => Map<String, dynamic>.from(item ?? {}))
+                      .toList() ??
+                  [];
 
               return SingleChildScrollView(
                 child: Card(
@@ -683,6 +707,7 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
                                     ),
+                                    textAlign: TextAlign.center,
                                   ),
                                 ),
                                 const SizedBox(height: 5),
