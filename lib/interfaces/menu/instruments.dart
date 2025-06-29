@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/forms/instrumentsForm.dart';
 import 'package:refmp/interfaces/instrumentsDetails.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -89,6 +90,37 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
     return text;
   }
 
+  Future<bool> _canViewHeadquarters() async {
+    final box = Hive.box('offline_data');
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final user = await supabase
+            .from('users')
+            .select()
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (user != null) {
+          await box.put('can_view_headquarters_$userId', true);
+          return true;
+        } else {
+          await box.put('can_view_headquarters_$userId', false);
+          return false;
+        }
+      } catch (e) {
+        debugPrint('Error checking permissions: $e');
+        return box.get('can_view_headquarters_$userId', defaultValue: false);
+      }
+    } else {
+      return box.get('can_view_headquarters_$userId', defaultValue: false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -113,6 +145,30 @@ class _InstrumentsPageState extends State<InstrumentsPage> {
               );
             },
           ),
+        ),
+        floatingActionButton: FutureBuilder<bool>(
+          future: Future.wait([_canViewHeadquarters(), _checkConnectivity()])
+              .then((results) => results[0] && results[1]),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox();
+            }
+
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => InstrumentsForm()),
+                  );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox();
+            }
+          },
         ),
         drawer: Menu.buildDrawer(context),
         body: RefreshIndicator(
