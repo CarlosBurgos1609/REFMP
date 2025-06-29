@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/interfaces/headquartersInfo.dart';
+import 'dart:math'; // Importado para usar min
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -275,25 +276,168 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
         cachedData.map((item) => Map<String, dynamic>.from(item)));
   }
 
-  void _showDescriptionDialog(String description) {
+  void _showDescriptionDialog({
+    required String name,
+    required String description,
+    required String image,
+    required List<Map<String, dynamic>> instruments,
+  }) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20.0),
         ),
-        title: const Text(
-          'Descripción Completa',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.blue),
-        ),
-        content: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: 400,
-            minHeight: 50,
-          ),
-          child: SingleChildScrollView(
-            child: Text(description),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Imagen del profesor
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: image.isNotEmpty && File(image).existsSync()
+                    ? Image.file(
+                        File(image),
+                        width: double.infinity,
+                        fit: BoxFit.fitWidth,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Image.asset(
+                          'assets/images/refmmp.png',
+                          width: double.infinity,
+                          fit: BoxFit.fitWidth,
+                        ),
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: image,
+                        cacheManager: CustomCacheManager.instance,
+                        width: double.infinity,
+                        fit: BoxFit.fitWidth,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.blue),
+                        ),
+                        errorWidget: (context, url, error) => Image.asset(
+                          'assets/images/refmmp.png',
+                          width: double.infinity,
+                          fit: BoxFit.fitWidth,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 10),
+              // Nombre del profesor
+              Center(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Descripción completa
+              Text(
+                '| Descripción',
+                style: const TextStyle(
+                  color: Colors.blue,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                description,
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              // // Instrumentos
+              // Text(
+              //   'Instrumentos:',
+              //   style: const TextStyle(
+              //     color: Colors.blue,
+              //     fontSize: 16,
+              //     fontWeight: FontWeight.bold,
+              //   ),
+              // ),
+              // const SizedBox(height: 5),
+              // SingleChildScrollView(
+              //   scrollDirection: Axis.horizontal,
+              //   child: Row(
+              //     children: instruments.isEmpty
+              //         ? [
+              //             const Padding(
+              //               padding: EdgeInsets.symmetric(horizontal: 8.0),
+              //               child: Text(''),
+              //             )
+              //           ]
+              //         : instruments.map((instrument) {
+              //             final instrumentId = instrument['id'] ?? 0;
+              //             final instrumentName =
+              //                 instrument['name'] ?? 'Instrumento desconocido';
+              //             final instrumentImage =
+              //                 instrument['local_image_path'] ??
+              //                     instrument['image'] ??
+              //                     '';
+
+              //             return Padding(
+              //               padding:
+              //                   const EdgeInsets.symmetric(horizontal: 4.0),
+              //               child: GestureDetector(
+              //                 onTap: () {
+              //                   if (instrumentId != 0) {
+              //                     Navigator.push(
+              //                       context,
+              //                       MaterialPageRoute(
+              //                         builder: (context) =>
+              //                             InstrumentDetailPage(
+              //                           instrumentId: instrumentId,
+              //                         ),
+              //                       ),
+              //                     );
+              //                   } else {
+              //                     ScaffoldMessenger.of(context).showSnackBar(
+              //                       const SnackBar(
+              //                         content:
+              //                             Text("ID de instrumento no válido"),
+              //                       ),
+              //                     );
+              //                   }
+              //                 },
+              //                 child: Chip(
+              //                   avatar: instrumentImage.isNotEmpty
+              //                       ? CircleAvatar(
+              //                           backgroundImage: File(instrumentImage)
+              //                                   .existsSync()
+              //                               ? FileImage(File(instrumentImage))
+              //                               : CachedNetworkImageProvider(
+              //                                   instrument['image'] ?? '',
+              //                                   cacheManager:
+              //                                       CustomCacheManager.instance,
+              //                                 ),
+              //                           radius: 12,
+              //                           backgroundColor: Colors.white,
+              //                         )
+              //                       : null,
+              //                   label: Text(
+              //                     instrumentName,
+              //                     style: const TextStyle(
+              //                         fontSize: 12, color: Colors.white),
+              //                   ),
+              //                   backgroundColor: Colors.blue.shade300,
+              //                   labelPadding:
+              //                       const EdgeInsets.symmetric(horizontal: 8.0),
+              //                   shape: RoundedRectangleBorder(
+              //                     borderRadius: BorderRadius.circular(20.0),
+              //                   ),
+              //                 ),
+              //               ),
+              //             );
+              //           }).toList(),
+              //   ),
+              // ),
+            ],
           ),
         ),
         actions: [
@@ -397,22 +541,22 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                                 fit: BoxFit.fitWidth,
                                 errorBuilder: (context, error, stackTrace) =>
                                     Image.asset('assets/images/refmmp.png',
-                                        fit: BoxFit.cover),
+                                        fit: BoxFit.fitWidth),
                               )
                             : CachedNetworkImage(
                                 imageUrl: instrumentData['image'] ?? '',
                                 cacheManager: CustomCacheManager.instance,
-                                fit: BoxFit.cover,
+                                fit: BoxFit.fitWidth,
                                 placeholder: (context, url) => const Center(
                                   child: CircularProgressIndicator(
                                       color: Colors.white),
                                 ),
                                 errorWidget: (context, url, error) =>
                                     Image.asset('assets/images/refmmp.png',
-                                        fit: BoxFit.cover),
+                                        fit: BoxFit.fitWidth),
                               ))
                         : Image.asset('assets/images/refmmp.png',
-                            fit: BoxFit.cover),
+                            fit: BoxFit.fitWidth),
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -428,7 +572,12 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 5),
                         GestureDetector(
-                          onTap: () => _showDescriptionDialog(description),
+                          onTap: () => _showDescriptionDialog(
+                            name: name,
+                            description: description,
+                            image: image,
+                            instruments: [], // No instruments for instrument description
+                          ),
                           child: Text(
                             truncatedDescription,
                             style: const TextStyle(fontSize: 14),
@@ -449,74 +598,86 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8.0,
-                          runSpacing: 8.0,
-                          children: headquarters.isEmpty
-                              ? [const Text('No hay sedes asociadas')]
-                              : headquarters.map((hq) {
-                                  final hqName =
-                                      hq['name'] ?? 'Sede desconocida';
-                                  final hqImage = hq['local_photo_path'] ??
-                                      hq['photo'] ??
-                                      '';
-                                  final hqId = hq['id'] as int? ?? 0;
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: headquarters.isEmpty
+                                ? [
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Text('No hay sedes asociadas'),
+                                    )
+                                  ]
+                                : headquarters.map((hq) {
+                                    final hqName =
+                                        hq['name'] ?? 'Sede desconocida';
+                                    final hqImage = hq['local_photo_path'] ??
+                                        hq['photo'] ??
+                                        '';
+                                    final hqId = hq['id'] as int? ?? 0;
 
-                                  return GestureDetector(
-                                    onTap: () {
-                                      if (hqId != 0) {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                HeadquartersInfo(
-                                              id: hqId.toString(),
-                                              name: hqName,
-                                              sedeData: hq,
-                                            ),
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4.0),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          if (hqId != 0) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    HeadquartersInfo(
+                                                  id: hqId.toString(),
+                                                  name: hqName,
+                                                ),
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                    "ID de sede no válido"),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        child: Chip(
+                                          avatar: hqImage.isNotEmpty
+                                              ? CircleAvatar(
+                                                  backgroundImage: File(hqImage)
+                                                          .existsSync()
+                                                      ? FileImage(File(hqImage))
+                                                      : CachedNetworkImageProvider(
+                                                          hq['photo'] ?? '',
+                                                          cacheManager:
+                                                              CustomCacheManager
+                                                                  .instance,
+                                                        ),
+                                                  radius: 12,
+                                                  backgroundColor: Colors.white,
+                                                )
+                                              : null,
+                                          label: Text(
+                                            hqName,
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.white),
                                           ),
-                                        );
-                                      } else {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                            content:
-                                                Text("ID de sede no válido"),
+                                          backgroundColor: Colors.blue.shade300,
+                                          labelPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 8.0),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20.0),
                                           ),
-                                        );
-                                      }
-                                    },
-                                    child: Chip(
-                                      avatar: hqImage.isNotEmpty
-                                          ? CircleAvatar(
-                                              backgroundImage: File(hqImage)
-                                                      .existsSync()
-                                                  ? FileImage(File(hqImage))
-                                                  : CachedNetworkImageProvider(
-                                                      hq['photo'] ?? '',
-                                                      cacheManager:
-                                                          CustomCacheManager
-                                                              .instance,
-                                                    ),
-                                              radius: 12,
-                                              backgroundColor: Colors.white,
-                                            )
-                                          : null,
-                                      label: Text(
-                                        hqName,
-                                        style: const TextStyle(
-                                            fontSize: 12, color: Colors.white),
+                                        ),
                                       ),
-                                      backgroundColor: Colors.blue.shade300,
-                                      labelPadding: const EdgeInsets.symmetric(
-                                          horizontal: 8.0),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(20.0),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                          ),
                         ),
                         const SizedBox(height: 5),
                         Divider(
@@ -556,7 +717,12 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
 class TeacherCarousel extends StatefulWidget {
   final List<Map<String, dynamic>> teachers;
   final ThemeProvider themeProvider;
-  final Function(String) showDescriptionDialog;
+  final Function({
+    required String name,
+    required String description,
+    required String image,
+    required List<Map<String, dynamic>> instruments,
+  }) showDescriptionDialog;
 
   const TeacherCarousel({
     super.key,
@@ -595,7 +761,7 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
           _currentPage = (_currentPage + 1) % widget.teachers.length;
           _pageController.animateToPage(
             _currentPage,
-            duration: const Duration(milliseconds: 600),
+            duration: const Duration(milliseconds: 400),
             curve: Curves.easeInOut,
           );
         });
@@ -613,10 +779,13 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final cardHeight = min(550.0,
+        MediaQuery.of(context).size.height * 0.7); // Reducido de 610 a 550
+
     return Column(
       children: [
         SizedBox(
-          height: MediaQuery.of(context).size.height * 0.5,
+          height: cardHeight,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.teachers.length,
@@ -637,35 +806,40 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                       .toList() ??
                   [];
 
-              return SingleChildScrollView(
+              return GestureDetector(
+                onTap: () => widget.showDescriptionDialog(
+                  name: name,
+                  description: description,
+                  image: image,
+                  instruments: instruments,
+                ),
                 child: Card(
-                  margin: const EdgeInsets.all(10),
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   elevation: 5,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.45,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(20)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Imagen del profesor (reducida a 250 píxeles)
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(20)),
+                        child: SizedBox(
+                          height: 280,
                           child: image.isNotEmpty && File(image).existsSync()
                               ? Image.file(
                                   File(image),
                                   width: double.infinity,
-                                  height: 150,
-                                  fit: BoxFit.cover,
+                                  height: 250,
+                                  fit: BoxFit.fitWidth,
                                   errorBuilder: (context, error, stackTrace) =>
                                       Image.asset(
                                     'assets/images/refmmp.png',
                                     width: double.infinity,
-                                    height: 150,
+                                    height: 250,
                                     fit: BoxFit.cover,
                                   ),
                                 )
@@ -673,8 +847,8 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                                   imageUrl: data['image_presentation'] ?? '',
                                   cacheManager: CustomCacheManager.instance,
                                   width: double.infinity,
-                                  height: 150,
-                                  fit: BoxFit.cover,
+                                  height: 250,
+                                  fit: BoxFit.fitWidth,
                                   placeholder: (context, url) => const Center(
                                     child: CircularProgressIndicator(
                                         color: Colors.blue),
@@ -683,82 +857,89 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                                       Image.asset(
                                     'assets/images/refmmp.png',
                                     width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
+                                    height: 250,
+                                    fit: BoxFit.fill,
                                   ),
                                 ),
                         ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Center(
-                                  child: Text(
-                                    name,
-                                    style: TextStyle(
-                                      color: widget.themeProvider.isDarkMode
-                                          ? const Color.fromARGB(
-                                              255, 255, 255, 255)
-                                          : const Color.fromARGB(
-                                              255, 33, 150, 243),
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Flexible(
-                                  child: GestureDetector(
-                                    onTap: () => widget
-                                        .showDescriptionDialog(description),
-                                    child: Text(
-                                      truncateText(description, 30),
-                                      style: const TextStyle(fontSize: 14),
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  'Instrumentos:',
+                      ),
+                      // Contenido (reducido a 300 píxeles)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Nombre
+                              Center(
+                                child: Text(
+                                  name,
                                   style: TextStyle(
                                     color: widget.themeProvider.isDarkMode
                                         ? const Color.fromARGB(
                                             255, 255, 255, 255)
                                         : const Color.fromARGB(
                                             255, 33, 150, 243),
+                                    fontSize: 16, // Reducido de 18 a 16
                                     fontWeight: FontWeight.bold,
                                   ),
+                                  textAlign: TextAlign.center,
                                 ),
-                                const SizedBox(height: 5),
-                                Flexible(
-                                  child: SingleChildScrollView(
-                                    child: Wrap(
-                                      spacing: 8.0,
-                                      runSpacing: 8.0,
-                                      children: instruments.isEmpty
-                                          ? [
-                                              const Text(
-                                                  'No hay instrumentos asignados')
-                                            ]
-                                          : instruments.map((instrument) {
-                                              final instrumentId =
-                                                  instrument['id'] ?? 0;
-                                              final instrumentName =
-                                                  instrument['name'] ??
-                                                      'Instrumento desconocido';
-                                              final instrumentImage =
-                                                  instrument[
-                                                          'local_image_path'] ??
-                                                      instrument['image'] ??
-                                                      '';
+                              ),
+                              const SizedBox(height: 3), // Reducido de 5 a 3
+                              // Descripción truncada
+                              Text(
+                                truncateText(description,
+                                    40), // Reducido de 30 a 20 palabras
+                                style: const TextStyle(
+                                    fontSize: 12), // Reducido de 14 a 12
+                                maxLines: 5, // Reducido de 3 a 2
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3), // Reducido de 5 a 3
+                              // Título de instrumentos
+                              Text(
+                                '| Instrumentos',
+                                style: TextStyle(
+                                  color: widget.themeProvider.isDarkMode
+                                      ? const Color.fromARGB(255, 255, 255, 255)
+                                      : const Color.fromARGB(255, 33, 150, 243),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2), // Reducido de 3 a 2
+                              // Instrumentos
+                              SizedBox(
+                                height: 40, // Altura fija para los chips
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: instruments.isEmpty
+                                        ? [
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  horizontal: 8.0),
+                                              child: Text(
+                                                  'No hay instrumentos asignados'),
+                                            )
+                                          ]
+                                        : instruments.map((instrument) {
+                                            final instrumentId =
+                                                instrument['id'] ?? 0;
+                                            final instrumentName =
+                                                instrument['name'] ??
+                                                    'Instrumento desconocido';
+                                            final instrumentImage = instrument[
+                                                    'local_image_path'] ??
+                                                instrument['image'] ??
+                                                '';
 
-                                              return GestureDetector(
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 4.0),
+                                              child: GestureDetector(
                                                 onTap: () {
                                                   if (instrumentId != 0) {
                                                     Navigator.push(
@@ -799,7 +980,8 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                                                                           CustomCacheManager
                                                                               .instance,
                                                                     ),
-                                                              radius: 12,
+                                                              radius:
+                                                                  10, // Reducido de 12 a 10
                                                               backgroundColor:
                                                                   Colors.white,
                                                             )
@@ -807,31 +989,33 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                                                   label: Text(
                                                     instrumentName,
                                                     style: const TextStyle(
-                                                        fontSize: 12,
+                                                        fontSize:
+                                                            10, // Reducido de 12 a 10
                                                         color: Colors.white),
                                                   ),
                                                   backgroundColor:
                                                       Colors.blue.shade300,
                                                   labelPadding: const EdgeInsets
                                                       .symmetric(
-                                                      horizontal: 8.0),
+                                                      horizontal:
+                                                          6.0), // Reducido de 8 a 6
                                                   shape: RoundedRectangleBorder(
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                             20.0),
                                                   ),
                                                 ),
-                                              );
-                                            }).toList(),
-                                    ),
+                                              ),
+                                            );
+                                          }).toList(),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );

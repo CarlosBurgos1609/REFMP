@@ -26,14 +26,13 @@ class CustomCacheManager {
 
 class HeadquartersInfo extends StatefulWidget {
   final String id;
-  final String name;
-  final Map<String, dynamic>? sedeData;
+  final String
+      name; // Mantenemos el nombre por compatibilidad, pero podría eliminarse si no es necesario
 
   const HeadquartersInfo({
     super.key,
     required this.id,
     required this.name,
-    this.sedeData,
   });
 
   @override
@@ -91,7 +90,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     final box = Hive.box('offline_data');
     final cachedData = box.get(cacheKey, defaultValue: null);
 
-    // Check if cached data exists and matches the current URL
     if (cachedData != null &&
         cachedData['url'] == url &&
         await File(cachedData['path']).exists()) {
@@ -99,9 +97,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       return cachedData['path'];
     }
 
-    // If URL has changed or no cache exists, download the new image
     try {
-      // Delete old cached file if it exists
       if (cachedData != null && await File(cachedData['path']).exists()) {
         await File(cachedData['path']).delete();
         debugPrint('Deleted old cached image: ${cachedData['path']}');
@@ -109,7 +105,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
 
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
-      // Store both the file path and the URL in the cache
       await box.put(cacheKey, {'path': filePath, 'url': url});
       debugPrint('Image downloaded and cached: $filePath for URL: $url');
       return filePath;
@@ -120,10 +115,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   }
 
   Future<Map<String, dynamic>> _fetchSedeData() async {
-    if (widget.sedeData != null) {
-      return widget.sedeData!;
-    }
-
     final box = Hive.box('offline_data');
     final cacheKey = 'sedes_data_${widget.id}';
     final isOnline = await _checkConnectivity();
@@ -132,7 +123,8 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       try {
         final response = await Supabase.instance.client
             .from("sedes")
-            .select()
+            .select(
+                'id, name, type_headquarters, description, contact_number, address, ubication, photo')
             .eq('id', widget.id)
             .maybeSingle();
         if (response != null) {
@@ -156,7 +148,16 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       }
     }
 
-    final cachedData = box.get(cacheKey, defaultValue: {'name': widget.name});
+    final cachedData = box.get(cacheKey, defaultValue: {
+      'id': widget.id,
+      'name': widget.name,
+      'type_headquarters': 'No disponible',
+      'description': 'Sin descripción',
+      'contact_number': 'No disponible',
+      'address': 'Dirección no disponible',
+      'ubication': '',
+      'photo': ''
+    });
     debugPrint('Loaded sede data from cache: $cachedData');
     return Map<String, dynamic>.from(cachedData);
   }
@@ -218,7 +219,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
 
     if (isOnline) {
       try {
-        // Fetch director data directly from director_headquarters with related director info
         final response = await Supabase.instance.client
             .from('director_headquarters')
             .select('''
@@ -239,11 +239,9 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         }
 
         final directorData = Map<String, dynamic>.from(response['directors']);
-        // Map 'descripcion' to 'description' for consistency in the app
         directorData['description'] = directorData['descripcion'];
         debugPrint('Director data fetched: $directorData');
 
-        // Cache the director's image if it exists
         final image = directorData['image_presentation'] ?? '';
         if (image.isNotEmpty) {
           try {
@@ -255,7 +253,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
           }
         }
 
-        // Fetch the instrument associated with the director (optional)
         final directorId = directorData['id'];
         final instrumentResponse = await Supabase.instance.client
             .from('director_instruments')
@@ -399,7 +396,16 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
 
             final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
                 ? snapshot.data![0] as Map<String, dynamic>
-                : {'name': widget.name};
+                : {
+                    'id': widget.id,
+                    'name': widget.name,
+                    'type_headquarters': 'No disponible',
+                    'description': 'Sin descripción',
+                    'contact_number': 'No disponible',
+                    'address': 'Dirección no disponible',
+                    'ubication': '',
+                    'photo': ''
+                  };
             final instruments =
                 snapshot.data != null && snapshot.data!.length > 1
                     ? snapshot.data![1] as List<Map<String, dynamic>>
@@ -488,76 +494,91 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8.0,
-                          runSpacing: 8.0,
-                          children: instruments.isEmpty
-                              ? [const Text('No hay instrumentos disponibles')]
-                              : instruments.map((instrument) {
-                                  final instrumentName = instrument['name'] ??
-                                      'Instrumento desconocido';
-                                  final instrumentImage =
-                                      instrument['local_image_path'] ??
-                                          instrument['image'] ??
-                                          '';
-                                  final instrumentId =
-                                      instrument['id'] as int? ?? 0;
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: instruments.isEmpty
+                                ? [
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Text(
+                                          'No hay instrumentos disponibles'),
+                                    )
+                                  ]
+                                : instruments.map((instrument) {
+                                    final instrumentName = instrument['name'] ??
+                                        'Instrumento desconocido';
+                                    final instrumentImage =
+                                        instrument['local_image_path'] ??
+                                            instrument['image'] ??
+                                            '';
+                                    final instrumentId =
+                                        instrument['id'] as int? ?? 0;
 
-                                  return GestureDetector(
-                                    onTap: () {
-                                      if (instrumentId != 0) {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                InstrumentDetailPage(
-                                              instrumentId: instrumentId,
-                                            ),
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4.0),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          if (instrumentId != 0) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    InstrumentDetailPage(
+                                                  instrumentId: instrumentId,
+                                                ),
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                    "ID de instrumento no válido"),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        child: Chip(
+                                          avatar: instrumentImage.isNotEmpty
+                                              ? CircleAvatar(
+                                                  backgroundImage: File(
+                                                              instrumentImage)
+                                                          .existsSync()
+                                                      ? FileImage(
+                                                          File(instrumentImage))
+                                                      : CachedNetworkImageProvider(
+                                                          instrument['image'] ??
+                                                              '',
+                                                          cacheManager:
+                                                              CustomCacheManager
+                                                                  .instance,
+                                                        ),
+                                                  radius: 12,
+                                                  backgroundColor: Colors.white,
+                                                )
+                                              : null,
+                                          label: Text(
+                                            instrumentName,
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.white),
                                           ),
-                                        );
-                                      } else {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                                "ID de instrumento no válido"),
+                                          backgroundColor: Colors.blue.shade300,
+                                          labelPadding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 8.0),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20.0),
                                           ),
-                                        );
-                                      }
-                                    },
-                                    child: Chip(
-                                      avatar: instrumentImage.isNotEmpty
-                                          ? CircleAvatar(
-                                              backgroundImage: File(
-                                                          instrumentImage)
-                                                      .existsSync()
-                                                  ? FileImage(
-                                                      File(instrumentImage))
-                                                  : CachedNetworkImageProvider(
-                                                      instrument['image'] ?? '',
-                                                      cacheManager:
-                                                          CustomCacheManager
-                                                              .instance,
-                                                    ),
-                                              radius: 12,
-                                              backgroundColor: Colors.white,
-                                            )
-                                          : null,
-                                      label: Text(
-                                        instrumentName,
-                                        style: const TextStyle(
-                                            fontSize: 12, color: Colors.white),
+                                        ),
                                       ),
-                                      backgroundColor: Colors.blue.shade300,
-                                      labelPadding: const EdgeInsets.symmetric(
-                                          horizontal: 8.0),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(20.0),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                          ),
                         ),
                         const SizedBox(height: 15),
                         const Text('| Descripción',
