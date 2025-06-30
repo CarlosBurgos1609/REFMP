@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_null_comparison
+import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
+import 'dart:async';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -26,8 +27,7 @@ class CustomCacheManager {
 
 class HeadquartersInfo extends StatefulWidget {
   final String id;
-  final String
-      name; // Mantenemos el nombre por compatibilidad, pero podría eliminarse si no es necesario
+  final String name;
 
   const HeadquartersInfo({
     super.key,
@@ -43,6 +43,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   late Future<Map<String, dynamic>> sedeFuture;
   late Future<List<Map<String, dynamic>>> instrumentsFuture;
   late Future<Map<String, dynamic>?> directorFuture;
+  late Future<List<Map<String, dynamic>>> teachersFuture;
 
   @override
   void initState() {
@@ -62,6 +63,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     sedeFuture = _fetchSedeData();
     instrumentsFuture = _fetchInstruments();
     directorFuture = _fetchDirectorData();
+    teachersFuture = _fetchTeachers();
   }
 
   Future<void> _initializeHive() async {
@@ -126,6 +128,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             .select(
                 'id, name, type_headquarters, description, contact_number, address, ubication, photo')
             .eq('id', widget.id)
+            .order('name', ascending: true)
             .maybeSingle();
         if (response != null) {
           final data = Map<String, dynamic>.from(response);
@@ -176,7 +179,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                 name,
                 image
               )
-            ''').eq('sede_id', widget.id);
+            ''').eq('sede_id', widget.id).order('name', ascending: true);
         final data = List<Map<String, dynamic>>.from(response).map((item) {
           final image = item['instruments']['image'] ?? '';
           return {
@@ -230,6 +233,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             )
           ''')
             .eq('sede_id', widget.id)
+            .order('name', ascending: true)
             .maybeSingle();
 
         if (response == null || response['directors'] == null) {
@@ -264,6 +268,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             )
           ''')
             .eq('director_id', directorId)
+            .order('name', ascending: true)
             .maybeSingle();
 
         if (instrumentResponse != null &&
@@ -297,6 +302,102 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     final cachedData = box.get(cacheKey);
     debugPrint('Loaded director data from cache: $cachedData');
     return cachedData != null ? Map<String, dynamic>.from(cachedData) : null;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTeachers() async {
+    final box = Hive.box('offline_data');
+    final cacheKey = 'teachers_headquarters_${widget.id}';
+    final isOnline = await _checkConnectivity();
+
+    if (isOnline) {
+      try {
+        final response = await Supabase.instance.client
+            .from('teacher_headquarters')
+            .select(
+                'teachers(id, first_name, last_name, email, image_presentation, description)')
+            .eq('sede_id', widget.id)
+            .order('first_name', ascending: true);
+        final data = List<Map<String, dynamic>>.from(response).map((item) {
+          final teacher = item['teachers'];
+          return {
+            'id': teacher['id'] ?? 0,
+            'first_name': teacher['first_name'] ?? 'Nombre',
+            'last_name': teacher['last_name'] ?? 'No disponible',
+            'email': teacher['email'] ?? 'Correo no disponible',
+            'image_presentation': teacher['image_presentation'] ?? '',
+            'description': teacher['description'] ?? 'Sin descripción',
+          };
+        }).toList();
+
+        for (var teacher in data) {
+          final photo = teacher['image_presentation'] ?? '';
+          if (photo.isNotEmpty) {
+            try {
+              final localPath = await _downloadAndCacheImage(
+                  photo, 'teacher_photo_${teacher['id']}');
+              teacher['local_photo_path'] = localPath;
+              debugPrint(
+                  'Teacher image cached at: $localPath for ID: ${teacher['id']}');
+            } catch (e) {
+              debugPrint(
+                  'Error caching teacher photo for ID ${teacher['id']}: $e');
+              teacher['local_photo_path'] =
+                  null; // Ensure it's set to null on error
+            }
+          }
+
+          try {
+            final instrumentResponse = await Supabase.instance.client
+                .from('teacher_instruments')
+                .select('instruments(id, name, image)')
+                .eq('teacher_id', teacher['id']);
+            final instruments =
+                List<Map<String, dynamic>>.from(instrumentResponse).map((item) {
+              return {
+                'id': item['instruments']['id'] ?? 0,
+                'name':
+                    item['instruments']['name'] ?? 'Instrumento desconocido',
+                'image': item['instruments']['image'] ?? '',
+              };
+            }).toList();
+
+            for (var instrument in instruments) {
+              final image = instrument['image'] ?? '';
+              if (image.isNotEmpty) {
+                try {
+                  final localPath = await _downloadAndCacheImage(
+                      image, 'teacher_instrument_image_${instrument['id']}');
+                  instrument['local_image_path'] = localPath;
+                  debugPrint(
+                      'Instrument image cached at: $localPath for ID: ${instrument['id']}');
+                } catch (e) {
+                  debugPrint(
+                      'Error caching instrument image for ID ${instrument['id']}: $e');
+                  instrument['local_image_path'] =
+                      null; // Ensure it's set to null on error
+                }
+              }
+            }
+            teacher['instruments'] = instruments;
+          } catch (e) {
+            debugPrint(
+                'Error fetching teacher instruments for ID ${teacher['id']}: $e');
+            teacher['instruments'] = [];
+          }
+        }
+
+        await box.put(cacheKey, data);
+        debugPrint('Teachers saved to Hive with key: $cacheKey - Data: $data');
+        return data;
+      } catch (e) {
+        debugPrint('Error fetching teachers from Supabase: $e');
+      }
+    }
+
+    final cachedData = box.get(cacheKey, defaultValue: []);
+    debugPrint('Loaded teachers from cache: $cachedData');
+    return List<Map<String, dynamic>>.from(
+        cachedData.map((item) => Map<String, dynamic>.from(item)));
   }
 
   void _openMap(String? ubication) async {
@@ -350,6 +451,187 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     );
   }
 
+  void _showDescriptionDialogTeachers({
+    required String name,
+    required String description,
+    required String image,
+    required List<Map<String, dynamic>> instruments,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+        ),
+        contentPadding: const EdgeInsets.all(16.0),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+            maxWidth: MediaQuery.of(context).size.width * 0.8,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 300,
+                    width: double.infinity,
+                    child: image.isNotEmpty && File(image).existsSync()
+                        ? Image.file(
+                            File(image),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: image,
+                            cacheManager: CustomCacheManager.instance,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => const Center(
+                              child:
+                                  CircularProgressIndicator(color: Colors.blue),
+                            ),
+                            errorWidget: (context, url, error) => Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '| Descripción',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                if (instruments.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    '| Instrumentos',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 40,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: instruments.map((instrument) {
+                          final instrumentId = instrument['id'] ?? 0;
+                          final instrumentName =
+                              instrument['name'] ?? 'Instrumento desconocido';
+                          final instrumentImage =
+                              instrument['local_image_path'] ??
+                                  instrument['image'] ??
+                                  '';
+
+                          return Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: GestureDetector(
+                              onTap: () {
+                                if (instrumentId != 0) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          InstrumentDetailPage(
+                                        instrumentId: instrumentId,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text("ID de instrumento no válido"),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Chip(
+                                avatar: instrumentImage.isNotEmpty
+                                    ? CircleAvatar(
+                                        backgroundImage: File(instrumentImage)
+                                                .existsSync()
+                                            ? FileImage(File(instrumentImage))
+                                            : CachedNetworkImageProvider(
+                                                instrument['image'] ?? '',
+                                                cacheManager:
+                                                    CustomCacheManager.instance,
+                                              ),
+                                        radius: 10,
+                                        backgroundColor: Colors.white,
+                                      )
+                                    : null,
+                                label: Text(
+                                  instrumentName,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                backgroundColor: Colors.blue.shade300,
+                                labelPadding:
+                                    const EdgeInsets.symmetric(horizontal: 6.0),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20.0),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cerrar',
+              style: TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String truncateText(String text, int wordLimit) {
     final words = text.split(' ');
     if (words.length > wordLimit) {
@@ -383,16 +665,20 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
           setState(() {
             _refreshData();
           });
-          await Future.wait([sedeFuture, instrumentsFuture, directorFuture]);
+          await Future.wait(
+              [sedeFuture, instrumentsFuture, directorFuture, teachersFuture]);
         },
         child: FutureBuilder(
-          future: Future.wait([sedeFuture, instrumentsFuture, directorFuture]),
+          future: Future.wait(
+              [sedeFuture, instrumentsFuture, directorFuture, teachersFuture]),
           builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
                 child: CircularProgressIndicator(color: Colors.blue),
               );
             }
+
+            debugPrint('Snapshot data: $snapshot.data');
 
             final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
                 ? snapshot.data![0] as Map<String, dynamic>
@@ -414,6 +700,11 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                 snapshot.data != null && snapshot.data!.length > 2
                     ? snapshot.data![2] as Map<String, dynamic>?
                     : null;
+            final teachers = snapshot.data != null && snapshot.data!.length > 3
+                ? snapshot.data![3] as List<Map<String, dynamic>>
+                : [];
+
+            debugPrint('Teachers in build: $teachers');
 
             final name = sedeData['name'] ?? widget.name;
             final photo =
@@ -886,6 +1177,29 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                   ],
                                 ),
                               ),
+                        const SizedBox(height: 10),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
+                        const SizedBox(height: 3),
+                        const Text('| Profesores',
+                            style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 10),
+                        teachers.isEmpty
+                            ? const Text('No hay profesores asociados')
+                            : TeacherCarousel(
+                                teachers: teachers.cast<Map<String, dynamic>>(),
+                                themeProvider: themeProvider,
+                                showDescriptionDialog:
+                                    _showDescriptionDialogTeachers,
+                              ),
                       ],
                     ),
                   ),
@@ -895,6 +1209,351 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
           },
         ),
       ),
+    );
+  }
+}
+
+class TeacherCarousel extends StatefulWidget {
+  final List<Map<String, dynamic>> teachers;
+  final ThemeProvider themeProvider;
+  final Function({
+    required String name,
+    required String description,
+    required String image,
+    required List<Map<String, dynamic>> instruments,
+  }) showDescriptionDialog;
+
+  const TeacherCarousel({
+    super.key,
+    required this.teachers,
+    required this.themeProvider,
+    required this.showDescriptionDialog,
+  });
+
+  @override
+  State<TeacherCarousel> createState() => _TeacherCarouselState();
+}
+
+class _TeacherCarouselState extends State<TeacherCarousel> {
+  late final PageController _pageController;
+  late Timer _timer;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('Teachers data in carousel: ${widget.teachers}');
+    _pageController = PageController(viewportFraction: 0.9);
+    if (widget.teachers.isNotEmpty) {
+      _startAutoScroll();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _timer.cancel();
+    super.dispose();
+  }
+
+  void _startAutoScroll() {
+    _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+      if (widget.teachers.isNotEmpty) {
+        setState(() {
+          _currentPage = (_currentPage + 1) % widget.teachers.length;
+          _pageController.animateToPage(
+            _currentPage,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOut,
+          );
+        });
+      }
+    });
+  }
+
+  String truncateText(String text, int wordLimit) {
+    final words = text.split(' ');
+    if (words.length > wordLimit) {
+      return '${words.take(wordLimit).join(' ')}...';
+    }
+    return text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.teachers.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(10.0),
+        child: Text(
+          'No hay profesores asociados',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+
+    final cardHeight = min(550.0, MediaQuery.of(context).size.height * 0.7);
+
+    return Column(
+      children: [
+        SizedBox(
+          height: cardHeight,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.teachers.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentPage = index;
+                debugPrint('Current page changed to: $index');
+              });
+            },
+            itemBuilder: (context, index) {
+              final data = widget.teachers[index];
+              final name =
+                  '${data['first_name'] ?? 'Nombre'} ${data['last_name'] ?? 'No disponible'}';
+              final image =
+                  data['local_photo_path'] ?? data['image_presentation'] ?? '';
+              final description = data['description'] ?? 'Sin descripción';
+              final instruments = (data['instruments'] as List?)
+                      ?.map((item) => Map<String, dynamic>.from(item ?? {}))
+                      .toList() ??
+                  [];
+
+              debugPrint(
+                  'Rendering teacher: $name, Image: $image, Instruments: $instruments');
+
+              return GestureDetector(
+                onTap: () {
+                  debugPrint('Tapped on teacher: $name');
+                  widget.showDescriptionDialog(
+                    name: name,
+                    description: description,
+                    image: image,
+                    instruments: instruments,
+                  );
+                },
+                child: Card(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  elevation: 5,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(20)),
+                        child: SizedBox(
+                          height: 280,
+                          child: image.isNotEmpty && File(image).existsSync()
+                              ? Image.file(
+                                  File(image),
+                                  width: double.infinity,
+                                  height: 250,
+                                  fit: BoxFit.fitWidth,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    debugPrint(
+                                        'Error loading file image: $error');
+                                    return Image.asset(
+                                      'assets/images/refmmp.png',
+                                      width: double.infinity,
+                                      height: 250,
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                )
+                              : CachedNetworkImage(
+                                  imageUrl: data['image_presentation'] ?? '',
+                                  cacheManager: CustomCacheManager.instance,
+                                  width: double.infinity,
+                                  height: 250,
+                                  fit: BoxFit.fitWidth,
+                                  placeholder: (context, url) => const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.blue),
+                                  ),
+                                  errorWidget: (context, url, error) {
+                                    debugPrint(
+                                        'Error loading network image: $error');
+                                    return Image.asset(
+                                      'assets/images/refmmp.png',
+                                      width: double.infinity,
+                                      height: 250,
+                                      fit: BoxFit.fill,
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: Text(
+                                  name,
+                                  style: TextStyle(
+                                    color: widget.themeProvider.isDarkMode
+                                        ? const Color.fromARGB(
+                                            255, 255, 255, 255)
+                                        : const Color.fromARGB(
+                                            255, 33, 150, 243),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                truncateText(description, 40),
+                                style: const TextStyle(fontSize: 12),
+                                maxLines: 5,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '| Instrumentos',
+                                style: TextStyle(
+                                  color: widget.themeProvider.isDarkMode
+                                      ? const Color.fromARGB(255, 255, 255, 255)
+                                      : const Color.fromARGB(255, 33, 150, 243),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              SizedBox(
+                                height: 40,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: instruments.isEmpty
+                                        ? [
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  horizontal: 8.0),
+                                              child: Text(
+                                                  'No hay instrumentos asignados'),
+                                            )
+                                          ]
+                                        : instruments.map((instrument) {
+                                            final instrumentId =
+                                                instrument['id'] ?? 0;
+                                            final instrumentName =
+                                                instrument['name'] ??
+                                                    'Instrumento desconocido';
+                                            final instrumentImage = instrument[
+                                                    'local_image_path'] ??
+                                                instrument['image'] ??
+                                                '';
+
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 4.0),
+                                              child: GestureDetector(
+                                                onTap: () {
+                                                  if (instrumentId != 0) {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (context) =>
+                                                            InstrumentDetailPage(
+                                                          instrumentId:
+                                                              instrumentId,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            "ID de instrumento no válido"),
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                child: Chip(
+                                                  avatar:
+                                                      instrumentImage.isNotEmpty
+                                                          ? CircleAvatar(
+                                                              backgroundImage: File(
+                                                                          instrumentImage)
+                                                                      .existsSync()
+                                                                  ? FileImage(File(
+                                                                      instrumentImage))
+                                                                  : CachedNetworkImageProvider(
+                                                                      instrument[
+                                                                              'image'] ??
+                                                                          '',
+                                                                      cacheManager:
+                                                                          CustomCacheManager
+                                                                              .instance,
+                                                                    ),
+                                                              radius: 10,
+                                                              backgroundColor:
+                                                                  Colors.white,
+                                                            )
+                                                          : null,
+                                                  label: Text(
+                                                    instrumentName,
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  backgroundColor:
+                                                      Colors.blue.shade300,
+                                                  labelPadding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 6.0),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            20.0),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            widget.teachers.length,
+            (index) => AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _currentPage == index ? Colors.blue : Colors.grey[400],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
