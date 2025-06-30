@@ -110,6 +110,7 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
             .from('instruments')
             .select('id, name, description, image')
             .eq('id', widget.instrumentId)
+            .order('name', ascending: true)
             .single();
         final data = Map<String, dynamic>.from(response);
         final image = data['image'] ?? '';
