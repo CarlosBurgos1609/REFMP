@@ -307,6 +307,13 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   Future<List<Map<String, dynamic>>> _fetchTeachers() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'teachers_headquarters_${widget.id}';
+
+    // Limpiar caché específico de esta sede antes de consultar
+    if (box.containsKey(cacheKey)) {
+      await box.delete(cacheKey);
+      debugPrint('Cache cleared for key: $cacheKey');
+    }
+
     final isOnline = await _checkConnectivity();
 
     if (isOnline) {
@@ -315,10 +322,29 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             .from('teacher_headquarters')
             .select(
                 'teachers(id, first_name, last_name, email, image_presentation, description)')
-            .eq('sede_id', widget.id)
-            .order('first_name', ascending: true);
+            .eq('sede_id', widget.id);
+        debugPrint(
+            'Raw teacher_headquarters response for sede_id ${widget.id}: $response');
+
+        // ignore: unnecessary_null_comparison
+        if (response == null || response.isEmpty) {
+          debugPrint('No teachers found for sede_id: ${widget.id}');
+          return [];
+        }
+
         final data = List<Map<String, dynamic>>.from(response).map((item) {
           final teacher = item['teachers'];
+          if (teacher == null) {
+            debugPrint('Null teacher object in item: $item');
+            return {
+              'id': 0,
+              'first_name': 'Desconocido',
+              'last_name': '',
+              'email': '',
+              'image_presentation': '',
+              'description': 'Sin datos',
+            };
+          }
           return {
             'id': teacher['id'] ?? 0,
             'first_name': teacher['first_name'] ?? 'Nombre',
@@ -341,8 +367,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             } catch (e) {
               debugPrint(
                   'Error caching teacher photo for ID ${teacher['id']}: $e');
-              teacher['local_photo_path'] =
-                  null; // Ensure it's set to null on error
+              teacher['local_photo_path'] = null;
             }
           }
 
@@ -373,8 +398,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                 } catch (e) {
                   debugPrint(
                       'Error caching instrument image for ID ${instrument['id']}: $e');
-                  instrument['local_image_path'] =
-                      null; // Ensure it's set to null on error
+                  instrument['local_image_path'] = null;
                 }
               }
             }
@@ -390,12 +414,15 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         debugPrint('Teachers saved to Hive with key: $cacheKey - Data: $data');
         return data;
       } catch (e) {
-        debugPrint('Error fetching teachers from Supabase: $e');
+        debugPrint(
+            'Error fetching teachers from Supabase for sede_id ${widget.id}: $e');
+        return [];
       }
     }
 
     final cachedData = box.get(cacheKey, defaultValue: []);
-    debugPrint('Loaded teachers from cache: $cachedData');
+    debugPrint(
+        'Loaded teachers from cache for sede_id ${widget.id}: $cachedData');
     return List<Map<String, dynamic>>.from(
         cachedData.map((item) => Map<String, dynamic>.from(item)));
   }
