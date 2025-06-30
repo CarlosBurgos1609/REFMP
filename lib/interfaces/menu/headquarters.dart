@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/headquartersforms.dart';
-import 'package:refmp/interfaces/headquartersInfo.dart';
+import 'package:refmp/details/headquartersInfo.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/controllers/exit.dart';

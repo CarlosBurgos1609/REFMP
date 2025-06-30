@@ -2,7 +2,7 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:refmp/interfaces/instrumentsDetails.dart';
+import 'package:refmp/details/instrumentsDetails.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';

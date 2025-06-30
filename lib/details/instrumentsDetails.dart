@@ -8,7 +8,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
-import 'package:refmp/interfaces/headquartersInfo.dart';
+import 'package:refmp/details/headquartersInfo.dart';
 import 'dart:math'; // Importado para usar min
 
 class CustomCacheManager {
@@ -288,156 +288,263 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20.0),
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Imagen del profesor
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: image.isNotEmpty && File(image).existsSync()
-                    ? Image.file(
-                        File(image),
-                        width: double.infinity,
-                        fit: BoxFit.fitWidth,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Image.asset(
-                          'assets/images/refmmp.png',
-                          width: double.infinity,
-                          fit: BoxFit.fitWidth,
-                        ),
-                      )
-                    : CachedNetworkImage(
-                        imageUrl: image,
-                        cacheManager: CustomCacheManager.instance,
-                        width: double.infinity,
-                        fit: BoxFit.fitWidth,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(color: Colors.blue),
-                        ),
-                        errorWidget: (context, url, error) => Image.asset(
-                          'assets/images/refmmp.png',
-                          width: double.infinity,
-                          fit: BoxFit.fitWidth,
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 10),
-              // Nombre del profesor
-              Center(
-                child: Text(
-                  name,
-                  style: const TextStyle(
+        contentPadding: const EdgeInsets.all(16.0), // Padding uniforme
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height *
+                0.6, // Máximo 60% de la altura de la pantalla
+            maxWidth:
+                MediaQuery.of(context).size.width * 0.8, // Máximo 80% del ancho
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Imagen del profesor
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 300, // Altura fija para la imagen
+                    width: double.infinity,
+                    child: image.isNotEmpty && File(image).existsSync()
+                        ? Image.file(
+                            File(image),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: image,
+                            cacheManager: CustomCacheManager.instance,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => const Center(
+                              child:
+                                  CircularProgressIndicator(color: Colors.blue),
+                            ),
+                            errorWidget: (context, url, error) => Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Nombre del profesor
+                Center(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 18, // Reducido de 20 a 18
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Descripción completa
+                const Text(
+                  '| Descripción',
+                  style: TextStyle(
                     color: Colors.blue,
-                    fontSize: 20,
+                    fontSize: 14, // Reducido de 16 a 14
                     fontWeight: FontWeight.bold,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-              ),
-              const SizedBox(height: 10),
-              // Descripción completa
-              Text(
-                '| Descripción',
-                style: const TextStyle(
-                  color: Colors.blue,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 12), // Reducido de 14 a 12
                 ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                description,
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 10),
-              // // Instrumentos
-              // Text(
-              //   'Instrumentos:',
-              //   style: const TextStyle(
-              //     color: Colors.blue,
-              //     fontSize: 16,
-              //     fontWeight: FontWeight.bold,
-              //   ),
-              // ),
-              // const SizedBox(height: 5),
-              // SingleChildScrollView(
-              //   scrollDirection: Axis.horizontal,
-              //   child: Row(
-              //     children: instruments.isEmpty
-              //         ? [
-              //             const Padding(
-              //               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              //               child: Text(''),
-              //             )
-              //           ]
-              //         : instruments.map((instrument) {
-              //             final instrumentId = instrument['id'] ?? 0;
-              //             final instrumentName =
-              //                 instrument['name'] ?? 'Instrumento desconocido';
-              //             final instrumentImage =
-              //                 instrument['local_image_path'] ??
-              //                     instrument['image'] ??
-              //                     '';
+                if (instruments.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    '| Instrumentos',
+                    style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 40, // Altura fija para los chips
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: instruments.map((instrument) {
+                          final instrumentId = instrument['id'] ?? 0;
+                          final instrumentName =
+                              instrument['name'] ?? 'Instrumento desconocido';
+                          final instrumentImage =
+                              instrument['local_image_path'] ??
+                                  instrument['image'] ??
+                                  '';
 
-              //             return Padding(
-              //               padding:
-              //                   const EdgeInsets.symmetric(horizontal: 4.0),
-              //               child: GestureDetector(
-              //                 onTap: () {
-              //                   if (instrumentId != 0) {
-              //                     Navigator.push(
-              //                       context,
-              //                       MaterialPageRoute(
-              //                         builder: (context) =>
-              //                             InstrumentDetailPage(
-              //                           instrumentId: instrumentId,
-              //                         ),
-              //                       ),
-              //                     );
-              //                   } else {
-              //                     ScaffoldMessenger.of(context).showSnackBar(
-              //                       const SnackBar(
-              //                         content:
-              //                             Text("ID de instrumento no válido"),
-              //                       ),
-              //                     );
-              //                   }
-              //                 },
-              //                 child: Chip(
-              //                   avatar: instrumentImage.isNotEmpty
-              //                       ? CircleAvatar(
-              //                           backgroundImage: File(instrumentImage)
-              //                                   .existsSync()
-              //                               ? FileImage(File(instrumentImage))
-              //                               : CachedNetworkImageProvider(
-              //                                   instrument['image'] ?? '',
-              //                                   cacheManager:
-              //                                       CustomCacheManager.instance,
-              //                                 ),
-              //                           radius: 12,
-              //                           backgroundColor: Colors.white,
-              //                         )
-              //                       : null,
-              //                   label: Text(
-              //                     instrumentName,
-              //                     style: const TextStyle(
-              //                         fontSize: 12, color: Colors.white),
-              //                   ),
-              //                   backgroundColor: Colors.blue.shade300,
-              //                   labelPadding:
-              //                       const EdgeInsets.symmetric(horizontal: 8.0),
-              //                   shape: RoundedRectangleBorder(
-              //                     borderRadius: BorderRadius.circular(20.0),
-              //                   ),
-              //                 ),
-              //               ),
-              //             );
-              //           }).toList(),
-              //   ),
-              // ),
-            ],
+                          return Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: GestureDetector(
+                              onTap: () {
+                                if (instrumentId != 0) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          InstrumentDetailPage(
+                                        instrumentId: instrumentId,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text("ID de instrumento no válido"),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Chip(
+                                avatar: instrumentImage.isNotEmpty
+                                    ? CircleAvatar(
+                                        backgroundImage: File(instrumentImage)
+                                                .existsSync()
+                                            ? FileImage(File(instrumentImage))
+                                            : CachedNetworkImageProvider(
+                                                instrument['image'] ?? '',
+                                                cacheManager:
+                                                    CustomCacheManager.instance,
+                                              ),
+                                        radius: 10, // Reducido de 12 a 10
+                                        backgroundColor: Colors.white,
+                                      )
+                                    : null,
+                                label: Text(
+                                  instrumentName,
+                                  style: const TextStyle(
+                                    fontSize: 10, // Reducido de 12 a 10
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                backgroundColor: Colors.blue.shade300,
+                                labelPadding:
+                                    const EdgeInsets.symmetric(horizontal: 6.0),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20.0),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cerrar',
+              style: TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDescriptionDialogInstrument({
+    required String name,
+    required String description,
+    required String image,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+        ),
+        contentPadding: const EdgeInsets.all(16.0), // Padding uniforme
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+            maxWidth: MediaQuery.of(context).size.width * 0.8,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Imagen del instrumento
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 200, // Altura fija para la imagen
+                    width: double.infinity,
+                    child: image.isNotEmpty && File(image).existsSync()
+                        ? Image.file(
+                            File(image),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: image,
+                            cacheManager: CustomCacheManager.instance,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => const Center(
+                              child:
+                                  CircularProgressIndicator(color: Colors.blue),
+                            ),
+                            errorWidget: (context, url, error) => Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Nombre del instrumento
+                Center(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Descripción completa
+                const Text(
+                  '| Descripción',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -572,11 +679,10 @@ class _InstrumentDetailPageState extends State<InstrumentDetailPage> {
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 5),
                         GestureDetector(
-                          onTap: () => _showDescriptionDialog(
+                          onTap: () => _showDescriptionDialogInstrument(
                             name: name,
                             description: description,
                             image: image,
-                            instruments: [], // No instruments for instrument description
                           ),
                           child: Text(
                             truncatedDescription,
