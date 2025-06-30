@@ -307,13 +307,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   Future<List<Map<String, dynamic>>> _fetchTeachers() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'teachers_headquarters_${widget.id}';
-
-    // Limpiar caché específico de esta sede antes de consultar
-    if (box.containsKey(cacheKey)) {
-      await box.delete(cacheKey);
-      debugPrint('Cache cleared for key: $cacheKey');
-    }
-
     final isOnline = await _checkConnectivity();
 
     if (isOnline) {
@@ -329,6 +322,8 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         // ignore: unnecessary_null_comparison
         if (response == null || response.isEmpty) {
           debugPrint('No teachers found for sede_id: ${widget.id}');
+          await box.put(
+              cacheKey, []); // Guardar lista vacía en caché si no hay datos
           return [];
         }
 
@@ -343,6 +338,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
               'email': '',
               'image_presentation': '',
               'description': 'Sin datos',
+              'instruments': [],
             };
           }
           return {
@@ -352,6 +348,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             'email': teacher['email'] ?? 'Correo no disponible',
             'image_presentation': teacher['image_presentation'] ?? '',
             'description': teacher['description'] ?? 'Sin descripción',
+            'instruments': [], // Inicializar instruments para evitar null
           };
         }).toList();
 
@@ -416,7 +413,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       } catch (e) {
         debugPrint(
             'Error fetching teachers from Supabase for sede_id ${widget.id}: $e');
-        return [];
       }
     }
 
