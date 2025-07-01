@@ -231,6 +231,10 @@ class _ContactsPageState extends State<ContactsPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Text(
+                                '| Número de contacto',
+                                style: TextStyle(color: Colors.blue),
+                              ),
                               Row(
                                 children: [
                                   const Text("🇨🇴"),
@@ -250,7 +254,12 @@ class _ContactsPageState extends State<ContactsPage> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 4),
+                              Text(
+                                '| Dirección',
+                                style: TextStyle(color: Colors.blue),
+                              ),
+                              const SizedBox(height: 4),
                               GestureDetector(
                                 onTap: () => _launchGoogleMaps(ubication),
                                 child: Row(
@@ -264,6 +273,7 @@ class _ContactsPageState extends State<ContactsPage> {
                                         style: const TextStyle(
                                           color: Colors.blue,
                                           decoration: TextDecoration.underline,
+                                          decorationColor: Colors.blue,
                                           fontSize: 16,
                                         ),
                                       ),
