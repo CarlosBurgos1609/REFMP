@@ -67,7 +67,6 @@ class _EventsPageState extends State<EventsPage> {
     initializeDateFormatting('es_ES', null).then((_) {
       setState(() {});
     });
-    // Open Hive box once in initState
     Hive.openBox('offline_data').then((box) {
       _hiveBox = box;
       fetchEvents();
@@ -118,9 +117,8 @@ class _EventsPageState extends State<EventsPage> {
       try {
         response = await supabase
             .from('events')
-            .select('*, events_headquarters(*, sedes(name))')
-            .order('date',
-                ascending: false); // Sort from most recent to least recent
+            .select('*, events_headquarters(*, sedes(id,name, photo))')
+            .order('date', ascending: false);
 
         await _hiveBox.put(cacheKey, response);
         debugPrint('Eventos obtenidos ONLINE: ${response.length}');
@@ -138,7 +136,6 @@ class _EventsPageState extends State<EventsPage> {
     List<Appointment> appointments = [];
     List<Map<String, dynamic>> eventDetails = [];
 
-    // Process events using Future.wait for faster loading
     await Future.wait(response.asMap().entries.map((entry) async {
       final i = entry.key;
       final event = entry.value;
@@ -252,6 +249,7 @@ class _EventsPageState extends State<EventsPage> {
         );
 
         await fetchEvents();
+        Navigator.pop(context);
       }
     } catch (e) {
       debugPrint('Error eliminando evento: $e');
@@ -351,7 +349,7 @@ class _EventsPageState extends State<EventsPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(30),
                             ),
                           ),
                           child: const Icon(Icons.arrow_back_ios_rounded,
@@ -499,14 +497,6 @@ class _EventsPageState extends State<EventsPage> {
                           eventIndex >= 0 &&
                           eventIndex < _eventDetails.length) {
                         final event = _eventDetails[eventIndex];
-                        final sedeName =
-                            (event['events_headquarters'] as List?)?.map((hq) {
-                                  final sede = hq?['sedes'];
-                                  return sede != null && sede['name'] != null
-                                      ? sede['name']
-                                      : 'Sede desconocida';
-                                }).join(', ') ??
-                                'Sin sedes asociadas';
 
                         bool canEditDelete = false;
                         if (_isOnline) {
@@ -516,195 +506,427 @@ class _EventsPageState extends State<EventsPage> {
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
+                          isDismissible: true,
+                          enableDrag: true,
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.of(context).size.height * 0.9,
+                          ),
                           builder: (context) {
-                            return SingleChildScrollView(
-                              child: Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: const BorderRadius.vertical(
-                                          top: Radius.circular(20)),
-                                      child: event['image'] != null &&
-                                              event['image'].isNotEmpty
-                                          ? CachedNetworkImage(
-                                              imageUrl: event['image'],
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                              cacheManager: customCacheManager,
-                                              placeholder: (context, url) =>
-                                                  const CircularProgressIndicator(
-                                                      color: Colors.blue),
-                                              errorWidget:
-                                                  (context, url, error) =>
-                                                      Image.asset(
-                                                'assets/images/refmmp.png',
-                                                width: double.infinity,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                          : Image.asset(
-                                              'assets/images/refmmp.png',
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                            ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            event['name'],
-                                            style: const TextStyle(
-                                                color: Colors.blue,
-                                                fontSize: 22,
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Text(
-                                            "Fecha: ${DateFormat.yMMMMd('es_ES').format(DateTime.parse(event['date']))}",
-                                            style:
-                                                const TextStyle(fontSize: 16),
-                                          ),
-                                          Text(
-                                            "Hora: ${event['time']} - ${event['time_fin']}",
-                                            style:
-                                                const TextStyle(fontSize: 16),
-                                          ),
-                                          Text(
-                                            "Ubicación: ${event['location']}",
-                                            style:
-                                                const TextStyle(fontSize: 16),
-                                          ),
-                                          Text(
-                                            "Sede: $sedeName",
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                                color: Colors.blue),
-                                          ),
-                                          if (canEditDelete && _isOnline)
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            10.0),
-                                                    child: ElevatedButton.icon(
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                        backgroundColor:
-                                                            Colors.blue,
-                                                        foregroundColor:
-                                                            Colors.white,
-                                                      ),
-                                                      onPressed: () {
-                                                        Navigator.push(
-                                                          context,
-                                                          MaterialPageRoute(
-                                                            builder: (context) =>
-                                                                EditEventForm(
-                                                                    event:
-                                                                        event),
+                            return DraggableScrollableSheet(
+                              initialChildSize: 0.9,
+                              minChildSize: 0.5,
+                              maxChildSize: 0.9,
+                              expand: false,
+                              builder: (context, scrollController) {
+                                return ClipRRect(
+                                  borderRadius: BorderRadius.circular(25.0),
+                                  child: Container(
+                                    color: themeProvider.isDarkMode
+                                        ? const Color.fromARGB(255, 34, 34, 34)
+                                        : Colors.white,
+                                    child: SingleChildScrollView(
+                                      controller: scrollController,
+                                      child: Card(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(40),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Stack(
+                                              children: [
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  child: event['image'] !=
+                                                              null &&
+                                                          event['image']
+                                                              .isNotEmpty
+                                                      ? CachedNetworkImage(
+                                                          imageUrl:
+                                                              event['image'],
+                                                          width:
+                                                              double.infinity,
+                                                          fit: BoxFit.cover,
+                                                          cacheManager:
+                                                              customCacheManager,
+                                                          placeholder: (context,
+                                                                  url) =>
+                                                              const CircularProgressIndicator(
+                                                                  color: Colors
+                                                                      .blue),
+                                                          errorWidget: (context,
+                                                                  url, error) =>
+                                                              Image.asset(
+                                                            'assets/images/refmmp.png',
+                                                            width:
+                                                                double.infinity,
+                                                            fit: BoxFit.cover,
                                                           ),
-                                                        );
-                                                      },
-                                                      icon: const Icon(
-                                                          Icons.edit),
-                                                      label:
-                                                          const Text('Editar'),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  ElevatedButton.icon(
-                                                    onPressed: () async {
-                                                      final confirm =
-                                                          await showDialog<
-                                                              bool>(
-                                                        context: context,
-                                                        builder: (context) =>
-                                                            AlertDialog(
-                                                          title: const Text(
-                                                            '¿Eliminar evento?',
-                                                            style: TextStyle(
-                                                                color: Colors
-                                                                    .blue),
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                          ),
-                                                          content: const Text(
-                                                            '¿Estás seguro de que deseas eliminar este evento?',
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                          ),
-                                                          actions: [
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          context)
-                                                                      .pop(
-                                                                          false),
-                                                              child: const Text(
-                                                                'Cancelar',
-                                                                style: TextStyle(
-                                                                    color: Colors
-                                                                        .blue),
-                                                                textAlign:
-                                                                    TextAlign
-                                                                        .center,
-                                                              ),
-                                                            ),
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          context)
-                                                                      .pop(
-                                                                          true),
-                                                              child: const Text(
-                                                                'Eliminar',
-                                                                style: TextStyle(
-                                                                    color: Colors
-                                                                        .red),
-                                                              ),
-                                                            ),
-                                                          ],
+                                                        )
+                                                      : Image.asset(
+                                                          'assets/images/refmmp.png',
+                                                          width:
+                                                              double.infinity,
+                                                          fit: BoxFit.cover,
                                                         ),
-                                                      );
-
-                                                      if (confirm == true) {
-                                                        await _deleteEvent(
-                                                            event, context);
-                                                      }
-                                                    },
+                                                ),
+                                                Positioned(
+                                                  top: 8,
+                                                  right: 8,
+                                                  child: IconButton(
                                                     icon: const Icon(
-                                                        Icons.delete),
-                                                    label:
-                                                        const Text('Eliminar'),
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          Colors.red,
-                                                      foregroundColor:
-                                                          Colors.white,
+                                                      Icons.close,
+                                                      color: Colors.white,
+                                                      size: 30,
+                                                    ),
+                                                    onPressed: () =>
+                                                        Navigator.pop(context),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.all(16.0),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceBetween,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          event['name'],
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.blue,
+                                                            fontSize: 22,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      GestureDetector(
+                                                        onTap: () =>
+                                                            Navigator.pop(
+                                                                context),
+                                                        child: const Icon(
+                                                          Icons.close,
+                                                          color: Colors.white,
+                                                          size: 24,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 10),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        "Fecha: ",
+                                                        style: TextStyle(
+                                                          color: Colors.blue,
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        DateFormat.yMMMMd(
+                                                                'es_ES')
+                                                            .format(DateTime
+                                                                .parse(event[
+                                                                    'date'])),
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        "Hora: ",
+                                                        style: TextStyle(
+                                                          color: Colors.blue,
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        "${event['time']} - ${event['time_fin']}",
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  Text(
+                                                    "Ubicación: ",
+                                                    style: TextStyle(
+                                                      color: Colors.blue,
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                     ),
                                                   ),
+                                                  Text(
+                                                    event['location'],
+                                                    style: const TextStyle(
+                                                        fontSize: 16),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    "Sedes: ",
+                                                    style: TextStyle(
+                                                      color: Colors.blue,
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            50.0),
+                                                    child: Container(
+                                                      color: Colors.transparent,
+                                                      child:
+                                                          SingleChildScrollView(
+                                                        scrollDirection:
+                                                            Axis.horizontal,
+                                                        child: Row(
+                                                          children: (event['events_headquarters']
+                                                                          as List<
+                                                                              dynamic>?)
+                                                                      ?.isEmpty ??
+                                                                  true
+                                                              ? [
+                                                                  const Padding(
+                                                                    padding: EdgeInsets.symmetric(
+                                                                        horizontal:
+                                                                            8.0),
+                                                                    child: Text(
+                                                                        'No hay sedes asociadas'),
+                                                                  ),
+                                                                ]
+                                                              : (event['events_headquarters']
+                                                                      as List<
+                                                                          dynamic>)
+                                                                  .map((hq) {
+                                                                  final sedeName =
+                                                                      hq?['sedes']
+                                                                              ?[
+                                                                              'name'] ??
+                                                                          'Sede desconocida';
+                                                                  final sedeImage = hq?[
+                                                                              'sedes']
+                                                                          ?[
+                                                                          'local_photo_path'] ??
+                                                                      hq?['sedes']
+                                                                          ?[
+                                                                          'photo'] ??
+                                                                      '';
+
+                                                                  return Padding(
+                                                                    padding: const EdgeInsets
+                                                                        .symmetric(
+                                                                        horizontal:
+                                                                            4.0),
+                                                                    child: Chip(
+                                                                      avatar: sedeImage
+                                                                              .isNotEmpty
+                                                                          ? CircleAvatar(
+                                                                              backgroundImage: File(sedeImage).existsSync()
+                                                                                  ? FileImage(File(sedeImage))
+                                                                                  : CachedNetworkImageProvider(
+                                                                                      sedeImage,
+                                                                                      cacheManager: customCacheManager,
+                                                                                    ),
+                                                                              radius: 12,
+                                                                              backgroundColor: Colors.white,
+                                                                            )
+                                                                          : null,
+                                                                      label:
+                                                                          Text(
+                                                                        sedeName,
+                                                                        style:
+                                                                            const TextStyle(
+                                                                          fontSize:
+                                                                              12,
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                      backgroundColor: Colors
+                                                                          .blue
+                                                                          .shade300,
+                                                                      shape:
+                                                                          RoundedRectangleBorder(
+                                                                        borderRadius:
+                                                                            BorderRadius.circular(50),
+                                                                      ),
+                                                                      padding: const EdgeInsets
+                                                                          .symmetric(
+                                                                          horizontal:
+                                                                              8.0),
+                                                                    ),
+                                                                  );
+                                                                }).toList(),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (canEditDelete &&
+                                                      _isOnline)
+                                                    Align(
+                                                      alignment:
+                                                          Alignment.centerRight,
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(10.0),
+                                                            child:
+                                                                ElevatedButton
+                                                                    .icon(
+                                                              style:
+                                                                  ElevatedButton
+                                                                      .styleFrom(
+                                                                backgroundColor:
+                                                                    Colors.blue,
+                                                                foregroundColor:
+                                                                    Colors
+                                                                        .white,
+                                                              ),
+                                                              onPressed:
+                                                                  () async {
+                                                                final result =
+                                                                    await Navigator
+                                                                        .push(
+                                                                  context,
+                                                                  MaterialPageRoute(
+                                                                    builder: (context) =>
+                                                                        EditEventForm(
+                                                                            event:
+                                                                                event),
+                                                                  ),
+                                                                );
+                                                                if (result ==
+                                                                    true) {
+                                                                  await fetchEvents();
+                                                                }
+                                                              },
+                                                              icon: const Icon(
+                                                                  Icons.edit),
+                                                              label: const Text(
+                                                                  'Editar'),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 10),
+                                                          ElevatedButton.icon(
+                                                            onPressed:
+                                                                () async {
+                                                              final confirm =
+                                                                  await showDialog<
+                                                                      bool>(
+                                                                context:
+                                                                    context,
+                                                                builder:
+                                                                    (context) =>
+                                                                        AlertDialog(
+                                                                  title:
+                                                                      const Text(
+                                                                    '¿Eliminar evento?',
+                                                                    style: TextStyle(
+                                                                        color: Colors
+                                                                            .blue),
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
+                                                                  ),
+                                                                  content:
+                                                                      const Text(
+                                                                    '¿Estás seguro de que deseas eliminar este evento?',
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
+                                                                  ),
+                                                                  actions: [
+                                                                    TextButton(
+                                                                      onPressed:
+                                                                          () =>
+                                                                              Navigator.of(context).pop(false),
+                                                                      child:
+                                                                          const Text(
+                                                                        'Cancelar',
+                                                                        style: TextStyle(
+                                                                            color:
+                                                                                Colors.blue),
+                                                                        textAlign:
+                                                                            TextAlign.center,
+                                                                      ),
+                                                                    ),
+                                                                    TextButton(
+                                                                      onPressed:
+                                                                          () =>
+                                                                              Navigator.of(context).pop(true),
+                                                                      child:
+                                                                          const Text(
+                                                                        'Eliminar',
+                                                                        style: TextStyle(
+                                                                            color:
+                                                                                Colors.red),
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              );
+
+                                                              if (confirm ==
+                                                                  true) {
+                                                                await _deleteEvent(
+                                                                    event,
+                                                                    context);
+                                                              }
+                                                            },
+                                                            icon: const Icon(
+                                                                Icons.delete),
+                                                            label: const Text(
+                                                                'Eliminar'),
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              backgroundColor:
+                                                                  Colors.red,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
                                                 ],
                                               ),
                                             ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
                             );
                           },
                         );
