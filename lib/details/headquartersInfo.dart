@@ -565,78 +565,88 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                   ),
                   const SizedBox(height: 4),
                   SizedBox(
-                    height: 40,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: instruments.map((instrument) {
-                          final instrumentId = instrument['id'] ?? 0;
-                          final instrumentName =
-                              instrument['name'] ?? 'Instrumento desconocido';
-                          final instrumentImage =
-                              instrument['local_image_path'] ??
-                                  instrument['image'] ??
-                                  '';
+                      height: 40,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(50.0),
+                        child: Container(
+                          color: Colors.transparent,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: instruments.map((instrument) {
+                                final instrumentId = instrument['id'] ?? 0;
+                                final instrumentName = instrument['name'] ??
+                                    'Instrumento desconocido';
+                                final instrumentImage =
+                                    instrument['local_image_path'] ??
+                                        instrument['image'] ??
+                                        '';
 
-                          return Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4.0),
-                            child: GestureDetector(
-                              onTap: () {
-                                if (instrumentId != 0) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          InstrumentDetailPage(
-                                        instrumentId: instrumentId,
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      if (instrumentId != 0) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                InstrumentDetailPage(
+                                              instrumentId: instrumentId,
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                "ID de instrumento no válido"),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Chip(
+                                      avatar: instrumentImage.isNotEmpty
+                                          ? CircleAvatar(
+                                              backgroundImage: File(
+                                                          instrumentImage)
+                                                      .existsSync()
+                                                  ? FileImage(
+                                                      File(instrumentImage))
+                                                  : CachedNetworkImageProvider(
+                                                      instrument['image'] ?? '',
+                                                      cacheManager:
+                                                          CustomCacheManager
+                                                              .instance,
+                                                    ),
+                                              radius: 10,
+                                              backgroundColor: Colors.white,
+                                            )
+                                          : null,
+                                      label: Text(
+                                        instrumentName,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.blue.shade300,
+                                      labelPadding: const EdgeInsets.symmetric(
+                                          horizontal: 6.0),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(20.0),
                                       ),
                                     ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text("ID de instrumento no válido"),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: Chip(
-                                avatar: instrumentImage.isNotEmpty
-                                    ? CircleAvatar(
-                                        backgroundImage: File(instrumentImage)
-                                                .existsSync()
-                                            ? FileImage(File(instrumentImage))
-                                            : CachedNetworkImageProvider(
-                                                instrument['image'] ?? '',
-                                                cacheManager:
-                                                    CustomCacheManager.instance,
-                                              ),
-                                        radius: 10,
-                                        backgroundColor: Colors.white,
-                                      )
-                                    : null,
-                                label: Text(
-                                  instrumentName,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.white,
                                   ),
-                                ),
-                                backgroundColor: Colors.blue.shade300,
-                                labelPadding:
-                                    const EdgeInsets.symmetric(horizontal: 6.0),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20.0),
-                                ),
-                              ),
+                                );
+                              }).toList(),
                             ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
+                          ),
+                        ),
+                      ))
                 ],
               ],
             ),
@@ -808,90 +818,101 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: instruments.isEmpty
-                                ? [
-                                    const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(horizontal: 8.0),
-                                      child: Text(
-                                          'No hay instrumentos disponibles'),
-                                    )
-                                  ]
-                                : instruments.map((instrument) {
-                                    final instrumentName = instrument['name'] ??
-                                        'Instrumento desconocido';
-                                    final instrumentImage =
-                                        instrument['local_image_path'] ??
-                                            instrument['image'] ??
-                                            '';
-                                    final instrumentId =
-                                        instrument['id'] as int? ?? 0;
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(50.0),
+                          child: Container(
+                            color: Colors.transparent,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: instruments.isEmpty
+                                    ? [
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              horizontal: 8.0),
+                                          child: Text(
+                                              'No hay instrumentos disponibles'),
+                                        )
+                                      ]
+                                    : instruments.map((instrument) {
+                                        final instrumentName =
+                                            instrument['name'] ??
+                                                'Instrumento desconocido';
+                                        final instrumentImage =
+                                            instrument['local_image_path'] ??
+                                                instrument['image'] ??
+                                                '';
+                                        final instrumentId =
+                                            instrument['id'] as int? ?? 0;
 
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4.0),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          if (instrumentId != 0) {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    InstrumentDetailPage(
-                                                  instrumentId: instrumentId,
-                                                ),
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 4.0),
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              if (instrumentId != 0) {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        InstrumentDetailPage(
+                                                      instrumentId:
+                                                          instrumentId,
+                                                    ),
+                                                  ),
+                                                );
+                                              } else {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                        "ID de instrumento no válido"),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            child: Chip(
+                                              avatar: instrumentImage.isNotEmpty
+                                                  ? CircleAvatar(
+                                                      backgroundImage: File(
+                                                                  instrumentImage)
+                                                              .existsSync()
+                                                          ? FileImage(File(
+                                                              instrumentImage))
+                                                          : CachedNetworkImageProvider(
+                                                              instrument[
+                                                                      'image'] ??
+                                                                  '',
+                                                              cacheManager:
+                                                                  CustomCacheManager
+                                                                      .instance,
+                                                            ),
+                                                      radius: 12,
+                                                      backgroundColor:
+                                                          Colors.white,
+                                                    )
+                                                  : null,
+                                              label: Text(
+                                                instrumentName,
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white),
                                               ),
-                                            );
-                                          } else {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                    "ID de instrumento no válido"),
+                                              backgroundColor:
+                                                  Colors.blue.shade300,
+                                              labelPadding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8.0),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(20.0),
                                               ),
-                                            );
-                                          }
-                                        },
-                                        child: Chip(
-                                          avatar: instrumentImage.isNotEmpty
-                                              ? CircleAvatar(
-                                                  backgroundImage: File(
-                                                              instrumentImage)
-                                                          .existsSync()
-                                                      ? FileImage(
-                                                          File(instrumentImage))
-                                                      : CachedNetworkImageProvider(
-                                                          instrument['image'] ??
-                                                              '',
-                                                          cacheManager:
-                                                              CustomCacheManager
-                                                                  .instance,
-                                                        ),
-                                                  radius: 12,
-                                                  backgroundColor: Colors.white,
-                                                )
-                                              : null,
-                                          label: Text(
-                                            instrumentName,
-                                            style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.white),
+                                            ),
                                           ),
-                                          backgroundColor: Colors.blue.shade300,
-                                          labelPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 8.0),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(20.0),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
+                                        );
+                                      }).toList(),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 15),
@@ -1451,100 +1472,110 @@ class _TeacherCarouselState extends State<TeacherCarousel> {
                               const SizedBox(height: 2),
                               SizedBox(
                                 height: 40,
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    children: instruments.isEmpty
-                                        ? [
-                                            const Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                  horizontal: 8.0),
-                                              child: Text(
-                                                  'No hay instrumentos asignados'),
-                                            )
-                                          ]
-                                        : instruments.map((instrument) {
-                                            final instrumentId =
-                                                instrument['id'] ?? 0;
-                                            final instrumentName =
-                                                instrument['name'] ??
-                                                    'Instrumento desconocido';
-                                            final instrumentImage = instrument[
-                                                    'local_image_path'] ??
-                                                instrument['image'] ??
-                                                '';
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(50.0),
+                                  child: Container(
+                                    color: Colors.transparent,
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        children: instruments.isEmpty
+                                            ? [
+                                                const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                      horizontal: 8.0),
+                                                  child: Text(
+                                                      'No hay instrumentos asignados'),
+                                                )
+                                              ]
+                                            : instruments.map((instrument) {
+                                                final instrumentId =
+                                                    instrument['id'] ?? 0;
+                                                final instrumentName =
+                                                    instrument['name'] ??
+                                                        'Instrumento desconocido';
+                                                final instrumentImage =
+                                                    instrument[
+                                                            'local_image_path'] ??
+                                                        instrument['image'] ??
+                                                        '';
 
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
+                                                return Padding(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
                                                       horizontal: 4.0),
-                                              child: GestureDetector(
-                                                onTap: () {
-                                                  if (instrumentId != 0) {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (context) =>
-                                                            InstrumentDetailPage(
-                                                          instrumentId:
-                                                              instrumentId,
+                                                  child: GestureDetector(
+                                                    onTap: () {
+                                                      if (instrumentId != 0) {
+                                                        Navigator.push(
+                                                          context,
+                                                          MaterialPageRoute(
+                                                            builder: (context) =>
+                                                                InstrumentDetailPage(
+                                                              instrumentId:
+                                                                  instrumentId,
+                                                            ),
+                                                          ),
+                                                        );
+                                                      } else {
+                                                        ScaffoldMessenger.of(
+                                                                context)
+                                                            .showSnackBar(
+                                                          const SnackBar(
+                                                            content: Text(
+                                                                "ID de instrumento no válido"),
+                                                          ),
+                                                        );
+                                                      }
+                                                    },
+                                                    child: Chip(
+                                                      avatar:
+                                                          instrumentImage
+                                                                  .isNotEmpty
+                                                              ? CircleAvatar(
+                                                                  backgroundImage: File(
+                                                                              instrumentImage)
+                                                                          .existsSync()
+                                                                      ? FileImage(
+                                                                          File(
+                                                                              instrumentImage))
+                                                                      : CachedNetworkImageProvider(
+                                                                          instrument['image'] ??
+                                                                              '',
+                                                                          cacheManager:
+                                                                              CustomCacheManager.instance,
+                                                                        ),
+                                                                  radius: 10,
+                                                                  backgroundColor:
+                                                                      Colors
+                                                                          .white,
+                                                                )
+                                                              : null,
+                                                      label: Text(
+                                                        instrumentName,
+                                                        style: const TextStyle(
+                                                          fontSize: 10,
+                                                          color: Colors.white,
                                                         ),
                                                       ),
-                                                    );
-                                                  } else {
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      const SnackBar(
-                                                        content: Text(
-                                                            "ID de instrumento no válido"),
+                                                      backgroundColor:
+                                                          Colors.blue.shade300,
+                                                      labelPadding:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                              horizontal: 6.0),
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(20.0),
                                                       ),
-                                                    );
-                                                  }
-                                                },
-                                                child: Chip(
-                                                  avatar:
-                                                      instrumentImage.isNotEmpty
-                                                          ? CircleAvatar(
-                                                              backgroundImage: File(
-                                                                          instrumentImage)
-                                                                      .existsSync()
-                                                                  ? FileImage(File(
-                                                                      instrumentImage))
-                                                                  : CachedNetworkImageProvider(
-                                                                      instrument[
-                                                                              'image'] ??
-                                                                          '',
-                                                                      cacheManager:
-                                                                          CustomCacheManager
-                                                                              .instance,
-                                                                    ),
-                                                              radius: 10,
-                                                              backgroundColor:
-                                                                  Colors.white,
-                                                            )
-                                                          : null,
-                                                  label: Text(
-                                                    instrumentName,
-                                                    style: const TextStyle(
-                                                      fontSize: 10,
-                                                      color: Colors.white,
                                                     ),
                                                   ),
-                                                  backgroundColor:
-                                                      Colors.blue.shade300,
-                                                  labelPadding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 6.0),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            20.0),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
+                                                );
+                                              }).toList(),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
