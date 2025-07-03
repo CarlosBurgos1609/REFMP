@@ -1,8 +1,9 @@
 import 'dart:math';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/details/instrumentsDetails.dart';
+import 'package:refmp/edit/edit_headquarters.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -49,7 +50,11 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   void initState() {
     super.initState();
     _initializeHive();
-    _refreshData();
+    sedeFuture = _fetchSedeData();
+    instrumentsFuture = _fetchInstruments();
+    directorFuture = _fetchDirectorData();
+    teachersFuture = _fetchTeachers();
+
     Connectivity().onConnectivityChanged.listen((result) async {
       if (result != ConnectivityResult.none) {
         setState(() {
@@ -59,28 +64,57 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
     });
   }
 
-  void _refreshData() {
-    sedeFuture = _fetchSedeData();
-    instrumentsFuture = _fetchInstruments();
-    directorFuture = _fetchDirectorData();
-    teachersFuture = _fetchTeachers();
+  void _refreshData() async {
+    final box = Hive.box('offline_data');
+    final cacheKeys = [
+      'sedes_data_${widget.id}',
+      'sede_instruments_${widget.id}',
+      'director_data_${widget.id}',
+      'teachers_headquarters_${widget.id}',
+      'sedes_data_${widget.id}_timestamp',
+      'sede_instruments_${widget.id}_timestamp',
+      'director_data_${widget.id}_timestamp',
+      'teachers_headquarters_${widget.id}_timestamp',
+    ];
+
+    // Limpiar solo las claves de caché de esta sede
+    for (var key in cacheKeys) {
+      await box.delete(key);
+      debugPrint('Cleared cache for key: $key');
+    }
+
+    setState(() {
+      sedeFuture = _fetchSedeData();
+      instrumentsFuture = _fetchInstruments();
+      directorFuture = _fetchDirectorData();
+      teachersFuture = _fetchTeachers();
+    });
   }
 
   Future<void> _initializeHive() async {
     if (!Hive.isBoxOpen('offline_data')) {
       await Hive.openBox('offline_data');
       debugPrint('Hive box offline_data opened successfully');
+      debugPrint('Current Hive cache: ${Hive.box('offline_data').toMap()}');
     }
   }
 
   Future<bool> _checkConnectivity() async {
     final connectivityResult = await Connectivity().checkConnectivity();
     debugPrint('Conectividad: $connectivityResult');
+
     if (connectivityResult == ConnectivityResult.none) {
       return false;
     }
+
     try {
-      final result = await InternetAddress.lookup('google.com');
+      final result = await InternetAddress.lookup('google.com').timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('Timeout al verificar conexión a internet');
+          return [];
+        },
+      );
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
       debugPrint('Error en verificación de internet: $e');
@@ -119,6 +153,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   Future<Map<String, dynamic>> _fetchSedeData() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'sedes_data_${widget.id}';
+    final cacheTimestampKey = '${cacheKey}_timestamp';
     final isOnline = await _checkConnectivity();
 
     if (isOnline) {
@@ -128,7 +163,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             .select(
                 'id, name, type_headquarters, description, contact_number, address, ubication, photo')
             .eq('id', widget.id)
-            .order('name', ascending: true)
             .maybeSingle();
         if (response != null) {
           final data = Map<String, dynamic>.from(response);
@@ -140,9 +174,11 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
               data['local_photo_path'] = localPath;
             } catch (e) {
               debugPrint('Error caching sede photo: $e');
+              data['local_photo_path'] = null;
             }
           }
           await box.put(cacheKey, data);
+          await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
           debugPrint('Sede data saved to Hive with key: $cacheKey');
           return data;
         }
@@ -151,7 +187,13 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       }
     }
 
-    final cachedData = box.get(cacheKey, defaultValue: {
+    final cachedData = box.get(cacheKey);
+    if (cachedData != null) {
+      debugPrint('Loaded sede data from cache: $cachedData');
+      return Map<String, dynamic>.from(cachedData);
+    }
+
+    return {
       'id': widget.id,
       'name': widget.name,
       'type_headquarters': 'No disponible',
@@ -160,32 +202,52 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       'address': 'Dirección no disponible',
       'ubication': '',
       'photo': ''
-    });
-    debugPrint('Loaded sede data from cache: $cachedData');
-    return Map<String, dynamic>.from(cachedData);
+    };
   }
 
   Future<List<Map<String, dynamic>>> _fetchInstruments() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'sede_instruments_${widget.id}';
+    final cacheTimestampKey = '${cacheKey}_timestamp';
     final isOnline = await _checkConnectivity();
 
     if (isOnline) {
       try {
         final response =
             await Supabase.instance.client.from('sede_instruments').select('''
-              instruments (
-                id,
-                name,
-                image
-              )
-            ''').eq('sede_id', widget.id).order('name', ascending: true);
+            instrument_id,
+            instruments!inner (
+              id,
+              name,
+              image
+            )
+          ''').eq('sede_id', widget.id);
+
+        debugPrint(
+            'Raw response from Supabase for instruments (sede_id: ${widget.id}): $response');
+
+        // ignore: unnecessary_null_comparison
+        if (response == null || response.isEmpty) {
+          debugPrint('No instruments found for sede_id: ${widget.id}');
+          await box.put(cacheKey, []);
+          await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
+          return [];
+        }
+
         final data = List<Map<String, dynamic>>.from(response).map((item) {
-          final image = item['instruments']['image'] ?? '';
+          final instrumentData = item['instruments'];
+          if (instrumentData == null) {
+            debugPrint('Null instrument data in item: $item');
+            return {
+              'id': 0,
+              'name': 'Instrumento desconocido',
+              'image': '',
+            };
+          }
           return {
-            'id': item['instruments']['id'] ?? 0,
-            'name': item['instruments']['name'] ?? 'Instrumento desconocido',
-            'image': image,
+            'id': instrumentData['id'] ?? 0,
+            'name': instrumentData['name'] ?? 'Instrumento desconocido',
+            'image': instrumentData['image'] ?? '',
           };
         }).toList();
 
@@ -196,36 +258,57 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
               final localPath = await _downloadAndCacheImage(
                   image, 'instrument_image_${instrument['id']}');
               instrument['local_image_path'] = localPath;
+              debugPrint(
+                  'Cached image for instrument ${instrument['id']}: $localPath');
             } catch (e) {
-              debugPrint('Error caching instrument image: $e');
+              debugPrint(
+                  'Error caching instrument image for ID ${instrument['id']}: $e');
+              instrument['local_image_path'] = null;
             }
           }
         }
+
         await box.put(cacheKey, data);
-        debugPrint('Instruments saved to Hive with key: $cacheKey');
+        await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
+        debugPrint(
+            'Instruments saved to Hive with key: $cacheKey - Data: $data');
         return data;
-      } catch (e) {
+      } catch (e, stackTrace) {
         debugPrint('Error fetching instruments from Supabase: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
     }
 
     final cachedData = box.get(cacheKey, defaultValue: []);
-    debugPrint('Loaded instruments from cache: $cachedData');
-    return List<Map<String, dynamic>>.from(
-        cachedData.map((item) => Map<String, dynamic>.from(item)));
+    if (cachedData.isNotEmpty) {
+      debugPrint('Loaded instruments from cache: $cachedData');
+      return List<Map<String, dynamic>>.from(
+          cachedData.map((item) => Map<String, dynamic>.from(item)));
+    }
+
+    debugPrint('No valid cache or online data available for instruments');
+    return [];
   }
 
   Future<Map<String, dynamic>?> _fetchDirectorData() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'director_data_${widget.id}';
+    final cacheTimestampKey = '${cacheKey}_timestamp';
     final isOnline = await _checkConnectivity();
 
-    if (isOnline) {
+    // Verificar si los datos en caché son válidos
+    final cachedData = box.get(cacheKey);
+    final cacheTimestamp = box.get(cacheTimestampKey);
+    final isCacheValid = cacheTimestamp != null &&
+        DateTime.now().difference(DateTime.parse(cacheTimestamp)).inHours < 1;
+
+    if (isOnline && (!isCacheValid || cachedData == null)) {
       try {
         final response = await Supabase.instance.client
             .from('director_headquarters')
             .select('''
-            directors (
+            director_id,
+            directors!inner (
               id,
               name,
               descripcion,
@@ -233,12 +316,14 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             )
           ''')
             .eq('sede_id', widget.id)
-            .order('name', ascending: true)
             .maybeSingle();
+
+        debugPrint('Raw response from Supabase for director: $response');
 
         if (response == null || response['directors'] == null) {
           debugPrint('No director found for sede_id: ${widget.id}');
           await box.put(cacheKey, null);
+          await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
           return null;
         }
 
@@ -254,6 +339,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             directorData['local_image_path'] = localPath;
           } catch (e) {
             debugPrint('Error caching director image: $e');
+            directorData['local_image_path'] = null;
           }
         }
 
@@ -268,7 +354,6 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             )
           ''')
             .eq('director_id', directorId)
-            .order('name', ascending: true)
             .maybeSingle();
 
         if (instrumentResponse != null &&
@@ -283,6 +368,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
               instrumentData['local_image_path'] = localPath;
             } catch (e) {
               debugPrint('Error caching director instrument image: $e');
+              instrumentData['local_image_path'] = null;
             }
           }
           directorData['instrument'] = instrumentData;
@@ -292,14 +378,15 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         }
 
         await box.put(cacheKey, directorData);
+        await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
         debugPrint('Director data saved to Hive with key: $cacheKey');
         return directorData;
-      } catch (e) {
+      } catch (e, stackTrace) {
         debugPrint('Error fetching director data from Supabase: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
     }
 
-    final cachedData = box.get(cacheKey);
     debugPrint('Loaded director data from cache: $cachedData');
     return cachedData != null ? Map<String, dynamic>.from(cachedData) : null;
   }
@@ -307,9 +394,16 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
   Future<List<Map<String, dynamic>>> _fetchTeachers() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'teachers_headquarters_${widget.id}';
+    final cacheTimestampKey = '${cacheKey}_timestamp';
     final isOnline = await _checkConnectivity();
 
-    if (isOnline) {
+    // Verificar si los datos en caché son válidos (menos de 1 hora)
+    final cachedData = box.get(cacheKey, defaultValue: []);
+    final cacheTimestamp = box.get(cacheTimestampKey);
+    final isCacheValid = cacheTimestamp != null &&
+        DateTime.now().difference(DateTime.parse(cacheTimestamp)).inHours < 1;
+
+    if (isOnline && (!isCacheValid || cachedData.isEmpty)) {
       try {
         final response = await Supabase.instance.client
             .from('teacher_headquarters')
@@ -322,8 +416,8 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         // ignore: unnecessary_null_comparison
         if (response == null || response.isEmpty) {
           debugPrint('No teachers found for sede_id: ${widget.id}');
-          await box.put(
-              cacheKey, []); // Guardar lista vacía en caché si no hay datos
+          await box.put(cacheKey, []);
+          await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
           return [];
         }
 
@@ -348,7 +442,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             'email': teacher['email'] ?? 'Correo no disponible',
             'image_presentation': teacher['image_presentation'] ?? '',
             'description': teacher['description'] ?? 'Sin descripción',
-            'instruments': [], // Inicializar instruments para evitar null
+            'instruments': [],
           };
         }).toList();
 
@@ -408,6 +502,7 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
         }
 
         await box.put(cacheKey, data);
+        await box.put(cacheTimestampKey, DateTime.now().toIso8601String());
         debugPrint('Teachers saved to Hive with key: $cacheKey - Data: $data');
         return data;
       } catch (e) {
@@ -416,11 +511,23 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       }
     }
 
-    final cachedData = box.get(cacheKey, defaultValue: []);
     debugPrint(
         'Loaded teachers from cache for sede_id ${widget.id}: $cachedData');
     return List<Map<String, dynamic>>.from(
         cachedData.map((item) => Map<String, dynamic>.from(item)));
+  }
+
+  Future<bool> _canAddEvent() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final user = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (user != null) return true;
+    return false;
   }
 
   void _openMap(String? ubication) async {
@@ -695,23 +802,27 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
       body: RefreshIndicator(
         color: Colors.blue,
         onRefresh: () async {
-          setState(() {
-            _refreshData();
-          });
-          await Future.wait(
-              [sedeFuture, instrumentsFuture, directorFuture, teachersFuture]);
+          _refreshData();
+          await Future.wait([
+            sedeFuture,
+            instrumentsFuture,
+            directorFuture,
+            teachersFuture,
+          ]);
         },
         child: FutureBuilder(
-          future: Future.wait(
-              [sedeFuture, instrumentsFuture, directorFuture, teachersFuture]),
+          future: Future.wait([
+            sedeFuture,
+            instrumentsFuture,
+            directorFuture,
+            teachersFuture,
+          ]),
           builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
                 child: CircularProgressIndicator(color: Colors.blue),
               );
             }
-
-            debugPrint('Snapshot data: $snapshot.data');
 
             final sedeData = snapshot.data != null && snapshot.data!.isNotEmpty
                 ? snapshot.data![0] as Map<String, dynamic>
@@ -749,413 +860,153 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
             final contactNumber = sedeData['contact_number'] ?? 'No disponible';
             final ubication = sedeData['ubication'] ?? '';
 
-            return CustomScrollView(
-              slivers: [
-                SliverAppBar(
-                  expandedHeight: 250.0,
-                  floating: false,
-                  pinned: true,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_rounded,
-                        color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  backgroundColor: Colors.blue,
-                  flexibleSpace: FlexibleSpaceBar(
-                    title: Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+            return Stack(
+              children: [
+                CustomScrollView(
+                  slivers: [
+                    SliverAppBar(
+                      expandedHeight: 250.0,
+                      floating: false,
+                      pinned: true,
+                      leading: IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_rounded,
+                            color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
                       ),
-                      textAlign: TextAlign.center,
+                      backgroundColor: Colors.blue,
+                      flexibleSpace: FlexibleSpaceBar(
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        centerTitle: true,
+                        titlePadding: const EdgeInsets.only(bottom: 16.0),
+                        background: photo.isNotEmpty
+                            ? (File(photo).existsSync()
+                                ? Image.file(
+                                    File(photo),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error,
+                                            stackTrace) =>
+                                        Image.asset('assets/images/refmmp.png',
+                                            fit: BoxFit.cover),
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: sedeData['photo'] ?? '',
+                                    cacheManager: CustomCacheManager.instance,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Image.asset('assets/images/refmmp.png',
+                                            fit: BoxFit.cover),
+                                  ))
+                            : Image.asset('assets/images/refmmp.png',
+                                fit: BoxFit.cover),
+                      ),
                     ),
-                    centerTitle: true,
-                    titlePadding: const EdgeInsets.only(bottom: 16.0),
-                    background: photo.isNotEmpty
-                        ? (File(photo).existsSync()
-                            ? Image.file(
-                                File(photo),
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Image.asset('assets/images/refmmp.png',
-                                        fit: BoxFit.cover),
-                              )
-                            : CachedNetworkImage(
-                                imageUrl: sedeData['photo'] ?? '',
-                                cacheManager: CustomCacheManager.instance,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const Center(
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white),
-                                ),
-                                errorWidget: (context, url, error) =>
-                                    Image.asset('assets/images/refmmp.png',
-                                        fit: BoxFit.cover),
-                              ))
-                        : Image.asset('assets/images/refmmp.png',
-                            fit: BoxFit.cover),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('| Tipo de sede',
-                            style: TextStyle(
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '| Tipo de sede',
+                              style: TextStyle(
                                 color: Colors.blue,
                                 fontSize: 15,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        Text(typeHeadquarters, style: TextStyle(fontSize: 14)),
-                        const SizedBox(height: 20),
-                        const Text('| Instrumentos',
-                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(typeHeadquarters,
+                                style: TextStyle(fontSize: 14)),
+                            const SizedBox(height: 20),
+                            const Text(
+                              '| Instrumentos',
+                              style: TextStyle(
                                 color: Colors.blue,
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(50.0),
-                          child: Container(
-                            color: Colors.transparent,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: instruments.isEmpty
-                                    ? [
-                                        const Padding(
-                                          padding: EdgeInsets.symmetric(
-                                              horizontal: 8.0),
-                                          child: Text(
-                                              'No hay instrumentos disponibles'),
-                                        )
-                                      ]
-                                    : instruments.map((instrument) {
-                                        final instrumentName =
-                                            instrument['name'] ??
-                                                'Instrumento desconocido';
-                                        final instrumentImage =
-                                            instrument['local_image_path'] ??
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(50.0),
+                              child: Container(
+                                color: Colors.transparent,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: instruments.isEmpty
+                                        ? [
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  horizontal: 8.0),
+                                              child: Text(
+                                                  'No hay instrumentos disponibles'),
+                                            ),
+                                          ]
+                                        : instruments.map((instrument) {
+                                            final instrumentName =
+                                                instrument['name'] ??
+                                                    'Instrumento desconocido';
+                                            final instrumentImage = instrument[
+                                                    'local_image_path'] ??
                                                 instrument['image'] ??
                                                 '';
-                                        final instrumentId =
-                                            instrument['id'] as int? ?? 0;
+                                            final instrumentId =
+                                                instrument['id'] as int? ?? 0;
 
-                                        return Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 4.0),
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              if (instrumentId != 0) {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        InstrumentDetailPage(
-                                                      instrumentId:
-                                                          instrumentId,
-                                                    ),
-                                                  ),
-                                                );
-                                              } else {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                        "ID de instrumento no válido"),
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                            child: Chip(
-                                              avatar: instrumentImage.isNotEmpty
-                                                  ? CircleAvatar(
-                                                      backgroundImage: File(
-                                                                  instrumentImage)
-                                                              .existsSync()
-                                                          ? FileImage(File(
-                                                              instrumentImage))
-                                                          : CachedNetworkImageProvider(
-                                                              instrument[
-                                                                      'image'] ??
-                                                                  '',
-                                                              cacheManager:
-                                                                  CustomCacheManager
-                                                                      .instance,
-                                                            ),
-                                                      radius: 12,
-                                                      backgroundColor:
-                                                          Colors.white,
-                                                    )
-                                                  : null,
-                                              label: Text(
-                                                instrumentName,
-                                                style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.white),
-                                              ),
-                                              backgroundColor:
-                                                  Colors.blue.shade300,
-                                              labelPadding:
+                                            return Padding(
+                                              padding:
                                                   const EdgeInsets.symmetric(
-                                                      horizontal: 8.0),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(20.0),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        const Text('| Descripción',
-                            style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        GestureDetector(
-                          onTap: () => _showDescriptionDialog(description),
-                          child: Text(
-                            truncatedDescription,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text('| Número de contacto',
-                            style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        Row(
-                          children: [
-                            const Text("🇨🇴"),
-                            const Text(" +57 "),
-                            Text(formatPhoneNumber(contactNumber)),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.copy, size: 20),
-                              onPressed: () => _copyPhoneNumber(contactNumber),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        const Text('| Ubicación',
-                            style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 5),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => _openMap(ubication),
-                                child: Text(
-                                  sedeData['address'] ??
-                                      'Dirección no disponible',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Divider(
-                          height: 40,
-                          thickness: 2,
-                          color: themeProvider.isDarkMode
-                              ? const Color.fromARGB(255, 34, 34, 34)
-                              : const Color.fromARGB(255, 236, 234, 234),
-                        ),
-                        const Text('| Director',
-                            style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        directorData == null
-                            ? const Text(
-                                'No hay información de director disponible')
-                            : Card(
-                                margin: const EdgeInsets.all(10),
-                                elevation: 5,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        return ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                          child: directorData[
-                                                          'local_image_path'] !=
-                                                      null &&
-                                                  File(directorData[
-                                                          'local_image_path'])
-                                                      .existsSync()
-                                              ? Image.file(
-                                                  File(directorData[
-                                                      'local_image_path']),
-                                                  width: double.infinity,
-                                                  fit: BoxFit.fitWidth,
-                                                  errorBuilder: (context, error,
-                                                          stackTrace) =>
-                                                      Image.asset(
-                                                    'assets/images/refmmp.png',
-                                                    width: double.infinity,
-                                                    fit: BoxFit.fitWidth,
-                                                  ),
-                                                )
-                                              : CachedNetworkImage(
-                                                  imageUrl: directorData[
-                                                          'image_presentation'] ??
-                                                      '',
-                                                  cacheManager:
-                                                      CustomCacheManager
-                                                          .instance,
-                                                  width: double.infinity,
-                                                  fit: BoxFit.fitWidth,
-                                                  placeholder: (context, url) =>
-                                                      const Center(
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                            color: Colors.blue),
-                                                  ),
-                                                  errorWidget:
-                                                      (context, url, error) =>
-                                                          Image.asset(
-                                                    'assets/images/refmmp.png',
-                                                    width: double.infinity,
-                                                    fit: BoxFit.fitWidth,
-                                                  ),
-                                                ),
-                                        );
-                                      },
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(10),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Center(
-                                            child: Text(
-                                              directorData['name'] ??
-                                                  'Nombre no disponible',
-                                              style: TextStyle(
-                                                color: themeProvider.isDarkMode
-                                                    ? Color.fromARGB(
-                                                        255, 255, 255, 255)
-                                                    : Color.fromARGB(
-                                                        255, 33, 150, 243),
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 5),
-                                          GestureDetector(
-                                            onTap: () => _showDescriptionDialog(
-                                                directorData['description'] ??
-                                                    'Sin descripción'),
-                                            child: Text(
-                                              truncateText(
-                                                  directorData['description'] ??
-                                                      'Sin descripción',
-                                                  30),
-                                              style:
-                                                  const TextStyle(fontSize: 14),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 5),
-                                          Text(
-                                            'Instrumentos:',
-                                            style: TextStyle(
-                                              color: themeProvider.isDarkMode
-                                                  ? Color.fromARGB(
-                                                      255, 255, 255, 255)
-                                                  : Color.fromARGB(
-                                                      255, 33, 150, 243),
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 5),
-                                          Wrap(
-                                            spacing: 8.0,
-                                            runSpacing: 8.0,
-                                            children: directorData[
-                                                        'instrument'] !=
-                                                    null
-                                                ? [
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        final instrumentId =
-                                                            directorData[
-                                                                        'instrument']
-                                                                    ['id'] ??
-                                                                0;
-                                                        if (instrumentId != 0) {
-                                                          Navigator.push(
-                                                            context,
-                                                            MaterialPageRoute(
-                                                              builder: (context) =>
-                                                                  InstrumentDetailPage(
-                                                                instrumentId:
-                                                                    instrumentId,
-                                                              ),
-                                                            ),
-                                                          );
-                                                        } else {
-                                                          ScaffoldMessenger.of(
-                                                                  context)
-                                                              .showSnackBar(
-                                                            const SnackBar(
-                                                              content: Text(
-                                                                  "ID de instrumento no válido"),
-                                                            ),
-                                                          );
-                                                        }
-                                                      },
-                                                      child: Chip(
-                                                        avatar: (() {
-                                                          final localPath =
-                                                              directorData[
-                                                                      'instrument']
-                                                                  [
-                                                                  'local_image_path'];
-                                                          final networkImage =
-                                                              directorData[
-                                                                          'instrument']
-                                                                      [
-                                                                      'image'] ??
-                                                                  '';
-
-                                                          if (localPath !=
-                                                                  null &&
-                                                              localPath
-                                                                  .toString()
-                                                                  .isNotEmpty) {
-                                                            final file =
-                                                                File(localPath);
-                                                            return CircleAvatar(
-                                                              backgroundImage: file
+                                                      horizontal: 4.0),
+                                              child: GestureDetector(
+                                                onTap: () {
+                                                  if (instrumentId != 0) {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (context) =>
+                                                            InstrumentDetailPage(
+                                                          instrumentId:
+                                                              instrumentId,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                            "ID de instrumento no válido"),
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                child: Chip(
+                                                  avatar:
+                                                      instrumentImage.isNotEmpty
+                                                          ? CircleAvatar(
+                                                              backgroundImage: File(
+                                                                          instrumentImage)
                                                                       .existsSync()
-                                                                  ? FileImage(
-                                                                      file)
+                                                                  ? FileImage(File(
+                                                                      instrumentImage))
                                                                   : CachedNetworkImageProvider(
-                                                                      networkImage,
+                                                                      instrument[
+                                                                              'image'] ??
+                                                                          '',
                                                                       cacheManager:
                                                                           CustomCacheManager
                                                                               .instance,
@@ -1163,95 +1014,438 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                                               radius: 12,
                                                               backgroundColor:
                                                                   Colors.white,
-                                                            );
-                                                          } else if (networkImage
-                                                              .isNotEmpty) {
-                                                            return CircleAvatar(
-                                                              backgroundImage:
-                                                                  CachedNetworkImageProvider(
-                                                                networkImage,
-                                                                cacheManager:
-                                                                    CustomCacheManager
-                                                                        .instance,
-                                                              ),
-                                                              radius: 12,
-                                                              backgroundColor:
-                                                                  Colors.white,
-                                                            );
-                                                          } else {
-                                                            return null;
-                                                          }
-                                                        })(),
-                                                        label: Text(
-                                                          directorData[
-                                                                      'instrument']
-                                                                  ['name'] ??
-                                                              'Instrumento desconocido',
-                                                          style:
-                                                              const TextStyle(
-                                                                  fontSize: 12,
-                                                                  color: Colors
-                                                                      .white),
-                                                        ),
-                                                        backgroundColor: Colors
-                                                            .blue.shade300,
-                                                        labelPadding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal:
-                                                                    8.0),
-                                                        shape:
-                                                            RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                      20.0),
-                                                        ),
-                                                      ),
-                                                    )
-                                                  ]
-                                                : [
-                                                    const Text(
-                                                        'No hay instrumento asignado')
-                                                  ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                                            )
+                                                          : null,
+                                                  label: Text(
+                                                    instrumentName,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  backgroundColor:
+                                                      Colors.blue.shade300,
+                                                  labelPadding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 8.0),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            20.0),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                  ),
                                 ),
                               ),
-                        const SizedBox(height: 10),
-                        Divider(
-                          height: 40,
-                          thickness: 2,
-                          color: themeProvider.isDarkMode
-                              ? const Color.fromARGB(255, 34, 34, 34)
-                              : const Color.fromARGB(255, 236, 234, 234),
-                        ),
-                        const SizedBox(height: 3),
-                        const Text('| Profesores',
-                            style: TextStyle(
+                            ),
+                            const SizedBox(height: 15),
+                            const Text(
+                              '| Descripción',
+                              style: TextStyle(
                                 color: Colors.blue,
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        teachers.isEmpty
-                            ? const Text('No hay profesores asociados')
-                            : TeacherCarousel(
-                                teachers: teachers.cast<Map<String, dynamic>>(),
-                                themeProvider: themeProvider,
-                                showDescriptionDialog:
-                                    _showDescriptionDialogTeachers,
+                                fontWeight: FontWeight.bold,
                               ),
-                      ],
+                            ),
+                            const SizedBox(height: 5),
+                            GestureDetector(
+                              onTap: () => _showDescriptionDialog(description),
+                              child: Text(
+                                truncatedDescription,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              '| Número de contacto',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                const Text("🇨🇴"),
+                                const Text(" +57 "),
+                                Text(formatPhoneNumber(contactNumber)),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.copy, size: 20),
+                                  onPressed: () =>
+                                      _copyPhoneNumber(contactNumber),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 15),
+                            const Text(
+                              '| Ubicación',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                const Icon(Icons.location_on),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _openMap(ubication),
+                                    child: Text(
+                                      sedeData['address'] ??
+                                          'Dirección no disponible',
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Divider(
+                              height: 40,
+                              thickness: 2,
+                              color: themeProvider.isDarkMode
+                                  ? const Color.fromARGB(255, 34, 34, 34)
+                                  : const Color.fromARGB(255, 236, 234, 234),
+                            ),
+                            const Text(
+                              '| Director',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            directorData == null
+                                ? const Text(
+                                    'No hay información de director disponible')
+                                : Card(
+                                    margin: const EdgeInsets.all(10),
+                                    elevation: 5,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            return ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              child: directorData[
+                                                              'local_image_path'] !=
+                                                          null &&
+                                                      File(directorData[
+                                                              'local_image_path'])
+                                                          .existsSync()
+                                                  ? Image.file(
+                                                      File(directorData[
+                                                          'local_image_path']),
+                                                      width: double.infinity,
+                                                      fit: BoxFit.fitWidth,
+                                                      errorBuilder: (context,
+                                                              error,
+                                                              stackTrace) =>
+                                                          Image.asset(
+                                                        'assets/images/refmmp.png',
+                                                        width: double.infinity,
+                                                        fit: BoxFit.fitWidth,
+                                                      ),
+                                                    )
+                                                  : CachedNetworkImage(
+                                                      imageUrl: directorData[
+                                                              'image_presentation'] ??
+                                                          '',
+                                                      cacheManager:
+                                                          CustomCacheManager
+                                                              .instance,
+                                                      width: double.infinity,
+                                                      fit: BoxFit.fitWidth,
+                                                      placeholder:
+                                                          (context, url) =>
+                                                              const Center(
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                                color: Colors
+                                                                    .blue),
+                                                      ),
+                                                      errorWidget: (context,
+                                                              url, error) =>
+                                                          Image.asset(
+                                                        'assets/images/refmmp.png',
+                                                        width: double.infinity,
+                                                        fit: BoxFit.fitWidth,
+                                                      ),
+                                                    ),
+                                            );
+                                          },
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(10),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Center(
+                                                child: Text(
+                                                  directorData['name'] ??
+                                                      'Nombre no disponible',
+                                                  style: TextStyle(
+                                                    color: themeProvider
+                                                            .isDarkMode
+                                                        ? Color.fromARGB(
+                                                            255, 255, 255, 255)
+                                                        : Color.fromARGB(
+                                                            255, 33, 150, 243),
+                                                    fontSize: 20,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 5),
+                                              GestureDetector(
+                                                onTap: () =>
+                                                    _showDescriptionDialog(
+                                                        directorData[
+                                                                'description'] ??
+                                                            'Sin descripción'),
+                                                child: Text(
+                                                  truncateText(
+                                                      directorData[
+                                                              'description'] ??
+                                                          'Sin descripción',
+                                                      30),
+                                                  style: const TextStyle(
+                                                      fontSize: 14),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 5),
+                                              Text(
+                                                'Instrumentos:',
+                                                style: TextStyle(
+                                                  color: themeProvider
+                                                          .isDarkMode
+                                                      ? Color.fromARGB(
+                                                          255, 255, 255, 255)
+                                                      : Color.fromARGB(
+                                                          255, 33, 150, 243),
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 5),
+                                              Wrap(
+                                                spacing: 8.0,
+                                                runSpacing: 8.0,
+                                                children:
+                                                    directorData[
+                                                                'instrument'] !=
+                                                            null
+                                                        ? [
+                                                            GestureDetector(
+                                                              onTap: () {
+                                                                final instrumentId =
+                                                                    directorData['instrument']
+                                                                            [
+                                                                            'id'] ??
+                                                                        0;
+                                                                if (instrumentId !=
+                                                                    0) {
+                                                                  Navigator
+                                                                      .push(
+                                                                    context,
+                                                                    MaterialPageRoute(
+                                                                      builder:
+                                                                          (context) =>
+                                                                              InstrumentDetailPage(
+                                                                        instrumentId:
+                                                                            instrumentId,
+                                                                      ),
+                                                                    ),
+                                                                  );
+                                                                } else {
+                                                                  ScaffoldMessenger.of(
+                                                                          context)
+                                                                      .showSnackBar(
+                                                                    const SnackBar(
+                                                                      content: Text(
+                                                                          "ID de instrumento no válido"),
+                                                                    ),
+                                                                  );
+                                                                }
+                                                              },
+                                                              child: Chip(
+                                                                avatar: (() {
+                                                                  final localPath =
+                                                                      directorData[
+                                                                              'instrument']
+                                                                          [
+                                                                          'local_image_path'];
+                                                                  final networkImage =
+                                                                      directorData['instrument']
+                                                                              [
+                                                                              'image'] ??
+                                                                          '';
+
+                                                                  if (localPath !=
+                                                                          null &&
+                                                                      localPath
+                                                                          .toString()
+                                                                          .isNotEmpty) {
+                                                                    final file =
+                                                                        File(
+                                                                            localPath);
+                                                                    return CircleAvatar(
+                                                                      backgroundImage: file
+                                                                              .existsSync()
+                                                                          ? FileImage(
+                                                                              file)
+                                                                          : CachedNetworkImageProvider(
+                                                                              networkImage,
+                                                                              cacheManager: CustomCacheManager.instance,
+                                                                            ),
+                                                                      radius:
+                                                                          12,
+                                                                      backgroundColor:
+                                                                          Colors
+                                                                              .white,
+                                                                    );
+                                                                  } else if (networkImage
+                                                                      .isNotEmpty) {
+                                                                    return CircleAvatar(
+                                                                      backgroundImage:
+                                                                          CachedNetworkImageProvider(
+                                                                        networkImage,
+                                                                        cacheManager:
+                                                                            CustomCacheManager.instance,
+                                                                      ),
+                                                                      radius:
+                                                                          12,
+                                                                      backgroundColor:
+                                                                          Colors
+                                                                              .white,
+                                                                    );
+                                                                  } else {
+                                                                    return null;
+                                                                  }
+                                                                })(),
+                                                                label: Text(
+                                                                  directorData[
+                                                                              'instrument']
+                                                                          [
+                                                                          'name'] ??
+                                                                      'Instrumento desconocido',
+                                                                  style: const TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Colors
+                                                                          .white),
+                                                                ),
+                                                                backgroundColor:
+                                                                    Colors.blue
+                                                                        .shade300,
+                                                                labelPadding:
+                                                                    const EdgeInsets
+                                                                        .symmetric(
+                                                                        horizontal:
+                                                                            8.0),
+                                                                shape:
+                                                                    RoundedRectangleBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              20.0),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ]
+                                                        : [
+                                                            const Text(
+                                                                'No hay instrumento asignado'),
+                                                          ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                            const SizedBox(height: 10),
+                            Divider(
+                              height: 40,
+                              thickness: 2,
+                              color: themeProvider.isDarkMode
+                                  ? const Color.fromARGB(255, 34, 34, 34)
+                                  : const Color.fromARGB(255, 236, 234, 234),
+                            ),
+                            const Text(
+                              '| Profesores',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            teachers.isEmpty
+                                ? const Text('No hay profesores asociados')
+                                : TeacherCarousel(
+                                    teachers:
+                                        teachers.cast<Map<String, dynamic>>(),
+                                    themeProvider: themeProvider,
+                                    showDescriptionDialog:
+                                        _showDescriptionDialogTeachers,
+                                  ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             );
           },
         ),
+      ),
+      floatingActionButton: FutureBuilder<bool>(
+        future: _canAddEvent(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox();
+          }
+          if (snapshot.hasData && snapshot.data == true) {
+            return FloatingActionButton(
+              backgroundColor: Colors.blue,
+              onPressed: () async {
+                // Navegar a EditHeadquarters y esperar el resultado
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditHeadquarters(
+                      id: widget.id,
+                      name: widget.name,
+                      initialSedeData: {}, // Asegúrate de que esto sea válido según el constructor
+                    ),
+                  ),
+                );
+
+                // Si el resultado es true, refresca los datos
+                if (result == true) {
+                  _refreshData();
+                }
+              },
+              child: const Icon(Icons.edit_rounded, color: Colors.white),
+            );
+          } else {
+            return const SizedBox();
+          }
+        },
       ),
     );
   }
