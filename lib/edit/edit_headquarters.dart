@@ -11,7 +11,7 @@ class EditHeadquarters extends StatefulWidget {
     super.key,
     required this.id,
     required this.name,
-    Map<String, dynamic>? initialSedeData, // Hacerlo opcional
+    Map<String, dynamic>? initialSedeData,
   });
 
   @override
@@ -62,7 +62,6 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
           _photoController.text = _sedeData!['photo'] ?? '';
         });
 
-        // Fetch associated instruments
         final instrumentResponse = await Supabase.instance.client
             .from('sede_instruments')
             .select('instruments(id)')
@@ -117,7 +116,6 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
     });
 
     try {
-      // Update sede details
       await Supabase.instance.client.from('sedes').update({
         'name': _nameController.text.trim(),
         'type_headquarters': _typeHeadquartersController.text.trim(),
@@ -128,7 +126,6 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
         'photo': _photoController.text.trim(),
       }).eq('id', widget.id);
 
-      // Update instruments only if changed
       if (_instrumentsChanged) {
         await Supabase.instance.client
             .from('sede_instruments')
@@ -147,7 +144,6 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
         }
       }
 
-      // Devolver true para indicar que la actualización fue exitosa
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sede actualizada con éxito')),
@@ -162,6 +158,32 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
         _isLoading = false;
       });
     }
+  }
+
+  void _cancelEdit() {
+    Navigator.pop(context);
+  }
+
+  InputDecoration customInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(
+        color: Colors.blue,
+        fontWeight: FontWeight.bold,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.blue),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.blue, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: Colors.blue,
+      ),
+    );
   }
 
   @override
@@ -182,59 +204,94 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: _cancelEdit,
+        ),
         title: const Text(
           'Editar Sede',
           style: TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.blue))
-          : SingleChildScrollView(
+          : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Form(
                 key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: ListView(
                   children: [
+                    const SizedBox(height: 10),
+                    _photoController.text.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              children: [
+                                Image.network(
+                                  _photoController.text,
+                                  height: 200,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                    height: 200,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[300],
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'Error al cargar la imagen',
+                                        style: TextStyle(color: Colors.blue),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    color: Colors.black54,
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 4),
+                                    child: const Text(
+                                      'La imagen no se puede editar',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Container(
+                            height: 200,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'No hay imagen disponible',
+                                style: TextStyle(color: Colors.blue),
+                              ),
+                            ),
+                          ),
+                    const SizedBox(height: 20),
                     TextFormField(
                       controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Nombre',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.business,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration:
+                          customInputDecoration('Nombre', Icons.business),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       validator: (value) =>
                           value!.trim().isEmpty ? 'Ingrese el nombre' : null,
@@ -242,38 +299,12 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _typeHeadquartersController,
-                      decoration: InputDecoration(
-                        labelText: 'Tipo de Sede',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.category,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration:
+                          customInputDecoration('Tipo de Sede', Icons.category),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       validator: (value) => value!.trim().isEmpty
                           ? 'Ingrese el tipo de sede'
@@ -282,76 +313,24 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _descriptionController,
-                      decoration: InputDecoration(
-                        labelText: 'Descripción',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.description,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration(
+                          'Descripción', Icons.description),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
-                      maxLines: 3,
+                      maxLines: 5,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _contactNumberController,
-                      decoration: InputDecoration(
-                        labelText: 'Número de Contacto',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.phone,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration(
+                          'Número de Contacto', Icons.phone),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       keyboardType: TextInputType.phone,
                       validator: (value) {
@@ -366,38 +345,12 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _addressController,
-                      decoration: InputDecoration(
-                        labelText: 'Dirección',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.location_on,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration:
+                          customInputDecoration('Dirección', Icons.location_on),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       validator: (value) =>
                           value!.trim().isEmpty ? 'Ingrese la dirección' : null,
@@ -405,38 +358,12 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _ubicationController,
-                      decoration: InputDecoration(
-                        labelText: 'Ubicación (URL del mapa)',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.map,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration(
+                          'Ubicación (URL del mapa)', Icons.map),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       keyboardType: TextInputType.url,
                       validator: (value) {
@@ -449,50 +376,10 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _photoController,
-                      decoration: InputDecoration(
-                        labelText: 'URL de la Foto',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.image,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
-                      style: TextStyle(
-                        color: themeProvider.isDarkMode
-                            ? Colors.white
-                            : Colors.blue,
-                      ),
-                      keyboardType: TextInputType.url,
-                    ),
-                    const SizedBox(height: 16),
                     Text(
                       'Instrumentos',
                       style: TextStyle(
-                        color: themeProvider.isDarkMode
-                            ? Colors.white
-                            : Colors.blue,
+                        color: Colors.blue,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -509,6 +396,7 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                           )
                         : Wrap(
                             spacing: 8,
+                            runSpacing: 8,
                             children: _instruments.map((instrument) {
                               final isSelected = _selectedInstrumentIds
                                   .contains(instrument['id']);
@@ -516,13 +404,29 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                                 label: Text(
                                   instrument['name'],
                                   style: TextStyle(
-                                    color:
-                                        isSelected ? Colors.white : Colors.blue,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : themeProvider.isDarkMode
+                                            ? Colors.white
+                                            : Colors.blue,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                   ),
                                 ),
                                 selected: isSelected,
                                 selectedColor: Colors.blue,
-                                backgroundColor: Colors.blue.withOpacity(0.1),
+                                backgroundColor: themeProvider.isDarkMode
+                                    ? Colors.grey[800]
+                                    : Colors.grey[200],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.blue.withOpacity(0.5)
+                                        : Colors.blue,
+                                  ),
+                                ),
                                 checkmarkColor: Colors.white,
                                 onSelected: (selected) {
                                   setState(() {
@@ -539,27 +443,51 @@ class _EditHeadquartersState extends State<EditHeadquarters> {
                               );
                             }).toList(),
                           ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _updateHeadquarters,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.save, color: Colors.white),
+                            label: const Text(
+                              'Guardar Cambios',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: _isLoading ? null : _updateHeadquarters,
                           ),
                         ),
-                        child: const Text(
-                          'Actualizar',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.cancel, color: Colors.red),
+                            label: const Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            onPressed: _cancelEdit,
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
