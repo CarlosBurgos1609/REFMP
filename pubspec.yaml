@@ -106,11 +106,21 @@ flutter:
   #   - images/a_dot_ham.jpeg
 
 flutter_native_splash:
-  color: "#E3F2FD" # Cambia esto por el color de fondo que desees, por ejemplo: "#E3F2FD"
-  image: assets/images/logo1.png
+  color: "#FFFFFF"
+  color_dark: "#000000"
+  image: assets/images/logo.png
   android: true
   ios: true
   fullscreen: true
+  image_dark: assets/images/logodark.png # Opcional si quieres lo mismo en modo oscuro
+  background_image: null
+  branding: null
+  branding_mode: center
+  android_gravity: center
+  ios_content_mode: center
+  android_screen_orientation: portrait
+
+
 
 flutter_launcher_icons:
   android: true
