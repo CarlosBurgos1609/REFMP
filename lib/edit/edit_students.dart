@@ -190,6 +190,32 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
     }
   }
 
+  void _cancelEdit() {
+    Navigator.pop(context);
+  }
+
+  InputDecoration customInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(
+        color: Colors.blue,
+        fontWeight: FontWeight.bold,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.blue),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.blue, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: Colors.blue,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _firstNameController.dispose();
@@ -205,59 +231,31 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          onPressed: _cancelEdit,
+        ),
         title: const Text(
           'Editar Estudiante',
           style: TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.blue))
-          : SingleChildScrollView(
+          : Padding(
               padding: const EdgeInsets.all(16.0),
               child: Form(
                 key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: ListView(
                   children: [
                     TextFormField(
                       controller: _firstNameController,
-                      decoration: InputDecoration(
-                        labelText: 'Nombre',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.person,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration('Nombre', Icons.person),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       validator: (value) =>
                           value!.trim().isEmpty ? 'Ingrese el nombre' : null,
@@ -265,38 +263,12 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _lastNameController,
-                      decoration: InputDecoration(
-                        labelText: 'Apellido',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.person,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration:
+                          customInputDecoration('Apellido', Icons.person),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       validator: (value) =>
                           value!.trim().isEmpty ? 'Ingrese el apellido' : null,
@@ -304,38 +276,12 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Correo Electrónico',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.email,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration(
+                          'Correo Electrónico', Icons.email),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
@@ -349,38 +295,12 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _idNumberController,
-                      decoration: InputDecoration(
-                        labelText: 'Número de Identificación',
-                        labelStyle: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.badge,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeProvider.isDarkMode
-                                ? Colors.white
-                                : Colors.blue,
-                          ),
-                        ),
-                      ),
+                      decoration: customInputDecoration(
+                          'Número de Identificación', Icons.badge),
                       style: TextStyle(
                         color: themeProvider.isDarkMode
                             ? Colors.white
-                            : Colors.blue,
+                            : Colors.black,
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) => value!.trim().isEmpty
@@ -391,9 +311,7 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                     Text(
                       'Instrumentos',
                       style: TextStyle(
-                        color: themeProvider.isDarkMode
-                            ? Colors.white
-                            : Colors.blue,
+                        color: Colors.blue,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -410,6 +328,7 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                           )
                         : Wrap(
                             spacing: 8,
+                            runSpacing: 8,
                             children: _instruments.map((instrument) {
                               final isSelected = _selectedInstrumentIds
                                   .contains(instrument['id']);
@@ -417,13 +336,29 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                                 label: Text(
                                   instrument['name'],
                                   style: TextStyle(
-                                    color:
-                                        isSelected ? Colors.white : Colors.blue,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : themeProvider.isDarkMode
+                                            ? Colors.white
+                                            : Colors.blue,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                   ),
                                 ),
                                 selected: isSelected,
                                 selectedColor: Colors.blue,
-                                backgroundColor: Colors.blue.withOpacity(0.1),
+                                backgroundColor: themeProvider.isDarkMode
+                                    ? Colors.grey[800]
+                                    : Colors.grey[200],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.blue.withOpacity(0.5)
+                                        : Colors.blue,
+                                  ),
+                                ),
                                 checkmarkColor: Colors.white,
                                 onSelected: (selected) {
                                   setState(() {
@@ -444,21 +379,24 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                     Text(
                       'Sedes',
                       style: TextStyle(
-                        color: themeProvider.isDarkMode
-                            ? Colors.white
-                            : Colors.blue,
+                        color: Colors.blue,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
                     _sedes.isEmpty
-                        ? const Text(
+                        ? Text(
                             'Cargando sedes...',
-                            style: TextStyle(color: Colors.blue),
+                            style: TextStyle(
+                              color: themeProvider.isDarkMode
+                                  ? Colors.white
+                                  : Colors.blue,
+                            ),
                           )
                         : Wrap(
                             spacing: 8,
+                            runSpacing: 8,
                             children: _sedes.map((sede) {
                               final isSelected =
                                   _selectedSedeIds.contains(sede['id']);
@@ -466,13 +404,29 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                                 label: Text(
                                   sede['name'],
                                   style: TextStyle(
-                                    color:
-                                        isSelected ? Colors.white : Colors.blue,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : themeProvider.isDarkMode
+                                            ? Colors.white
+                                            : Colors.blue,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                   ),
                                 ),
                                 selected: isSelected,
                                 selectedColor: Colors.blue,
-                                backgroundColor: Colors.blue.withOpacity(0.1),
+                                backgroundColor: themeProvider.isDarkMode
+                                    ? Colors.grey[800]
+                                    : Colors.grey[200],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.blue.withOpacity(0.5)
+                                        : Colors.blue,
+                                  ),
+                                ),
                                 checkmarkColor: Colors.white,
                                 onSelected: (selected) {
                                   setState(() {
@@ -487,27 +441,51 @@ class _EditStudentScreenState extends State<EditStudentScreen> {
                               );
                             }).toList(),
                           ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _updateStudent,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.save, color: Colors.white),
+                            label: const Text(
+                              'Guardar Cambios',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: _isLoading ? null : _updateStudent,
                           ),
                         ),
-                        child: const Text(
-                          'Actualizar',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.cancel, color: Colors.red),
+                            label: const Text(
+                              'Cancelar',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            onPressed: _cancelEdit,
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
