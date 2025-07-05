@@ -14,6 +14,7 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Custom cache manager for images
 final customCacheManager = CacheManager(
@@ -117,7 +118,8 @@ class _EventsPageState extends State<EventsPage> {
       try {
         response = await supabase
             .from('events')
-            .select('*, events_headquarters(*, sedes(id,name, photo))')
+            .select(
+                '*, events_headquarters(*, sedes(id,name, photo)),ubication_url')
             .order('date', ascending: false);
 
         await _hiveBox.put(cacheKey, response);
@@ -181,6 +183,7 @@ class _EventsPageState extends State<EventsPage> {
           'time': event['time'] ?? 'No especificada',
           'time_fin': event['time_fin'] ?? 'No especificada',
           'location': event['location'] ?? 'No especificada',
+          'ubication_url': event['ubication_url'] ?? '', // Added ubication_url
           'image': event['image'],
           'events_headquarters': event['events_headquarters'] ?? [],
         });
@@ -272,6 +275,23 @@ class _EventsPageState extends State<EventsPage> {
     setState(() {
       _focusedDate = newDate;
     });
+  }
+
+  void _launchGoogleMaps(String? ubication) async {
+    if (ubication == null || ubication.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ubicación no disponible')),
+      );
+      return;
+    }
+    final uri = Uri.parse(ubication);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir Google Maps')),
+      );
+    }
   }
 
   void _goToNextMonth() {
@@ -677,11 +697,48 @@ class _EventsPageState extends State<EventsPage> {
                                                           FontWeight.bold,
                                                     ),
                                                   ),
-                                                  Text(
-                                                    event['location'],
-                                                    style: const TextStyle(
-                                                        fontSize: 16),
-                                                  ),
+                                                  if (event['ubication_url'] !=
+                                                          null &&
+                                                      event['ubication_url']
+                                                          .isNotEmpty)
+                                                    GestureDetector(
+                                                      onTap: () =>
+                                                          _launchGoogleMaps(event[
+                                                              'ubication_url']),
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(
+                                                              Icons.location_on,
+                                                              color:
+                                                                  Colors.blue,
+                                                              size: 20),
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Expanded(
+                                                            child: Text(
+                                                              event['location'],
+                                                              style:
+                                                                  const TextStyle(
+                                                                color:
+                                                                    Colors.blue,
+                                                                decoration:
+                                                                    TextDecoration
+                                                                        .underline,
+                                                                decorationColor:
+                                                                    Colors.blue,
+                                                                fontSize: 16,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    )
+                                                  else
+                                                    Text(
+                                                      event['location'],
+                                                      style: const TextStyle(
+                                                          fontSize: 16),
+                                                    ),
                                                   const SizedBox(height: 8),
                                                   Text(
                                                     "Sedes: ",

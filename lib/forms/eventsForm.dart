@@ -25,6 +25,8 @@ class _AddEventFormState extends State<AddEventForm> {
 
   TextEditingController nameController = TextEditingController();
   TextEditingController locationController = TextEditingController();
+  TextEditingController ubicationUrlController =
+      TextEditingController(); // Added
   DateTime? selectedDateTime;
   TimeOfDay? endTime;
   List<String> selectedSedes = [];
@@ -111,6 +113,7 @@ class _AddEventFormState extends State<AddEventForm> {
             'time_fin':
                 '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
             'location': locationController.text,
+            'ubication_url': ubicationUrlController.text, // Added
             'image': imageUrl,
             'month': date.month,
             'year': date.year,
@@ -302,6 +305,22 @@ class _AddEventFormState extends State<AddEventForm> {
                 ),
                 validator: (value) =>
                     value!.isEmpty ? 'Ingresa una ubicación' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: ubicationUrlController,
+                decoration: customInputDecoration(
+                    'URL de ubicación (Google Maps)', Icons.link),
+                validator: (value) {
+                  if (value == null || value.isEmpty)
+                    return null; // Optional field
+                  final urlPattern = RegExp(
+                      r'^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$');
+                  return urlPattern.hasMatch(value)
+                      ? null
+                      : 'Ingresa una URL válida';
+                },
+                keyboardType: TextInputType.url,
               ),
               const SizedBox(height: 16),
               ListTile(

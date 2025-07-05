@@ -23,6 +23,8 @@ class _EditEventFormState extends State<EditEventForm> {
 
   TextEditingController nameController = TextEditingController();
   TextEditingController locationController = TextEditingController();
+  TextEditingController ubicationUrlController =
+      TextEditingController(); // Added
   DateTime? selectedDateTime;
   DateTime? selectedEndDateTime;
   List<String> selectedSedes = [];
@@ -34,6 +36,7 @@ class _EditEventFormState extends State<EditEventForm> {
     super.initState();
     nameController.text = widget.event['name'] ?? '';
     locationController.text = widget.event['location'] ?? '';
+    ubicationUrlController.text = widget.event['ubication_url'] ?? ''; // Added
 
     // Parsear la fecha y hora desde los campos correctos
     final dateString = widget.event['date'];
@@ -149,6 +152,7 @@ class _EditEventFormState extends State<EditEventForm> {
           'time': DateFormat.Hm().format(selectedDateTime!),
           'time_fin': DateFormat.Hm().format(selectedEndDateTime!),
           'location': locationController.text,
+          'ubication_url': ubicationUrlController.text, // Added
           'month': selectedDateTime!.month,
           'year': selectedDateTime!.year,
         }).eq('id', widget.event['id']);
@@ -357,6 +361,22 @@ class _EditEventFormState extends State<EditEventForm> {
                     customInputDecoration('Ubicación del evento', Icons.place),
                 validator: (value) =>
                     value!.isEmpty ? 'Ingresa una ubicación' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: ubicationUrlController,
+                decoration: customInputDecoration(
+                    'URL de ubicación (Google Maps)', Icons.link),
+                validator: (value) {
+                  if (value == null || value.isEmpty)
+                    return null; // Optional field
+                  final urlPattern = RegExp(
+                      r'^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$');
+                  return urlPattern.hasMatch(value)
+                      ? null
+                      : 'Ingresa una URL válida';
+                },
+                keyboardType: TextInputType.url,
               ),
               const SizedBox(height: 16),
               ListTile(
