@@ -473,7 +473,7 @@ class _TeachersPageState extends State<TeachersPage> {
                   const DropdownMenuItem(
                     value: null,
                     child: Text('Todos los instrumentos',
-                        style: TextStyle(color: Colors.blue)),
+                        style: TextStyle(color: Colors.blue, fontSize: 13)),
                   ),
                   ...instruments.map((instrument) => DropdownMenuItem(
                         value: instrument,
