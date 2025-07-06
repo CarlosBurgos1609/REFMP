@@ -1,7 +1,7 @@
 // ignore_for_file: unnecessary_null_comparison
 
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart'; // Agregar esta importación
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/controllers/exit.dart';
+import 'package:refmp/edit/edit_graduates.dart'; // Asegúrate de importar el archivo de edición
 import 'package:refmp/forms/graduatesForm.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/routes/menu.dart';
@@ -132,11 +133,12 @@ class _GraduatesPageState extends State<GraduatesPage> {
 
     if (isOnline) {
       try {
-        final response = await Supabase.instance.client
-            .from('graduates')
-            .select(
-                '*, graduate_instruments!left(instruments!inner(name)), sedes!graduates_sede_id_fkey!left(name)')
-            .order('first_name', ascending: true);
+        final response =
+            await Supabase.instance.client.from('graduates').select('''
+            id, first_name, last_name, email, identification_number, profile_image,
+            graduate_instruments!left(instruments(id, name)),
+            graduate_sedes!left(sedes(id, name))
+          ''').order('first_name', ascending: true);
 
         if (response != null) {
           final data = List<Map<String, dynamic>>.from(response);
@@ -179,12 +181,20 @@ class _GraduatesPageState extends State<GraduatesPage> {
   void fetchFilters() {
     setState(() {
       sedes = graduates
-          .map((graduate) => graduate['sedes']?['name'] as String?)
-          .where((sede) => sede != null)
+          .expand((graduate) {
+            final sedesList = graduate['graduate_sedes'] as List<dynamic>?;
+            if (sedesList == null || sedesList.isEmpty) {
+              return <String>[];
+            }
+            return sedesList
+                .where((e) =>
+                    e is Map<String, dynamic> &&
+                    e['sedes'] != null &&
+                    e['sedes']['name'] is String)
+                .map((e) => e['sedes']['name'] as String);
+          })
           .toSet()
-          .toList()
-          .cast<String>();
-
+          .toList();
       instruments = graduates
           .expand((graduate) {
             final instrumentsList =
@@ -230,8 +240,14 @@ class _GraduatesPageState extends State<GraduatesPage> {
             (graduate['first_name'] as String?)?.toLowerCase() ?? '';
         final matchesQuery =
             query.isEmpty || firstName.contains(query.toLowerCase());
-        final matchesSede =
-            selectedSede == null || graduate['sedes']?['name'] == selectedSede;
+        final matchesSede = selectedSede == null ||
+            (graduate['graduate_sedes'] as List<dynamic>?)?.any(
+                  (e) =>
+                      e is Map<String, dynamic> &&
+                      e['sedes'] != null &&
+                      e['sedes']['name'] == selectedSede,
+                ) ==
+                true;
         final matchesInstrument = selectedInstrument == null ||
             (graduate['graduate_instruments'] as List<dynamic>?)?.any(
                   (e) =>
@@ -274,7 +290,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
         return Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.info, color: Colors.blue),
+              leading: const Icon(Icons.info_rounded, color: Colors.blue),
               title: const Text('Más información',
                   style: TextStyle(color: Colors.blue)),
               onTap: () {
@@ -283,7 +299,21 @@ class _GraduatesPageState extends State<GraduatesPage> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
+              leading: const Icon(Icons.edit, color: Colors.blue),
+              title: const Text('Editar egresado',
+                  style: TextStyle(color: Colors.blue)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) =>
+                          EditGraduateScreen(graduate: graduate)),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_rounded, color: Colors.red),
               title: const Text('Eliminar egresado',
                   style: TextStyle(color: Colors.red)),
               onTap: () {
@@ -326,6 +356,16 @@ class _GraduatesPageState extends State<GraduatesPage> {
   }
 
   void showGraduateDetails(Map<String, dynamic> graduate) {
+    final sedesList = graduate['graduate_sedes'] as List<dynamic>?;
+    final sedesNames = sedesList != null && sedesList.isNotEmpty
+        ? sedesList
+            .where((e) =>
+                e is Map<String, dynamic> &&
+                e['sedes'] != null &&
+                e['sedes']['name'] is String)
+            .map((e) => e['sedes']['name'] as String)
+            .join(', ')
+        : 'No asignada';
     showDialog(
       context: context,
       builder: (context) {
@@ -375,7 +415,7 @@ class _GraduatesPageState extends State<GraduatesPage> {
                     style: const TextStyle(height: 2),
                   ),
                   Text(
-                    'Sede(s): ${graduate['sedes']?['name'] ?? 'No asignada'}',
+                    'Sede(s): $sedesNames',
                     style: const TextStyle(height: 2),
                   ),
                 ],
@@ -440,7 +480,8 @@ class _GraduatesPageState extends State<GraduatesPage> {
                 items: [
                   const DropdownMenuItem(
                     value: null,
-                    child: Text('Todas', style: TextStyle(color: Colors.blue)),
+                    child: Text('Todas las sedes',
+                        style: TextStyle(color: Colors.blue)),
                   ),
                   ...sedes.map((sede) => DropdownMenuItem(
                         value: sede,
@@ -470,7 +511,8 @@ class _GraduatesPageState extends State<GraduatesPage> {
                 items: [
                   const DropdownMenuItem(
                     value: null,
-                    child: Text('Todos', style: TextStyle(color: Colors.blue)),
+                    child: Text('Todos los instrumentos',
+                        style: TextStyle(color: Colors.blue)),
                   ),
                   ...instruments.map((instrument) => DropdownMenuItem(
                         value: instrument,
@@ -699,9 +741,11 @@ class _GraduatesPageState extends State<GraduatesPage> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                              'Instrumentos: ${graduate['graduate_instruments'] != null && (graduate['graduate_instruments'] as List).isNotEmpty ? (graduate['graduate_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}'),
+                                            'Instrumentos: ${graduate['graduate_instruments'] != null && (graduate['graduate_instruments'] as List).isNotEmpty ? (graduate['graduate_instruments'] as List).map((e) => e['instruments']?['name'] ?? 'No asignado').join(', ') : 'No asignados'}',
+                                          ),
                                           Text(
-                                              'Sede: ${graduate['sedes']?['name'] ?? 'No asignado'}'),
+                                            'Sede(s): ${(graduate['graduate_sedes'] as List<dynamic>?)?.isNotEmpty == true ? (graduate['graduate_sedes'] as List<dynamic>).map((e) => e['sedes']?['name'] ?? 'No asignado').join(', ') : 'No asignado'}',
+                                          ),
                                         ],
                                       ),
                                       trailing: FutureBuilder<bool>(
