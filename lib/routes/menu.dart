@@ -12,6 +12,7 @@ import 'package:refmp/interfaces/menu/locations.dart';
 import 'package:refmp/interfaces/menu/notification.dart';
 import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/interfaces/menu/students.dart';
+import 'package:refmp/interfaces/menu/teachers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Menu {
@@ -28,7 +29,8 @@ class Menu {
     8: 'Configuración',
     10: 'Egresados',
     11: 'Información',
-    12: 'Aprende'
+    12: 'Aprende',
+    13: 'Profesores'
   };
 
   static IconData _getIcon(int index) {
@@ -59,6 +61,8 @@ class Menu {
         return Icons.info_outline_rounded;
       case 12:
         return Icons.sports_esports_rounded;
+      case 13:
+        return Icons.supervised_user_circle;
       default:
         return Icons.error;
     }
@@ -111,6 +115,9 @@ class Menu {
       12: MaterialPageRoute(
           settings: const RouteSettings(name: 'Aprende y Juega'),
           builder: (context) => const LearnPage(title: "Aprende y Juega")),
+      13: MaterialPageRoute(
+          settings: const RouteSettings(name: 'Profesores'),
+          builder: (context) => const TeachersPage(title: "Profesores")),
     };
 
     // Actualiza el índice de la página actual
@@ -293,7 +300,7 @@ class Menu {
                 ),
               ),
               // Estudiantes
-              ...[9, 10].map((index) {
+              ...[9, 10, 13].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
