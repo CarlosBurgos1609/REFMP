@@ -14,23 +14,30 @@ import 'package:refmp/interfaces/menu/profile.dart';
 import 'package:refmp/interfaces/menu/students.dart';
 import 'package:refmp/interfaces/menu/teachers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart'; // Import url_launcher
 
 class Menu {
   static const Map<int, String> _titles = {
     0: 'Inicio',
     1: 'Perfil',
     2: 'Sedes',
+    3: 'Notificaciones',
     4: 'Instrumentos',
     5: 'Eventos',
-    7: 'Ubicaciones',
-    9: 'Estudiantes',
-    3: 'Notificaciones',
     6: 'Contactos',
+    7: 'Ubicaciones',
     8: 'Configuración',
+    9: 'Estudiantes',
     10: 'Egresados',
     11: 'Información',
     12: 'Aprende',
-    13: 'Profesores'
+    13: 'Profesores',
+    14: 'Facebook',
+    15: 'WhatsApp',
+    16: 'TikTok',
+    17: 'Instagram',
+    18: 'Página Web',
   };
 
   static IconData _getIcon(int index) {
@@ -63,15 +70,49 @@ class Menu {
         return Icons.sports_esports_rounded;
       case 13:
         return Icons.supervised_user_circle;
+      case 14:
+        return FontAwesomeIcons.facebook;
+      case 15:
+        return FontAwesomeIcons.whatsapp;
+      case 16:
+        return FontAwesomeIcons.tiktok;
+      case 17:
+        return FontAwesomeIcons.instagram;
+      case 18:
+        return FontAwesomeIcons.globe; // Icon for website
       default:
         return Icons.error;
     }
   }
 
-  // Usamos ValueNotifier para manejar el índice actual de la página
   static ValueNotifier<int> currentIndexNotifier = ValueNotifier<int>(0);
 
+  static Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      throw 'Could not launch $url';
+    }
+  }
+
   static void _navigateToPage(BuildContext context, int index) {
+    // Social media and website URLs
+    const Map<int, String> socialMediaUrls = {
+      14: 'https://www.facebook.com/redescuelasfm',
+      15: 'https://chat.whatsapp.com/BQsO6B9GkAvKOw7r11RjLg',
+      16: 'https://www.tiktok.com/@sempasto',
+      17: 'https://www.instagram.com/red.escuelas.pasto/',
+      18: 'https://www.pasto.gov.co/index.php/component/content/category/189-red-de-escuelas-de-formacion-musical?Itemid=101',
+    };
+
+    // Check if the index corresponds to a social media link
+    if (socialMediaUrls.containsKey(index)) {
+      _launchURL(socialMediaUrls[index]!);
+      return;
+    }
+
+    // Internal app navigation for other pages
     final routes = {
       0: MaterialPageRoute(
           settings: const RouteSettings(name: 'Inicio'),
@@ -120,7 +161,7 @@ class Menu {
           builder: (context) => const TeachersPage(title: "Profesores")),
     };
 
-    // Actualiza el índice de la página actual
+    // Update the current page index
     currentIndexNotifier.value = index;
 
     Navigator.pushReplacement(context, routes[index]!);
@@ -271,7 +312,7 @@ class Menu {
                   ),
                 ),
               ),
-              //falta ubicaciones que es el 7
+              // Main menu items
               ...[0, 1, 2, 4, 5, 12].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
@@ -299,7 +340,7 @@ class Menu {
                   ),
                 ),
               ),
-              // Estudiantes
+              // User-related items
               ...[9, 10, 13].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
@@ -317,8 +358,36 @@ class Menu {
                 );
               }),
               const Divider(),
-              // Notificaciones, eventos y configuración
+              // Notifications, contacts, settings, and info
               ...[3, 6, 8, 11].map((index) {
+                return ListTile(
+                  leading: Icon(Menu._getIcon(index),
+                      color: currentIndex == index ? Colors.blue : Colors.grey),
+                  title: Text(
+                    _titles[index]!,
+                    style: TextStyle(
+                      color: currentIndex == index ? Colors.blue : Colors.grey,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Menu._navigateToPage(context, index);
+                  },
+                );
+              }),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+                child: Text(
+                  "Redes Sociales",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              // Social media and website links
+              ...[14, 15, 16, 17, 18].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
