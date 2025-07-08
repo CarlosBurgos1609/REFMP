@@ -1101,7 +1101,11 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                                     child: Text(
                                       sedeData['address'] ??
                                           'Dirección no disponible',
-                                      style: const TextStyle(fontSize: 14),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: Colors.blue,
+                                      ),
                                     ),
                                   ),
                                 ),
