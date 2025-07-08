@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:refmp/connections/register_connections.dart';
 import 'package:refmp/forms/headquartersforms.dart';
 import 'package:refmp/details/headquartersInfo.dart';
@@ -111,6 +112,21 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
       return '${words.take(wordLimit).join(' ')}...';
     }
     return text;
+  }
+
+  String formatPhoneNumber(String number) {
+    if (number.length >= 10) {
+      return '${number.substring(0, 3)} ${number.substring(3)}';
+    }
+    return number;
+  }
+
+// Función para copiar el número al portapapeles
+  void _copyPhoneNumber(String phoneNumber) {
+    Clipboard.setData(ClipboardData(text: phoneNumber));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Número copiado al portapapeles')),
+    );
   }
 
   @override
@@ -277,6 +293,9 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                               address,
                                               style: const TextStyle(
                                                 color: Colors.blue,
+                                                decoration:
+                                                    TextDecoration.underline,
+                                                decorationColor: Colors.blue,
                                               ),
                                             ),
                                           ),
@@ -289,7 +308,29 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                         const Icon(Icons.phone,
                                             color: Colors.blue),
                                         const SizedBox(width: 5),
-                                        Text(contactNumber),
+                                        const Text("🇨🇴",
+                                            style: TextStyle(
+                                                fontSize:
+                                                    13)), // Bandera de Colombia
+                                        const SizedBox(width: 4),
+                                        const Text("+57 ",
+                                            style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.black)),
+                                        Expanded(
+                                          child: Text(
+                                            formatPhoneNumber(contactNumber),
+                                            style: const TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.black),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.copy,
+                                              size: 20, color: Colors.blue),
+                                          onPressed: () =>
+                                              _copyPhoneNumber(contactNumber),
+                                        ),
                                       ],
                                     ),
                                   ],
