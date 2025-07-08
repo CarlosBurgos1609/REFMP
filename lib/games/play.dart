@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:refmp/details/instrumentsDetails.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -50,7 +52,6 @@ class _PlayPageState extends State<PlayPage> {
 
   Future<void> _initializeHiveAndFetch() async {
     try {
-      // Asegurar que Hive esté inicializado
       if (!Hive.isBoxOpen('offline_data')) {
         await Hive.openBox('offline_data');
       }
@@ -120,14 +121,13 @@ class _PlayPageState extends State<PlayPage> {
         final response = await supabase
             .from('songs')
             .select(
-                'id, name, image, mp3_file, artist, difficulty, instruments(name), songs_level(level(id, name, image, description))')
+                'id, name, image, mp3_file, artist, difficulty, instruments(name, image, id), songs_level(level(id, name, image, description))')
             .eq('name', widget.songName)
             .maybeSingle();
 
         debugPrint('Supabase response: $response');
 
         if (response != null) {
-          // Descargar y almacenar el MP3 si hay una URL válida
           if (response['mp3_file'] != null && response['mp3_file'].isNotEmpty) {
             try {
               final localPath = await _downloadAndCacheMp3(
@@ -149,13 +149,8 @@ class _PlayPageState extends State<PlayPage> {
             isLoading = false;
           });
 
-          // Guardar en Hive
-          try {
-            await box.put(cacheKey, response);
-            debugPrint('Song data saved to Hive with key: $cacheKey');
-          } catch (e) {
-            debugPrint('Error saving to Hive: $e');
-          }
+          await box.put(cacheKey, response);
+          debugPrint('Song data saved to Hive with key: $cacheKey');
         } else {
           setState(() {
             song = null;
@@ -166,11 +161,9 @@ class _PlayPageState extends State<PlayPage> {
         }
       } catch (e) {
         debugPrint('Error fetching song from Supabase: $e');
-        // Intentar cargar desde caché
         _loadFromCache(box, cacheKey);
       }
     } else {
-      // Cargar desde caché si no hay conexión
       _loadFromCache(box, cacheKey);
     }
   }
@@ -201,12 +194,19 @@ class _PlayPageState extends State<PlayPage> {
   }
 
   Color getDifficultyColor(String difficulty) {
-    switch (difficulty.toLowerCase()) {
+    final normalizedDifficulty = difficulty.trim().toLowerCase();
+    debugPrint('Normalized difficulty: $normalizedDifficulty');
+    switch (normalizedDifficulty) {
       case 'fácil':
-        return Colors.green;
+      case 'facil':
+      case 'Fácil':
+        return Colors.green.withOpacity(0.9);
       case 'medio':
+      case 'Media':
         return const Color.fromARGB(255, 230, 214, 70);
       case 'difícil':
+      case 'dificil':
+      case 'Difícil':
         return Colors.red;
       default:
         return Colors.grey;
@@ -216,17 +216,6 @@ class _PlayPageState extends State<PlayPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: const Text(
-          "Detalles de la canción",
-          style: TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: RefreshIndicator(
         color: Colors.blue,
         onRefresh: () async {
@@ -236,282 +225,507 @@ class _PlayPageState extends State<PlayPage> {
           await fetchSongDetails();
         },
         child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                color: Colors.blue,
-              ))
+            ? const Center(child: CircularProgressIndicator(color: Colors.blue))
             : song == null
                 ? const Center(child: Text("No se encontró la canción."))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                : CustomScrollView(
+                    slivers: [
+                      SliverAppBar(
+                        expandedHeight: 320.0,
+                        floating: false,
+                        pinned: true,
+                        leading: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back_ios_rounded,
+                            color: Colors.white,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black,
+                                offset: Offset(2, 1),
+                                blurRadius: 8,
+                              ),
+                            ],
                           ),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        backgroundColor: Colors.blue,
+                        flexibleSpace: FlexibleSpaceBar(
+                          title: Text(
+                            song!['name'] ?? 'Cargando...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  offset: Offset(1, 1),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          centerTitle: true,
+                          titlePadding: const EdgeInsets.only(bottom: 16.0),
+                          background: CachedNetworkImage(
+                            imageUrl: song!['image'] ?? '',
+                            cacheManager: CustomCacheManager.instance,
+                            fit: BoxFit.fitWidth,
+                            placeholder: (context, url) => const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white),
+                            ),
+                            errorWidget: (context, url, error) => Image.asset(
+                                'assets/images/refmmp.png',
+                                fit: BoxFit.cover),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: CachedNetworkImage(
-                                  imageUrl: song!['image'] ?? '',
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) =>
-                                      const CircularProgressIndicator(
-                                          color: Colors.blue),
-                                  errorWidget: (context, url, error) =>
-                                      const Icon(Icons.music_note, size: 100),
+                              const Text(
+                                '| Detalles',
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              Padding(
-                                padding: const EdgeInsets.all(16.0),
+                              const SizedBox(height: 10),
+
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12.0),
+                                decoration: BoxDecoration(
+                                  // color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  border: Border.all(
+                                      color: Colors.blue.withOpacity(0.6),
+                                      width: 2.0),
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Center(
-                                      child: Text(
-                                          "Dificultad: ${song!["difficulty"]}",
-                                          style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: getDifficultyColor(
-                                                  song!["difficulty"]))),
+                                    const Text(
+                                      '| Artista',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                    Center(
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.7),
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                                0.2), // Color de la sombra con opacidad
+                                            spreadRadius:
+                                                2, // Dispersión de la sombra
+                                            blurRadius:
+                                                4, // Desenfoque de la sombra
+                                            offset: const Offset(0,
+                                                2), // Desplazamiento (x, y) de la sombra
+                                          ),
+                                        ],
+                                      ),
                                       child: Text(
-                                        song!['name'],
+                                        song!['artist'] ?? 'Desconocido',
                                         style: const TextStyle(
-                                            color: Colors.blue,
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.bold),
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      '| Dificultad',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: getDifficultyColor(
+                                            song!['difficulty'] ??
+                                                'Desconocida'),
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                                0.2), // Color de la sombra con opacidad
+                                            spreadRadius:
+                                                2, // Dispersión de la sombra
+                                            blurRadius:
+                                                4, // Desenfoque de la sombra
+                                            offset: const Offset(0,
+                                                2), // Desplazamiento (x, y) de la sombra
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        song!['difficulty'] ?? 'Desconocida',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 10),
+                                    const Text(
+                                      '| Instrumento',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                     const SizedBox(height: 10),
-                                    Text("Artista: ${song!['artist']}",
-                                        style: const TextStyle(fontSize: 16)),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      "Instrumento: ${song!['instruments']?['name'] ?? "Desconocido"}",
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                    const SizedBox(height: 16),
+                                    // Contenedor para Instrumento (centrado)
                                     SizedBox(
                                       width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.blue,
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 14),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          final instrumentId =
+                                              song!['instruments']?['id'] ?? 0;
+                                          if (instrumentId != 0) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    InstrumentDetailPage(
+                                                        instrumentId:
+                                                            instrumentId),
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                  content: Text(
+                                                      "ID de instrumento no válido")),
+                                            );
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12.0, vertical: 8.0),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade300,
+                                            borderRadius:
+                                                BorderRadius.circular(20.0),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(
+                                                    0.2), // Color de la sombra con opacidad
+                                                spreadRadius:
+                                                    2, // Dispersión de la sombra
+                                                blurRadius:
+                                                    4, // Desenfoque de la sombra
+                                                offset: const Offset(0,
+                                                    2), // Desplazamiento (x, y) de la sombra
+                                              ),
+                                            ],
                                           ),
-                                          icon: Icon(
-                                              isPlaying
-                                                  ? Icons.pause
-                                                  : Icons.play_arrow,
-                                              color: Colors.white),
-                                          label: Text(
-                                            isPlaying ? "Pausar" : "Reproducir",
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 16),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              if (song!['instruments']?['image']
+                                                      ?.isNotEmpty ??
+                                                  false)
+                                                CircleAvatar(
+                                                  backgroundImage:
+                                                      CachedNetworkImageProvider(
+                                                    song!['instruments']
+                                                            ['image'] ??
+                                                        '',
+                                                    cacheManager:
+                                                        CustomCacheManager
+                                                            .instance,
+                                                  ),
+                                                  radius: 14,
+                                                  backgroundColor: Colors.white,
+                                                ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                song!['instruments']?['name'] ??
+                                                    'Desconocido',
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ],
                                           ),
-                                          onPressed: () async {
-                                            final localPath =
-                                                song!['local_mp3_path'];
-                                            final url = song!['mp3_file'];
-
-                                            if (localPath == null &&
-                                                (url == null || url.isEmpty)) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                const SnackBar(
-                                                    content: Text(
-                                                        "No hay archivo de audio disponible.")),
-                                              );
-                                              return;
-                                            }
-
-                                            if (isPlaying) {
-                                              await _audioPlayer.pause();
-                                              _timer?.cancel();
-                                            } else {
-                                              try {
-                                                if (localPath != null &&
-                                                    await File(localPath)
-                                                        .exists()) {
-                                                  await _audioPlayer.play(
-                                                      DeviceFileSource(
-                                                          localPath));
-                                                  debugPrint(
-                                                      'Playing from local: $localPath');
-                                                } else if (url != null &&
-                                                    url.isNotEmpty) {
-                                                  await _audioPlayer
-                                                      .play(UrlSource(url));
-                                                  debugPrint(
-                                                      'Playing from URL: $url');
-                                                } else {
-                                                  throw Exception(
-                                                      'No audio source available');
-                                                }
-
-                                                _timer?.cancel();
-                                                _timer = Timer(
-                                                    const Duration(seconds: 30),
-                                                    () async {
-                                                  await _audioPlayer.pause();
-                                                  setState(() {
-                                                    isPlaying = false;
-                                                  });
-                                                  debugPrint(
-                                                      'Audio paused after 30 seconds');
-                                                });
-                                              } catch (e) {
-                                                debugPrint(
-                                                    'Error playing audio: $e');
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                      content: Text(
-                                                          "Error al reproducir el audio: $e")),
-                                                );
-                                                return;
-                                              }
-                                            }
-
-                                            setState(() {
-                                              isPlaying = !isPlaying;
-                                            });
-                                          }),
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Divider(color: Colors.blue, thickness: 2),
-                        const SizedBox(height: 10),
-                        const Center(
-                          child: Text(
-                            "Niveles disponibles:",
-                            style: TextStyle(
-                              fontSize: 25,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        levels.isEmpty
-                            ? const Center(
+                              const SizedBox(height: 10),
+                              // Botón de Reproducir (más grande y consistente)
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16, horizontal: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    isPlaying ? Icons.pause : Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                  label: Text(
+                                    isPlaying ? "Pausar" : "Reproducir",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  onPressed: () async {
+                                    final localPath = song!['local_mp3_path'];
+                                    final url = song!['mp3_file'];
+
+                                    if (localPath == null &&
+                                        (url == null || url.isEmpty)) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                "No hay archivo de audio disponible.")),
+                                      );
+                                      return;
+                                    }
+
+                                    if (isPlaying) {
+                                      await _audioPlayer.pause();
+                                      _timer?.cancel();
+                                    } else {
+                                      try {
+                                        if (localPath != null &&
+                                            await File(localPath).exists()) {
+                                          await _audioPlayer.play(
+                                              DeviceFileSource(localPath));
+                                          debugPrint(
+                                              'Playing from local: $localPath');
+                                        } else if (url != null &&
+                                            url.isNotEmpty) {
+                                          await _audioPlayer
+                                              .play(UrlSource(url));
+                                          debugPrint('Playing from URL: $url');
+                                        } else {
+                                          throw Exception(
+                                              'No audio source available');
+                                        }
+
+                                        _timer?.cancel();
+                                        _timer =
+                                            Timer(const Duration(seconds: 30),
+                                                () async {
+                                          await _audioPlayer.pause();
+                                          setState(() {
+                                            isPlaying = false;
+                                          });
+                                          debugPrint(
+                                              'Audio paused after 30 seconds');
+                                        });
+                                      } catch (e) {
+                                        debugPrint('Error playing audio: $e');
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(
+                                                  "Error al reproducir el audio: $e")),
+                                        );
+                                        return;
+                                      }
+                                    }
+
+                                    setState(() {
+                                      isPlaying = !isPlaying;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Divider(color: Colors.blue, thickness: 2),
+                              const SizedBox(height: 10),
+                              const Center(
                                 child: Text(
-                                    "No se encontraron niveles disponibles."))
-                            : Column(
-                                children: levels.map((level) {
-                                  return Padding(
-                                    padding: const EdgeInsets.all(10.0),
-                                    child: Card(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      elevation: 4,
-                                      child: Column(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                    top: Radius.circular(16)),
-                                            child: CachedNetworkImage(
-                                              imageUrl: level['image'] ?? '',
-                                              fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              height: 180,
-                                              placeholder: (context, url) =>
-                                                  const CircularProgressIndicator(
-                                                      color: Colors.blue),
-                                              errorWidget: (context, url,
-                                                      error) =>
-                                                  const Icon(
-                                                      Icons.image_not_supported,
-                                                      size: 80),
+                                  "Niveles disponibles:",
+                                  style: TextStyle(
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              levels.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                          "No se encontraron niveles disponibles."))
+                                  : Column(
+                                      children: levels.map((level) {
+                                        return Padding(
+                                          padding: const EdgeInsets.all(10.0),
+                                          child: Card(
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
                                             ),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.all(12.0),
+                                            elevation: 4,
                                             child: Column(
                                               children: [
-                                                Text(
-                                                  level['name'] ??
-                                                      "Nombre desconocido",
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.blue),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  level['description'] ??
-                                                      "Sin descripción.",
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      fontSize: 15),
-                                                ),
-                                                const SizedBox(height: 10),
-                                                ElevatedButton.icon(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        Colors.blue,
-                                                    shape:
-                                                        RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10),
-                                                    ),
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 20,
-                                                        vertical: 12),
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.vertical(
+                                                          top: Radius.circular(
+                                                              16)),
+                                                  child: CachedNetworkImage(
+                                                    imageUrl:
+                                                        level['image'] ?? '',
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    height: 180,
+                                                    placeholder: (context,
+                                                            url) =>
+                                                        const CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                    errorWidget: (context, url,
+                                                            error) =>
+                                                        const Icon(
+                                                            Icons
+                                                                .image_not_supported,
+                                                            size: 80),
                                                   ),
-                                                  onPressed: () {
-                                                    // Implementar lógica para el juego aquí
-                                                    debugPrint(
-                                                        'Navigating to game for level: ${level['name']}');
-                                                  },
-                                                  icon: const Icon(
-                                                      Icons
-                                                          .sports_esports_rounded,
-                                                      color: Colors.white),
-                                                  label: const Text(
-                                                    "Aprende y Juega",
-                                                    style: TextStyle(
-                                                        color: Colors.white),
+                                                ),
+                                                Padding(
+                                                  padding: const EdgeInsets.all(
+                                                      12.0),
+                                                  child: Column(
+                                                    children: [
+                                                      Text(
+                                                        level['name'] ??
+                                                            "Nombre desconocido",
+                                                        style: const TextStyle(
+                                                          fontSize: 18,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors.blue,
+                                                        ),
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      Text(
+                                                        level['description'] ??
+                                                            "Sin descripción.",
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                            fontSize: 15),
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 10),
+                                                      ElevatedButton.icon(
+                                                        style: ElevatedButton
+                                                            .styleFrom(
+                                                          backgroundColor:
+                                                              Colors.blue,
+                                                          shape:
+                                                              RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10),
+                                                          ),
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal:
+                                                                      20,
+                                                                  vertical: 12),
+                                                        ),
+                                                        onPressed: () {
+                                                          debugPrint(
+                                                              'Navigating to game for level: ${level['name']}');
+                                                        },
+                                                        icon: const Icon(
+                                                            Icons
+                                                                .sports_esports_rounded,
+                                                            color:
+                                                                Colors.white),
+                                                        label: const Text(
+                                                          "Aprende y Juega",
+                                                          style: TextStyle(
+                                                              color:
+                                                                  Colors.white),
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
                                               ],
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        );
+                                      }).toList(),
                                     ),
-                                  );
-                                }).toList(),
-                              ),
-                      ],
-                    ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
       ),
     );
   }
+}
+
+class CustomCacheManager {
+  static const key = 'customCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 30),
+      maxNrOfCacheObjects: 100,
+    ),
+  );
 }
