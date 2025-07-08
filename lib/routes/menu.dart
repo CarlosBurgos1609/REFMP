@@ -64,13 +64,13 @@ class Menu {
       case 9:
         return Icons.supervised_user_circle;
       case 10:
-        return Icons.supervised_user_circle_sharp;
+        return Icons.school_rounded;
       case 11:
         return Icons.info_outline_rounded;
       case 12:
         return Icons.sports_esports_rounded;
       case 13:
-        return Icons.supervised_user_circle;
+        return Icons.badge;
       case 14:
         return FontAwesomeIcons.facebook;
       case 15:
