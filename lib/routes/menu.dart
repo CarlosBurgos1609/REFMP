@@ -38,6 +38,7 @@ class Menu {
     16: 'TikTok',
     17: 'Instagram',
     18: 'Página Web',
+    19: 'Youtube',
   };
 
   static IconData _getIcon(int index) {
@@ -80,6 +81,8 @@ class Menu {
         return FontAwesomeIcons.instagram;
       case 18:
         return FontAwesomeIcons.globe; // Icon for website
+      case 19:
+        return FontAwesomeIcons.youtube; // Icon for website
       default:
         return Icons.error;
     }
@@ -104,6 +107,7 @@ class Menu {
       16: 'https://www.tiktok.com/@sempasto',
       17: 'https://www.instagram.com/red.escuelas.pasto/',
       18: 'https://www.pasto.gov.co/index.php/component/content/category/189-red-de-escuelas-de-formacion-musical?Itemid=101',
+      19: 'https://www.youtube.com/@reddeescuelasdeformacionmu8424/videos',
     };
 
     // Check if the index corresponds to a social media link
@@ -387,7 +391,7 @@ class Menu {
                 ),
               ),
               // Social media and website links
-              ...[14, 15, 16, 17, 18].map((index) {
+              ...[14, 15, 16, 17, 19, 18].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
