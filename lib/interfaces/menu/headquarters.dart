@@ -313,16 +313,18 @@ class _HeadquartersPageState extends State<HeadquartersPage> {
                                                 fontSize:
                                                     13)), // Bandera de Colombia
                                         const SizedBox(width: 4),
-                                        const Text("+57 ",
-                                            style: TextStyle(
-                                                fontSize: 16,
-                                                color: Colors.black)),
+                                        const Text(
+                                          "+57 ",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                         Expanded(
                                           child: Text(
                                             formatPhoneNumber(contactNumber),
                                             style: const TextStyle(
-                                                fontSize: 16,
-                                                color: Colors.black),
+                                              fontSize: 16,
+                                            ),
                                           ),
                                         ),
                                         IconButton(
