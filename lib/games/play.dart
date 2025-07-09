@@ -27,6 +27,7 @@ class _PlayPageState extends State<PlayPage> {
   Map<String, dynamic>? song;
   List<dynamic> levels = [];
   bool isLoading = true;
+  bool isFavorite = false;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
@@ -138,6 +139,20 @@ class _PlayPageState extends State<PlayPage> {
             }
           }
 
+          final user = supabase.auth.currentUser;
+          if (user != null) {
+            final favoriteResponse = await supabase
+                .from('songs_favorite')
+                .select('song_id')
+                .eq('user_id', user.id)
+                .eq('song_id', response['id'])
+                .maybeSingle();
+
+            setState(() {
+              isFavorite = favoriteResponse != null;
+            });
+          }
+
           setState(() {
             song = response;
             levels = response['songs_level'] != null
@@ -193,6 +208,50 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  Future<void> _toggleFavorite() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Por favor, inicia sesión para agregar favoritos.')),
+      );
+      return;
+    }
+
+    if (song == null || song!['id'] == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Canción no válida.')),
+      );
+      return;
+    }
+
+    try {
+      if (isFavorite) {
+        await supabase
+            .from('songs_favorite')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('song_id', song!['id']);
+        debugPrint('Song removed from favorites');
+      } else {
+        await supabase.from('songs_favorite').insert({
+          'user_id': user.id,
+          'song_id': song!['id'],
+        });
+        debugPrint('Song added to favorites');
+      }
+
+      setState(() {
+        isFavorite = !isFavorite;
+      });
+    } catch (e) {
+      debugPrint('Error toggling favorite: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar favoritos: $e')),
+      );
+    }
+  }
+
   Color getDifficultyColor(String difficulty) {
     final normalizedDifficulty = difficulty.trim().toLowerCase();
     debugPrint('Normalized difficulty: $normalizedDifficulty');
@@ -231,7 +290,7 @@ class _PlayPageState extends State<PlayPage> {
                 : CustomScrollView(
                     slivers: [
                       SliverAppBar(
-                        expandedHeight: 320.0,
+                        expandedHeight: 390.0,
                         floating: false,
                         pinned: true,
                         leading: IconButton(
@@ -248,6 +307,25 @@ class _PlayPageState extends State<PlayPage> {
                           ),
                           onPressed: () => Navigator.pop(context),
                         ),
+                        actions: [
+                          IconButton(
+                            icon: Icon(
+                              isFavorite
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_outlined,
+                              color: isFavorite ? Colors.red : Colors.white,
+                              size: 32, // Increased icon size
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.5),
+                                  offset: Offset(0, -2),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            onPressed: _toggleFavorite,
+                          ),
+                        ],
                         backgroundColor: Colors.blue,
                         flexibleSpace: FlexibleSpaceBar(
                           title: Text(
@@ -271,7 +349,7 @@ class _PlayPageState extends State<PlayPage> {
                           background: CachedNetworkImage(
                             imageUrl: song!['image'] ?? '',
                             cacheManager: CustomCacheManager.instance,
-                            fit: BoxFit.fitWidth,
+                            fit: BoxFit.cover,
                             placeholder: (context, url) => const Center(
                               child: CircularProgressIndicator(
                                   color: Colors.white),
@@ -297,12 +375,10 @@ class _PlayPageState extends State<PlayPage> {
                                 ),
                               ),
                               const SizedBox(height: 10),
-
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(12.0),
                                 decoration: BoxDecoration(
-                                  // color: Colors.blue.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12.0),
                                   border: Border.all(
                                       color: Colors.blue.withOpacity(0.6),
@@ -330,14 +406,11 @@ class _PlayPageState extends State<PlayPage> {
                                             BorderRadius.circular(12.0),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                                0.2), // Color de la sombra con opacidad
-                                            spreadRadius:
-                                                2, // Dispersión de la sombra
-                                            blurRadius:
-                                                4, // Desenfoque de la sombra
-                                            offset: const Offset(0,
-                                                2), // Desplazamiento (x, y) de la sombra
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            spreadRadius: 2,
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
                                           ),
                                         ],
                                       ),
@@ -373,14 +446,11 @@ class _PlayPageState extends State<PlayPage> {
                                             BorderRadius.circular(12.0),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                                0.2), // Color de la sombra con opacidad
-                                            spreadRadius:
-                                                2, // Dispersión de la sombra
-                                            blurRadius:
-                                                4, // Desenfoque de la sombra
-                                            offset: const Offset(0,
-                                                2), // Desplazamiento (x, y) de la sombra
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            spreadRadius: 2,
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
                                           ),
                                         ],
                                       ),
@@ -394,7 +464,6 @@ class _PlayPageState extends State<PlayPage> {
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
-
                                     const SizedBox(height: 10),
                                     const Text(
                                       '| Instrumento',
@@ -405,7 +474,6 @@ class _PlayPageState extends State<PlayPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 10),
-                                    // Contenedor para Instrumento (centrado)
                                     SizedBox(
                                       width: double.infinity,
                                       child: GestureDetector(
@@ -440,14 +508,11 @@ class _PlayPageState extends State<PlayPage> {
                                                 BorderRadius.circular(20.0),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Colors.black.withOpacity(
-                                                    0.2), // Color de la sombra con opacidad
-                                                spreadRadius:
-                                                    2, // Dispersión de la sombra
-                                                blurRadius:
-                                                    4, // Desenfoque de la sombra
-                                                offset: const Offset(0,
-                                                    2), // Desplazamiento (x, y) de la sombra
+                                                color: Colors.black
+                                                    .withOpacity(0.2),
+                                                spreadRadius: 2,
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
                                               ),
                                             ],
                                           ),
@@ -491,7 +556,6 @@ class _PlayPageState extends State<PlayPage> {
                                 ),
                               ),
                               const SizedBox(height: 10),
-                              // Botón de Reproducir (más grande y consistente)
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton.icon(
