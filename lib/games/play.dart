@@ -56,8 +56,16 @@ class _PlayPageState extends State<PlayPage> {
       if (!Hive.isBoxOpen('offline_data')) {
         await Hive.openBox('offline_data');
       }
-      debugPrint('Hive box offline_data opened successfully');
+      if (!Hive.isBoxOpen('pending_favorite_actions')) {
+        await Hive.openBox('pending_favorite_actions');
+      }
+      debugPrint(
+          'Hive boxes offline_data and pending_favorite_actions opened successfully');
       await fetchSongDetails();
+      // Sync pending favorite actions if online
+      if (await _checkConnectivity()) {
+        await _syncPendingFavorites();
+      }
     } catch (e) {
       debugPrint('Error initializing Hive: $e');
       setState(() {
@@ -148,9 +156,9 @@ class _PlayPageState extends State<PlayPage> {
                 .eq('song_id', response['id'])
                 .maybeSingle();
 
-            setState(() {
-              isFavorite = favoriteResponse != null;
-            });
+            response['is_favorite'] = favoriteResponse != null;
+          } else {
+            response['is_favorite'] = false;
           }
 
           setState(() {
@@ -161,6 +169,7 @@ class _PlayPageState extends State<PlayPage> {
                     .where((level) => level != null)
                     .toList()
                 : [];
+            isFavorite = response['is_favorite'] ?? false;
             isLoading = false;
           });
 
@@ -170,6 +179,7 @@ class _PlayPageState extends State<PlayPage> {
           setState(() {
             song = null;
             levels = [];
+            isFavorite = false;
             isLoading = false;
           });
           debugPrint('No song found in Supabase');
@@ -195,6 +205,7 @@ class _PlayPageState extends State<PlayPage> {
                 .where((level) => level != null)
                 .toList()
             : [];
+        isFavorite = cachedSong['is_favorite'] ?? false;
         isLoading = false;
       });
       debugPrint('Loaded song from cache: ${song!['name']}');
@@ -202,6 +213,7 @@ class _PlayPageState extends State<PlayPage> {
       setState(() {
         song = null;
         levels = [];
+        isFavorite = false;
         isLoading = false;
       });
       debugPrint('No cached song found');
@@ -225,30 +237,120 @@ class _PlayPageState extends State<PlayPage> {
       return;
     }
 
-    try {
-      if (isFavorite) {
-        await supabase
-            .from('songs_favorite')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('song_id', song!['id']);
-        debugPrint('Song removed from favorites');
-      } else {
-        await supabase.from('songs_favorite').insert({
+    final box = Hive.box('offline_data');
+    final pendingBox = Hive.box('pending_favorite_actions');
+    final cacheKey = 'song_${widget.songName}';
+    final isOnline = await _checkConnectivity();
+
+    // Update favorite state immediately
+    setState(() {
+      isFavorite = !isFavorite;
+      song!['is_favorite'] = isFavorite;
+    });
+
+    // Update cache with new favorite status
+    await box.put(cacheKey, song);
+
+    if (isOnline) {
+      try {
+        if (isFavorite) {
+          await supabase.from('songs_favorite').insert({
+            'user_id': user.id,
+            'song_id': song!['id'],
+          });
+          debugPrint('Song added to favorites');
+        } else {
+          await supabase
+              .from('songs_favorite')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('song_id', song!['id']);
+          debugPrint('Song removed from favorites');
+        }
+      } catch (e) {
+        debugPrint('Error toggling favorite online: $e');
+        // Queue the action if online attempt fails
+        await pendingBox.add({
           'user_id': user.id,
           'song_id': song!['id'],
+          'action': isFavorite ? 'add' : 'remove',
+          'timestamp': DateTime.now().toIso8601String(),
         });
-        debugPrint('Song added to favorites');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Acción guardada para sincronizar cuando estés en línea')),
+        );
       }
-
-      setState(() {
-        isFavorite = !isFavorite;
+    } else {
+      // Queue the action when offline
+      await pendingBox.add({
+        'user_id': user.id,
+        'song_id': song!['id'],
+        'action': isFavorite ? 'add' : 'remove',
+        'timestamp': DateTime.now().toIso8601String(),
       });
-    } catch (e) {
-      debugPrint('Error toggling favorite: $e');
+      debugPrint('Favorite action queued offline');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar favoritos: $e')),
+        SnackBar(
+            content:
+                Text('Acción guardada para sincronizar cuando estés en línea')),
       );
+    }
+  }
+
+  Future<void> _syncPendingFavorites() async {
+    final pendingBox = Hive.box('pending_favorite_actions');
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('No user logged in for syncing favorites');
+      return;
+    }
+
+    final pendingActions = pendingBox.values.toList();
+    if (pendingActions.isEmpty) {
+      debugPrint('No pending favorite actions to sync');
+      return;
+    }
+
+    try {
+      for (var action in pendingActions) {
+        final userId = action['user_id'];
+        final songId = action['song_id'];
+        final actionType = action['action'];
+
+        if (userId != user.id) {
+          debugPrint('Skipping action for different user: $userId');
+          continue;
+        }
+
+        try {
+          if (actionType == 'add') {
+            await supabase.from('songs_favorite').insert({
+              'user_id': userId,
+              'song_id': songId,
+            });
+            debugPrint('Synced add favorite for song: $songId');
+          } else if (actionType == 'remove') {
+            await supabase
+                .from('songs_favorite')
+                .delete()
+                .eq('user_id', userId)
+                .eq('song_id', songId);
+            debugPrint('Synced remove favorite for song: $songId');
+          }
+        } catch (e) {
+          debugPrint('Error syncing favorite action for song $songId: $e');
+          continue; // Continue with next action
+        }
+
+        // Remove the processed action
+        final index = pendingBox.values.toList().indexOf(action);
+        await pendingBox.deleteAt(index);
+        debugPrint('Removed synced action from pending_favorite_actions');
+      }
+    } catch (e) {
+      debugPrint('Error processing pending favorite actions: $e');
     }
   }
 
@@ -282,6 +384,9 @@ class _PlayPageState extends State<PlayPage> {
             isLoading = true;
           });
           await fetchSongDetails();
+          if (await _checkConnectivity()) {
+            await _syncPendingFavorites();
+          }
         },
         child: isLoading
             ? const Center(child: CircularProgressIndicator(color: Colors.blue))
@@ -314,7 +419,7 @@ class _PlayPageState extends State<PlayPage> {
                                   ? Icons.favorite_rounded
                                   : Icons.favorite_border_outlined,
                               color: isFavorite ? Colors.red : Colors.white,
-                              size: 32, // Increased icon size
+                              size: 32,
                               shadows: [
                                 Shadow(
                                   color: Colors.black.withOpacity(0.5),
