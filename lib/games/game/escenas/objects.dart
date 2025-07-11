@@ -24,32 +24,83 @@ class _ObjetsPageState extends State<ObjetsPage> {
   Map<String, List<Map<String, dynamic>>> groupedObjets = {};
   String? profileImageUrl;
   int totalCoins = 0;
-  List<dynamic> userObjets =
-      []; // Lista para almacenar IDs de objetos adquiridos
-
+  List<dynamic> userObjets = [];
   int _selectedIndex = 3;
 
   @override
   void initState() {
     super.initState();
+    _initializeUserData();
     fetchObjets();
     fetchUserProfileImage();
-    fetchTotalCoins();
     fetchUserObjets();
+  }
+
+  Future<void> _initializeUserData() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      await ensureUserInUsersGames(userId, 'user_$userId');
+      await fetchTotalCoins();
+    }
+  }
+
+  Future<void> ensureUserInUsersGames(String userId, String nickname) async {
+    try {
+      final response = await supabase
+          .from('users_games')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (response == null) {
+        await supabase.from('users_games').insert({
+          'user_id': userId,
+          'nickname': nickname,
+          'points_xp_totally': 0,
+          'points_xp_weekend': 0,
+          'coins': 0,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al asegurar registro en users_games: $e');
+    }
   }
 
   Future<void> fetchTotalCoins() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    final response = await supabase
-        .from('users')
-        .select('coins')
-        .eq('user_id', userId)
-        .maybeSingle();
-    if (response != null && response['coins'] != null) {
+    try {
+      if (!await _checkConnectivity()) {
+        final box = Hive.box('offline_data');
+        setState(() {
+          totalCoins = box.get('user_coins', defaultValue: 0);
+        });
+        return;
+      }
+
+      final response = await supabase
+          .from('users_games')
+          .select('coins')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      debugPrint('Respuesta de users_games: $response');
+
+      if (response != null && response['coins'] != null) {
+        setState(() {
+          totalCoins = response['coins'] as int;
+        });
+        final box = Hive.box('offline_data');
+        await box.put('user_coins', totalCoins);
+      } else {
+        setState(() {
+          totalCoins = 0;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al obtener las monedas: $e');
       setState(() {
-        totalCoins = response['coins'] ?? 0;
+        totalCoins = 0;
       });
     }
   }
@@ -215,11 +266,402 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
     final user = await supabase
-        .from('users')
+        .from('users_games')
         .select()
         .eq('user_id', userId)
         .maybeSingle();
     return user != null;
+  }
+
+  Future<void> _purchaseObject(Map<String, dynamic> item) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final price = (item['price'] ?? 0) as int;
+      final newCoins = totalCoins - price;
+
+      if (newCoins < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: No tienes suficientes monedas')),
+        );
+        return;
+      }
+
+      await supabase.from('users_objets').insert({
+        'user_id': userId,
+        'objet_id': item['id'],
+      });
+
+      await supabase
+          .from('users_games')
+          .update({'coins': newCoins}).eq('user_id', userId);
+
+      final box = Hive.box('offline_data');
+      await box.put('user_coins', newCoins);
+
+      setState(() {
+        totalCoins = newCoins;
+        userObjets.add(item['id']);
+      });
+    } catch (e) {
+      debugPrint('Error al comprar objeto: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al comprar el objeto: $e')),
+      );
+    }
+  }
+
+  void _showObjectDialog(
+      BuildContext context, Map<String, dynamic> item, String category) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final numberFormat = NumberFormat('#,##0', 'es_ES');
+    final isObtained = userObjets.contains(item['id']);
+    final price = (item['price'] ?? 0) as int;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Mis monedas',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Image.asset(
+                      'assets/images/coin.png',
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      numberFormat.format(totalCoins),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: category == 'avatares' ? 150 : double.infinity,
+                  height: 150,
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(category == 'avatares' ? 75 : 8),
+                    border: Border.all(
+                      color: isObtained ? Colors.green : Colors.blue,
+                      width: 2,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius:
+                        BorderRadius.circular(category == 'avatares' ? 75 : 8),
+                    child: Image.network(
+                      item['image_url'] ?? 'assets/images/refmmp.png',
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stackTrace) => Image.asset(
+                        'assets/images/refmmp.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item['name'] ?? '',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color:
+                        themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item['description'] ?? 'Sin descripción',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: themeProvider.isDarkMode
+                        ? Colors.grey[300]
+                        : Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                if (isObtained) ...[
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      minimumSize: Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Objeto ${item['name']} usado')),
+                      );
+                    },
+                    child: Text(
+                      'Usar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/images/coin.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        numberFormat.format(price),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          totalCoins >= price ? Colors.green : Colors.grey,
+                      minimumSize: Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () async {
+                      if (totalCoins < price) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            contentPadding: EdgeInsets.all(16),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.red,
+                                  size: MediaQuery.of(context).size.width * 0.3,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Monedas insuficientes',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No tienes suficientes monedas. Tus monedas son de: ($totalCoins) y son menores que el precio del objeto que es: ($price) monedas.',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  minimumSize: Size(double.infinity, 48),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                },
+                                child: Text(
+                                  'OK',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Center(
+                              child: Text(
+                                'Confirmar compra',
+                                style: TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            content: Text(
+                              '¿Estás seguro de comprar ${item['name']} por ${numberFormat.format(price)} monedas?',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: Text(
+                                  'Cancelar',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: Text(
+                                  'Sí',
+                                  style: TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true) {
+                          await _purchaseObject(item);
+                          Navigator.pop(context);
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              contentPadding: EdgeInsets.all(16),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    color: Colors.green,
+                                    size:
+                                        MediaQuery.of(context).size.width * 0.3,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '¡Objeto obtenido!',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.blue,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Se ha obtenido ${item['name']} con éxito.',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    minimumSize: Size(double.infinity, 48),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showObjectDialog(context, item, category);
+                                  },
+                                  child: Text(
+                                    'OK',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    child: Text(
+                      'Comprar',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    minimumSize: Size(double.infinity, 48),
+                    side: BorderSide(color: Colors.red, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Cerrar',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildCategorySection(
@@ -351,7 +793,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                             child: Icon(
                               Icons.check_circle_rounded,
                               color: Colors.green,
-                              size: 20,
+                              size: 17,
                             ),
                           ),
                       ],
@@ -395,74 +837,77 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 );
               }
 
-              return Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.blue,
-                    width: 1.5,
+              return GestureDetector(
+                onTap: () => _showObjectDialog(context, item, category),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Colors.blue,
+                      width: 1.5,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Expanded(
-                      child: imageWidget,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item['name'] ?? '',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: themeProvider.isDarkMode
-                            ? Color.fromARGB(255, 255, 255, 255)
-                            : Color.fromARGB(255, 33, 150, 243),
-                        fontWeight: FontWeight.bold,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Expanded(
+                        child: imageWidget,
                       ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: true,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (isObtained) ...[
-                          Icon(
-                            Icons.check_circle_rounded,
-                            color: Colors.green,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Obtenido',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
+                      const SizedBox(height: 4),
+                      Text(
+                        item['name'] ?? '',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: themeProvider.isDarkMode
+                              ? Color.fromARGB(255, 255, 255, 255)
+                              : Color.fromARGB(255, 33, 150, 243),
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (isObtained) ...[
+                            Icon(
+                              Icons.check_circle_rounded,
                               color: Colors.green,
+                              size: 11,
                             ),
-                          ),
-                        ] else ...[
-                          Image.asset(
-                            'assets/images/coin.png',
-                            width: 14,
-                            height: 14,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            numberFormat.format(item['price'] ?? 0),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                            const SizedBox(width: 4),
+                            Text(
+                              'Obtenido',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
                             ),
-                          ),
+                          ] else ...[
+                            Image.asset(
+                              'assets/images/coin.png',
+                              width: 14,
+                              height: 14,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              numberFormat.format(item['price'] ?? 0),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -527,6 +972,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         onRefresh: () async {
           await fetchObjets();
           await fetchUserObjets();
+          await fetchTotalCoins();
         },
         child: CustomScrollView(
           slivers: [
