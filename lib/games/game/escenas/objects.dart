@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/details/objetsDetails.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/theme/theme_provider.dart';
@@ -25,6 +26,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
   String? profileImageUrl;
   int totalCoins = 0;
   List<dynamic> userObjets = [];
+  bool _isOnline = false;
   int _selectedIndex = 3;
 
   @override
@@ -263,14 +265,18 @@ class _ObjetsPageState extends State<ObjetsPage> {
   }
 
   Future<bool> _canAddEvent() async {
+    if (!_isOnline) return false;
+
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return false;
-    final user = await supabase
-        .from('users_games')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    return user != null;
+
+    final futures = await Future.wait([
+      supabase.from('users').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
+    ]);
+
+    return futures.any((result) => result != null);
   }
 
   Future<void> _purchaseObject(Map<String, dynamic> item) async {
@@ -927,16 +933,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => Placeholder(
-                        child: Scaffold(
-                          appBar: AppBar(
-                            title: Text('Todos los ${title.toUpperCase()}'),
-                            backgroundColor: Colors.blue,
-                          ),
-                          body: Center(
-                            child: Text('Página de ${title.toUpperCase()}'),
-                          ),
-                        ),
+                      builder: (context) => ObjetsDetailsPage(
+                        title: title,
+                        items: items,
+                        instrumentName: widget.instrumentName,
                       ),
                     ),
                   );
@@ -1071,16 +1071,25 @@ class _ObjetsPageState extends State<ObjetsPage> {
       floatingActionButton: FutureBuilder<bool>(
         future: _canAddEvent(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const SizedBox();
+          }
+
           if (snapshot.hasData && snapshot.data == true) {
             return FloatingActionButton(
               backgroundColor: Colors.blue,
-              onPressed: () {},
+              onPressed: () {
+                // Navigator.push(
+                //   context,
+                //   MaterialPageRoute(
+                //       builder: (context) => const AddEventForm()),
+                // );
+              },
               child: const Icon(Icons.add, color: Colors.white),
             );
+          } else {
+            return const SizedBox();
           }
-          return const SizedBox();
         },
       ),
       bottomNavigationBar: CustomNavigationBar(
