@@ -24,6 +24,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
   final supabase = Supabase.instance.client;
   Map<String, List<Map<String, dynamic>>> groupedObjets = {};
   String? profileImageUrl;
+  String? wallpaperUrl;
   int totalCoins = 0;
   List<dynamic> userObjets = [];
   bool _isOnline = false;
@@ -32,10 +33,19 @@ class _ObjetsPageState extends State<ObjetsPage> {
   @override
   void initState() {
     super.initState();
+    _checkConnectivityStatus();
     _initializeUserData();
     fetchObjets();
     fetchUserProfileImage();
+    fetchWallpaper();
     fetchUserObjets();
+  }
+
+  Future<void> _checkConnectivityStatus() async {
+    final connectivityResult = await (Connectivity().checkConnectivity());
+    setState(() {
+      _isOnline = connectivityResult != ConnectivityResult.none;
+    });
   }
 
   Future<void> _initializeUserData() async {
@@ -72,7 +82,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
     if (userId == null) return;
 
     try {
-      if (!await _checkConnectivity()) {
+      if (!_isOnline) {
         final box = Hive.box('offline_data');
         setState(() {
           totalCoins = box.get('user_coins', defaultValue: 0);
@@ -121,6 +131,157 @@ class _ObjetsPageState extends State<ObjetsPage> {
       });
     } catch (e) {
       debugPrint('Error al obtener objetos del usuario: $e');
+    }
+  }
+
+  Future<void> fetchUserProfileImage() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final isOnline = _isOnline;
+      if (!isOnline) {
+        final box = Hive.box('offline_data');
+        final cachedProfileImage =
+            box.get('user_profile_image', defaultValue: null);
+        setState(() {
+          profileImageUrl = cachedProfileImage ?? 'assets/images/refmmp.png';
+        });
+        return;
+      }
+
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents',
+        'directors'
+      ];
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select('profile_image')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (response != null && response['profile_image'] != null) {
+          setState(() {
+            profileImageUrl = response['profile_image'];
+          });
+          final box = Hive.box('offline_data');
+          await box.put('user_profile_image', response['profile_image']);
+          break;
+        }
+      }
+      if (profileImageUrl == null) {
+        setState(() {
+          profileImageUrl = 'assets/images/refmmp.png';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al obtener la imagen del perfil: $e');
+      setState(() {
+        profileImageUrl = 'assets/images/refmmp.png';
+      });
+    }
+  }
+
+  Future<void> fetchWallpaper() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final response = await supabase
+          .from('users_games')
+          .select('wallpapers')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      setState(() {
+        wallpaperUrl = response != null && response['wallpapers'] != null
+            ? response['wallpapers']
+            : 'assets/images/refmmp.png';
+      });
+    } catch (e) {
+      debugPrint('Error al obtener el fondo de pantalla: $e');
+      setState(() {
+        wallpaperUrl = 'assets/images/refmmp.png';
+      });
+    }
+  }
+
+  Future<String?> _getUserTable() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final tables = [
+      'users',
+      'students',
+      'graduates',
+      'teachers',
+      'advisors',
+      'parents',
+      'directors'
+    ];
+
+    for (final table in tables) {
+      final response = await supabase
+          .from(table)
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (response != null) {
+        return table;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _useObject(Map<String, dynamic> item, String category) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      if (category == 'fondos') {
+        await supabase
+            .from('users_games')
+            .update({'wallpapers': item['image_url']}).eq('user_id', userId);
+        setState(() {
+          wallpaperUrl = item['image_url'];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fondo de pantalla actualizado con éxito')),
+        );
+      } else if (category == 'avatares') {
+        final table = await _getUserTable();
+        if (table != null) {
+          await supabase.from(table).update(
+              {'profile_image': item['image_url']}).eq('user_id', userId);
+          setState(() {
+            profileImageUrl = item['image_url'];
+          });
+          final box = Hive.box('offline_data');
+          await box.put('user_profile_image', item['image_url']);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Foto de perfil actualizada con éxito')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Error: No se encontró la tabla del usuario')),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Objeto ${item['name']} usado')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error al usar objeto: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al usar el objeto: $e')),
+      );
     }
   }
 
@@ -175,64 +336,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
   }
 
-  Future<bool> _checkConnectivity() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    return connectivityResult != ConnectivityResult.none;
-  }
-
-  Future<void> fetchUserProfileImage() async {
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
-      final isOnline = await _checkConnectivity();
-      if (!isOnline) {
-        final box = Hive.box('offline_data');
-        final cachedProfileImage =
-            box.get('user_profile_image', defaultValue: null);
-        setState(() {
-          profileImageUrl = cachedProfileImage ?? 'assets/images/refmmp.png';
-        });
-        return;
-      }
-
-      List<String> tables = [
-        'users',
-        'students',
-        'graduates',
-        'teachers',
-        'advisors',
-        'parents',
-        'directors'
-      ];
-      for (String table in tables) {
-        final response = await supabase
-            .from(table)
-            .select('profile_image')
-            .eq('user_id', user.id)
-            .maybeSingle();
-        if (response != null && response['profile_image'] != null) {
-          setState(() {
-            profileImageUrl = response['profile_image'];
-          });
-          final box = Hive.box('offline_data');
-          await box.put('user_profile_image', response['profile_image']);
-          break;
-        }
-      }
-      if (profileImageUrl == null) {
-        setState(() {
-          profileImageUrl = 'assets/images/refmmp.png';
-        });
-      }
-    } catch (e) {
-      debugPrint('Error al obtener la imagen del perfil: $e');
-      setState(() {
-        profileImageUrl = 'assets/images/refmmp.png';
-      });
-    }
-  }
-
   Future<void> fetchObjets() async {
     final response = await supabase.from('objets').select();
     final data = response as List;
@@ -265,18 +368,31 @@ class _ObjetsPageState extends State<ObjetsPage> {
   }
 
   Future<bool> _canAddEvent() async {
-    if (!_isOnline) return false;
+    if (!_isOnline) {
+      debugPrint('Sin conexión, no se muestra el botón.');
+      return false;
+    }
 
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return false;
+    if (userId == null) {
+      debugPrint('No hay usuario autenticado.');
+      return false;
+    }
 
-    final futures = await Future.wait([
-      supabase.from('users').select().eq('user_id', userId).maybeSingle(),
-      supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
-      supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
-    ]);
-
-    return futures.any((result) => result != null);
+    try {
+      // Solo verificar si el usuario existe en la tabla 'users'
+      final response = await supabase
+          .from('users')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+      final userExists = response != null;
+      debugPrint('Usuario existe en tabla users: $userExists');
+      return userExists;
+    } catch (e) {
+      debugPrint('Error al verificar usuario en users: $e');
+      return false;
+    }
   }
 
   Future<void> _purchaseObject(Map<String, dynamic> item) async {
@@ -428,11 +544,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    onPressed: () {
+                    onPressed: () async {
+                      await _useObject(item, category);
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Objeto ${item['name']} usado')),
-                      );
                     },
                     child: Text(
                       'Usar',
@@ -970,9 +1084,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
       body: RefreshIndicator(
         color: Colors.blue,
         onRefresh: () async {
+          await _checkConnectivityStatus();
           await fetchObjets();
           await fetchUserObjets();
           await fetchTotalCoins();
+          await fetchUserProfileImage();
+          await fetchWallpaper();
         },
         child: CustomScrollView(
           slivers: [
@@ -1072,26 +1189,32 @@ class _ObjetsPageState extends State<ObjetsPage> {
         future: _canAddEvent(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SizedBox();
+            debugPrint('FutureBuilder esperando...');
+            return const SizedBox.shrink();
           }
 
-          if (snapshot.hasData && snapshot.data == true) {
-            return FloatingActionButton(
-              backgroundColor: Colors.blue,
-              onPressed: () {
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(
-                //       builder: (context) => const AddEventForm()),
-                // );
-              },
-              child: const Icon(Icons.add, color: Colors.white),
-            );
-          } else {
-            return const SizedBox();
+          if (snapshot.hasError) {
+            debugPrint('Error en FutureBuilder: ${snapshot.error}');
+            return const SizedBox.shrink();
           }
+
+          debugPrint('Resultado de _canAddEvent: ${snapshot.data}');
+          return snapshot.data == true
+              ? FloatingActionButton(
+                  backgroundColor: Colors.blue,
+                  onPressed: () {
+                    // Navegación comentada temporalmente
+                    // Navigator.push(
+                    //   context,
+                    //   MaterialPageRoute(builder: (context) => const AddEventForm()),
+                    // );
+                  },
+                  child: const Icon(Icons.add, color: Colors.white),
+                )
+              : const SizedBox.shrink();
         },
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
