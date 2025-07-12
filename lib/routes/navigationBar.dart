@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/games/game/escenas/objects.dart'; // Import CustomCacheManager
 import 'package:refmp/theme/theme_provider.dart';
 
 class CustomNavigationBar extends StatelessWidget {
@@ -23,8 +26,8 @@ class CustomNavigationBar extends StatelessWidget {
       selectedItemColor: Colors.blue,
       unselectedItemColor: Colors.grey,
       backgroundColor: themeProvider.isDarkMode
-          ? Color.fromARGB(255, 2, 2, 2)
-          : Color.fromARGB(255, 255, 255, 255),
+          ? const Color.fromARGB(255, 2, 2, 2)
+          : const Color.fromARGB(255, 255, 255, 255),
       type: BottomNavigationBarType.fixed,
       elevation: 8,
       items: [
@@ -85,13 +88,58 @@ class CustomNavigationBar extends StatelessWidget {
   }
 
   Widget _buildProfileIcon(int index) {
-    final avatar = CircleAvatar(
-      radius: 14,
-      backgroundImage: profileImageUrl != null && profileImageUrl!.isNotEmpty
-          ? NetworkImage(profileImageUrl!)
-          : const AssetImage('assets/images/logo1.png') as ImageProvider,
-      backgroundColor: Colors.transparent,
-    );
+    Widget avatar;
+
+    if (profileImageUrl != null &&
+        profileImageUrl!.isNotEmpty &&
+        !profileImageUrl!.startsWith('http') &&
+        File(profileImageUrl!).existsSync()) {
+      avatar = Image.file(
+        File(profileImageUrl!),
+        width: 28,
+        height: 28,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint(
+              'Error loading profile image: $error, path: $profileImageUrl');
+          return Image.asset(
+            'assets/images/logo1.png', // or 'refmmp.png' if preferred
+            width: 28,
+            height: 28,
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    } else if (profileImageUrl != null &&
+        profileImageUrl!.isNotEmpty &&
+        Uri.tryParse(profileImageUrl!)?.isAbsolute == true) {
+      avatar = CachedNetworkImage(
+        imageUrl: profileImageUrl!,
+        cacheManager: CustomCacheManager.instance,
+        width: 28,
+        height: 28,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => const CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+        ),
+        errorWidget: (context, url, error) {
+          debugPrint('Error loading network profile image: $error, url: $url');
+          return Image.asset(
+            'assets/images/logo1.png', // or 'refmmp.png' if preferred
+            width: 28,
+            height: 28,
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    } else {
+      avatar = Image.asset(
+        'assets/images/logo1.png', // or 'refmmp.png' if preferred
+        width: 28,
+        height: 28,
+        fit: BoxFit.cover,
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(3),
@@ -101,7 +149,13 @@ class CustomNavigationBar extends StatelessWidget {
               shape: BoxShape.circle,
             )
           : null,
-      child: avatar,
+      child: CircleAvatar(
+        radius: 14,
+        backgroundColor: Colors.transparent,
+        child: ClipOval(
+          child: avatar,
+        ),
+      ),
     );
   }
 }
