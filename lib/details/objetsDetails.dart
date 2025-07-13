@@ -993,6 +993,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                               return Image.asset(
                                 'assets/images/refmmp.png',
                                 fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
                               );
                             },
                           )
@@ -1013,6 +1015,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                       'Error loading network image: $error, url: $url');
                                   return Image.asset(
                                     'assets/images/refmmp.png',
+                                    width: double.infinity,
+                                    height: double.infinity,
                                     fit: BoxFit.cover,
                                   );
                                 },
