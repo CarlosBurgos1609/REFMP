@@ -300,7 +300,6 @@ class _CupPageState extends State<CupPage> {
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
-        profileImageUrl: profileImageUrl,
       ),
     );
   }

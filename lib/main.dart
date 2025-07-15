@@ -10,6 +10,7 @@ import 'package:refmp/interfaces/menu/events.dart';
 import 'package:refmp/interfaces/menu/headquarters.dart';
 import 'package:refmp/interfaces/menu/instruments.dart';
 import 'package:refmp/interfaces/menu/notification.dart';
+import 'package:refmp/models/profile_image_provider.dart';
 import 'package:refmp/services/notification_service.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -44,61 +45,67 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      theme: themeProvider.currentTheme,
-      debugShowCheckedModeBanner: false,
-      onGenerateRoute: (settings) {
-        if (settings.name == '/home') {
-          return MaterialPageRoute(
-            builder: (context) => const HomePage(
-              title: 'Inicio',
-            ),
-          );
-        }
-        if (settings.name == '/events') {
-          return MaterialPageRoute(
-            builder: (context) => const EventsPage(
-              title: 'Eventos',
-            ),
-          );
-        }
-        if (settings.name == '/instruments') {
-          return MaterialPageRoute(
-            builder: (context) => const InstrumentsPage(
-              title: 'Intrumentos',
-            ),
-          );
-        }
-        if (settings.name == '/sedes') {
-          return MaterialPageRoute(
-            builder: (context) => const HeadquartersPage(
-              title: 'Sedes',
-            ),
-          );
-        }
-        // Otras rutas
-        return MaterialPageRoute(
-            builder: (context) => const NotificationPage(
-                  title: 'Notificaciones',
-                ));
-      },
-      home: FutureBuilder<AuthState?>(
-        future: _getInitialScreen(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ProfileImageProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        theme: themeProvider.currentTheme,
+        debugShowCheckedModeBanner: false,
+        onGenerateRoute: (settings) {
+          if (settings.name == '/home') {
+            return MaterialPageRoute(
+              builder: (context) => const HomePage(
+                title: 'Inicio',
+              ),
             );
           }
-          if (snapshot.hasData && snapshot.data?.session != null) {
-            return const HomePage(
-              title: 'Bienvenid@',
+          if (settings.name == '/events') {
+            return MaterialPageRoute(
+              builder: (context) => const EventsPage(
+                title: 'Eventos',
+              ),
             );
-          } else {
-            return const Init();
           }
+          if (settings.name == '/instruments') {
+            return MaterialPageRoute(
+              builder: (context) => const InstrumentsPage(
+                title: 'Intrumentos',
+              ),
+            );
+          }
+          if (settings.name == '/sedes') {
+            return MaterialPageRoute(
+              builder: (context) => const HeadquartersPage(
+                title: 'Sedes',
+              ),
+            );
+          }
+          // Otras rutas
+          return MaterialPageRoute(
+              builder: (context) => const NotificationPage(
+                    title: 'Notificaciones',
+                  ));
         },
+        home: FutureBuilder<AuthState?>(
+          future: _getInitialScreen(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasData && snapshot.data?.session != null) {
+              return const HomePage(
+                title: 'Bienvenid@',
+              );
+            } else {
+              return const Init();
+            }
+          },
+        ),
       ),
     );
   }

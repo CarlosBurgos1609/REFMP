@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
-import 'package:refmp/details/objetsDetails.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
+import 'package:refmp/models/profile_image_provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -14,7 +15,6 @@ import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:ui' as ui;
 
 class CustomCacheManager {
@@ -30,7 +30,7 @@ class CustomCacheManager {
 
 class ObjetsPage extends StatefulWidget {
   final String instrumentName;
-  const ObjetsPage({Key? key, required this.instrumentName});
+  const ObjetsPage({Key? key, required this.instrumentName}) : super(key: key);
 
   @override
   _ObjetsPageState createState() => _ObjetsPageState();
@@ -39,8 +39,7 @@ class ObjetsPage extends StatefulWidget {
 class _ObjetsPageState extends State<ObjetsPage> {
   final supabase = Supabase.instance.client;
   Map<String, List<Map<String, dynamic>>> groupedObjets = {};
-  String? profileImageUrl;
-  String? wallpaperUrl;
+  Map<String, int> categoryCounts = {};
   int totalCoins = 0;
   List<dynamic> userObjets = [];
   bool _isOnline = false;
@@ -54,8 +53,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     _checkConnectivityStatus();
     _initializeUserData();
     fetchObjets();
-    fetchUserProfileImage();
-    fetchWallpaper();
     fetchUserObjets();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadImageHeight();
@@ -104,7 +101,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
   }
 
   Future<void> _loadImageHeight() async {
-    if (wallpaperUrl == null) {
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
+    final wallpaperUrl = profileImageProvider.wallpaperUrl;
+
+    debugPrint('Loading image height for wallpaper: $wallpaperUrl');
+    if (wallpaperUrl == null || wallpaperUrl.isEmpty) {
+      debugPrint('No valid wallpaper URL, setting default height');
       setState(() {
         expandedHeight = 400.0;
       });
@@ -113,13 +116,19 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     try {
       late ImageProvider imageProvider;
-      if (wallpaperUrl!.startsWith('assets/')) {
-        imageProvider = AssetImage(wallpaperUrl!);
-      } else if (!wallpaperUrl!.startsWith('http') &&
-          File(wallpaperUrl!).existsSync()) {
-        imageProvider = FileImage(File(wallpaperUrl!));
+      if (wallpaperUrl.startsWith('assets/')) {
+        debugPrint('Using asset wallpaper: $wallpaperUrl');
+        imageProvider = AssetImage(wallpaperUrl);
+      } else if (!wallpaperUrl.startsWith('http') &&
+          File(wallpaperUrl).existsSync()) {
+        debugPrint('Using local wallpaper: $wallpaperUrl');
+        imageProvider = FileImage(File(wallpaperUrl));
+      } else if (Uri.tryParse(wallpaperUrl)?.isAbsolute == true) {
+        debugPrint('Using network wallpaper: $wallpaperUrl');
+        imageProvider = NetworkImage(wallpaperUrl);
       } else {
-        imageProvider = NetworkImage(wallpaperUrl!);
+        debugPrint('Invalid wallpaper URL, using default');
+        imageProvider = const AssetImage('assets/images/refmmp.png');
       }
 
       final image = await _loadImage(imageProvider);
@@ -127,6 +136,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final aspectRatio = image.width / image.height;
       setState(() {
         expandedHeight = screenWidth / aspectRatio;
+        debugPrint('Set expandedHeight to $expandedHeight');
       });
     } catch (e) {
       debugPrint('Error loading image height: $e');
@@ -149,6 +159,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         imageStream.removeListener(listener!);
       },
       onError: (exception, stackTrace) {
+        debugPrint('Error in _loadImage: $exception');
         completer.completeError(exception, stackTrace);
         imageStream.removeListener(listener!);
       },
@@ -161,34 +172,59 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final box = Hive.box('offline_data');
     final cachedData = box.get(cacheKey, defaultValue: null);
 
-    if (cachedData != null &&
-        cachedData['url'] == url &&
-        cachedData['path'] != null &&
-        File(cachedData['path']).existsSync()) {
-      debugPrint('Using cached image: ${cachedData['path']}');
-      return cachedData['path'];
+    // Log the cached data for debugging
+    debugPrint(
+        'Checking cached data for $cacheKey: $cachedData (type: ${cachedData.runtimeType})');
+
+    // Validate cached data
+    if (cachedData != null && cachedData is Map) {
+      final cachedUrl = cachedData['url'] as String?;
+      final cachedPath = cachedData['path'] as String?;
+      if (cachedUrl == url &&
+          cachedPath != null &&
+          File(cachedPath).existsSync()) {
+        debugPrint('Using cached image for $cacheKey: $cachedPath');
+        if (cachedPath.endsWith('.gif')) {
+          await precacheImage(FileImage(File(cachedPath)), context);
+          debugPrint('Precached GIF image: $cachedPath');
+        }
+        return cachedPath;
+      } else {
+        debugPrint(
+            'Cached data invalid or mismatched for $cacheKey: url=$cachedUrl, path=$cachedPath');
+      }
+    } else if (cachedData != null) {
+      debugPrint(
+          'Invalid cached data type for $cacheKey: expected Map, got ${cachedData.runtimeType}');
+      // Optionally, clear invalid data to prevent repeated errors
+      await box.delete(cacheKey);
     }
 
+    // Validate input URL
     if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
       debugPrint('Invalid URL: $url, returning default image');
       return 'assets/images/refmmp.png';
     }
 
     try {
-      if (cachedData != null &&
-          cachedData['path'] != null &&
-          File(cachedData['path']).existsSync()) {
-        await File(cachedData['path']).delete();
-        debugPrint('Deleted old cached image: ${cachedData['path']}');
-      }
-
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
       await box.put(cacheKey, {'path': filePath, 'url': url});
-      debugPrint('Image downloaded and cached: $filePath for URL: $url');
+      debugPrint('Image downloaded and cached for $cacheKey: $filePath');
+      if (filePath.endsWith('.gif')) {
+        await precacheImage(FileImage(File(filePath)), context);
+        debugPrint('Precached GIF image: $filePath');
+      }
       return filePath;
     } catch (e) {
-      debugPrint('Error downloading image: $e');
+      debugPrint('Error downloading image for $cacheKey: $e');
+      // Fallback to cached path if available and valid, otherwise default image
+      if (cachedData is Map &&
+          cachedData['path'] != null &&
+          File(cachedData['path']).existsSync()) {
+        debugPrint('Falling back to cached path: ${cachedData['path']}');
+        return cachedData['path'] as String;
+      }
       return 'assets/images/refmmp.png';
     }
   }
@@ -219,6 +255,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'coins': 0,
           });
           await box.put('user_coins_$userId', 0);
+          debugPrint('User initialized in users_games: $userId');
         }
       }
     } catch (e) {
@@ -238,6 +275,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         setState(() {
           totalCoins = box.get(cacheKey, defaultValue: 0);
         });
+        debugPrint('Loaded coins offline: $totalCoins');
         return;
       }
 
@@ -252,17 +290,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
           totalCoins = response['coins'] as int;
         });
         await box.put(cacheKey, totalCoins);
+        debugPrint('Fetched coins online: $totalCoins');
       } else {
         setState(() {
           totalCoins = 0;
         });
         await box.put(cacheKey, 0);
+        debugPrint('No coins found, set to 0');
       }
     } catch (e) {
       debugPrint('Error al obtener las monedas: $e');
       setState(() {
         totalCoins = box.get(cacheKey, defaultValue: 0);
       });
+      debugPrint('Loaded cached coins due to error: $totalCoins');
     }
   }
 
@@ -279,6 +320,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         setState(() {
           userObjets = List<dynamic>.from(cachedObjets);
         });
+        debugPrint('Loaded user objets offline: $userObjets');
         return;
       }
 
@@ -291,12 +333,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
         userObjets = objets;
       });
       await box.put(cacheKey, objets);
+      debugPrint('Fetched user objets online: $objets');
     } catch (e) {
       debugPrint('Error al obtener objetos del usuario: $e');
       final cachedObjets = box.get(cacheKey, defaultValue: []);
       setState(() {
         userObjets = List<dynamic>.from(cachedObjets);
       });
+      debugPrint('Loaded cached user objets due to error: $userObjets');
     }
   }
 
@@ -306,7 +350,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_profile_image_${user.id}';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
 
+    debugPrint('Fetching profile image for user: ${user.id}');
     try {
       if (!_isOnline) {
         final cachedProfileImage = box.get(cacheKey, defaultValue: null);
@@ -316,10 +363,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 File(cachedProfileImage).existsSync())
             ? cachedProfileImage
             : 'assets/images/refmmp.png';
-        setState(() {
-          profileImageUrl = profileImagePath;
-        });
-        debugPrint('Loaded cached profile image: $profileImagePath');
+        profileImageProvider.updateProfileImage(profileImagePath, notify: true);
+        debugPrint('Loaded cached profile image offline: $profileImagePath');
         return;
       }
 
@@ -357,20 +402,17 @@ class _ObjetsPageState extends State<ObjetsPage> {
         }
       }
       imageUrl ??= 'assets/images/refmmp.png';
-      setState(() {
-        profileImageUrl = imageUrl;
-      });
+      profileImageProvider.updateProfileImage(imageUrl, notify: true);
       await box.put(cacheKey, imageUrl);
-      if (userTable != null) {
-        await box.put('user_table_${user.id}', userTable);
-      }
-      debugPrint('Fetched profile image: $imageUrl');
+      await box.put('user_table_${user.id}', userTable);
+      debugPrint('Fetched profile image online: $imageUrl, table: $userTable');
     } catch (e) {
       debugPrint('Error al obtener la imagen del perfil: $e');
-      setState(() {
-        profileImageUrl =
-            box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
-      });
+      final cachedProfileImage =
+          box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
+      profileImageProvider.updateProfileImage(cachedProfileImage, notify: true);
+      debugPrint(
+          'Loaded cached profile image due to error: $cachedProfileImage');
     }
   }
 
@@ -380,7 +422,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_wallpaper_$userId';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
 
+    debugPrint('Fetching wallpaper for user: $userId');
     try {
       if (!_isOnline) {
         final cachedWallpaper = box.get(cacheKey, defaultValue: null);
@@ -390,10 +435,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 File(cachedWallpaper).existsSync())
             ? cachedWallpaper
             : 'assets/images/refmmp.png';
-        setState(() {
-          wallpaperUrl = wallpaperPath;
-        });
-        debugPrint('Loaded cached wallpaper: $wallpaperPath');
+        profileImageProvider.updateWallpaper(wallpaperPath, notify: true);
+        debugPrint('Loaded cached wallpaper offline: $wallpaperPath');
         await _loadImageHeight();
         return;
       }
@@ -419,18 +462,16 @@ class _ObjetsPageState extends State<ObjetsPage> {
           imageUrl = 'assets/images/refmmp.png';
         }
       }
-      setState(() {
-        wallpaperUrl = imageUrl;
-      });
+      profileImageProvider.updateWallpaper(imageUrl!, notify: true);
       await box.put(cacheKey, imageUrl);
-      debugPrint('Fetched wallpaper: $imageUrl');
+      debugPrint('Fetched wallpaper online: $imageUrl');
       await _loadImageHeight();
     } catch (e) {
       debugPrint('Error al obtener el fondo de pantalla: $e');
-      setState(() {
-        wallpaperUrl =
-            box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
-      });
+      final cachedWallpaper =
+          box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
+      profileImageProvider.updateWallpaper(cachedWallpaper, notify: true);
+      debugPrint('Loaded cached wallpaper due to error: $cachedWallpaper');
       await _loadImageHeight();
     }
   }
@@ -450,7 +491,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     bool isSyncing = false;
-    // ignore: dead_code
     if (isSyncing) {
       debugPrint('Sync already in progress, skipping');
       return;
@@ -492,6 +532,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   totalCoins = newCoins;
                   userObjets.add(action['objet_id']);
                 });
+                debugPrint(
+                    'Synced purchase: coins=$newCoins, objet_id=${action['objet_id']}');
               }
             } else {
               debugPrint('Insufficient coins for purchase: $newCoins');
@@ -500,35 +542,42 @@ class _ObjetsPageState extends State<ObjetsPage> {
           } else if (actionType == 'use_wallpaper') {
             final imageUrl = action['image_url'] as String?;
             if (imageUrl != null) {
+              final localPath =
+                  await _downloadAndCacheImage(imageUrl, 'wallpaper_$userId');
               if (_isOnline) {
                 await supabase
                     .from('users_games')
                     .update({'wallpapers': imageUrl}).eq('user_id', userId);
               }
               final box = Hive.box('offline_data');
-              await box.put('user_wallpaper_$userId', imageUrl);
+              await box.put('user_wallpaper_$userId', localPath);
               if (mounted) {
-                setState(() {
-                  wallpaperUrl = imageUrl;
-                });
+                final profileImageProvider =
+                    Provider.of<ProfileImageProvider>(context, listen: false);
+                profileImageProvider.updateWallpaper(localPath, notify: true);
                 await _loadImageHeight();
+                debugPrint('Synced wallpaper: $localPath');
               }
             }
           } else if (actionType == 'use_avatar') {
             final table = action['table'] as String? ?? await _getUserTable();
             final imageUrl = action['image_url'] as String?;
             if (table != null && imageUrl != null) {
+              final localPath = await _downloadAndCacheImage(
+                  imageUrl, 'profile_image_$userId');
               if (_isOnline) {
                 await supabase
                     .from(table)
                     .update({'profile_image': imageUrl}).eq('user_id', userId);
               }
               final box = Hive.box('offline_data');
-              await box.put('user_profile_image_$userId', imageUrl);
+              await box.put('user_profile_image_$userId', localPath);
               if (mounted) {
-                setState(() {
-                  profileImageUrl = imageUrl;
-                });
+                final profileImageProvider =
+                    Provider.of<ProfileImageProvider>(context, listen: false);
+                profileImageProvider.updateProfileImage(localPath,
+                    notify: true);
+                debugPrint('Synced avatar: $localPath, table: $table');
               }
             } else {
               debugPrint(
@@ -540,7 +589,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
           if (index != -1) {
             await pendingBox.deleteAt(index);
             debugPrint(
-                'Synced action: $actionType for object ${action['objet_id']}');
+                'Deleted synced action: $actionType for object ${action['objet_id']}');
           }
         } catch (e) {
           debugPrint('Error syncing action $actionType: $e');
@@ -556,11 +605,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
   Future<String?> _getUserTable() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return null;
+    if (userId == null) {
+      debugPrint('No user ID found in _getUserTable');
+      return null;
+    }
 
     final box = Hive.box('offline_data');
     final cachedTable = box.get('user_table_$userId', defaultValue: null);
     if (!_isOnline && cachedTable != null) {
+      debugPrint('Using cached user table: $cachedTable');
       return cachedTable;
     }
 
@@ -575,31 +628,51 @@ class _ObjetsPageState extends State<ObjetsPage> {
     ];
 
     for (final table in tables) {
-      final response = await supabase
-          .from(table)
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-      if (response != null) {
-        await box.put('user_table_$userId', table);
-        return table;
+      try {
+        final response = await supabase
+            .from(table)
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (response != null) {
+          await box.put('user_table_$userId', table);
+          debugPrint('Found user table: $table');
+          return table;
+        }
+      } catch (e) {
+        debugPrint('Error checking table $table: $e');
       }
     }
+    debugPrint('No user table found for user_id: $userId');
     return null;
   }
 
   Future<void> _useObject(Map<String, dynamic> item, String category) async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      debugPrint('No user ID found, cannot use object');
+      return;
+    }
 
     final box = Hive.box('offline_data');
     final pendingBox = Hive.box('pending_actions');
-    final imageUrl = item['local_image_path'] ??
-        item['image_url'] ??
-        'assets/images/refmmp.png';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
+    final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
+    final cacheKey =
+        category == 'fondos' ? 'wallpaper_$userId' : 'profile_image_$userId';
+    String localPath = imageUrl;
+
+    debugPrint(
+        'Using object: ${item['name']}, category: $category, imageUrl: $imageUrl');
+    if (imageUrl != 'assets/images/refmmp.png' &&
+        Uri.tryParse(imageUrl)?.isAbsolute == true) {
+      localPath = await _downloadAndCacheImage(imageUrl, cacheKey);
+    }
 
     try {
       if (category == 'fondos') {
+        // Logic for updating wallpaper
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
@@ -608,36 +681,43 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'objet_id': item['id'],
             'timestamp': DateTime.now().toIso8601String(),
           });
-          await box.put('user_wallpaper_$userId', imageUrl);
-          setState(() {
-            wallpaperUrl = imageUrl;
-          });
+          await box.put('user_wallpaper_$userId', localPath);
+          profileImageProvider.updateWallpaper(localPath, notify: true);
           await _loadImageHeight();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Fondo de pantalla actualizado offline, se sincronizará cuando estés en línea')),
-          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Fondo de pantalla actualizado offline, se sincronizará cuando estés en línea')),
+            );
+          });
+          debugPrint('Updated wallpaper offline: $localPath');
         } else {
           await supabase
               .from('users_games')
-              .update({'wallpapers': item['image_url']}).eq('user_id', userId);
-          await box.put('user_wallpaper_$userId', imageUrl);
-          setState(() {
-            wallpaperUrl = imageUrl;
-          });
+              .update({'wallpapers': imageUrl}).eq('user_id', userId);
+          await box.put('user_wallpaper_$userId', localPath);
+          profileImageProvider.updateWallpaper(localPath, notify: true);
           await _loadImageHeight();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Fondo de pantalla actualizado con éxito')),
-          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('Fondo de pantalla actualizado con éxito')),
+            );
+          });
+          debugPrint('Updated wallpaper online: $localPath');
         }
       } else if (category == 'avatares') {
+        // Logic for updating avatar
         final table = await _getUserTable();
         if (table == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Error: No se encontró la tabla del usuario')),
-          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('Error: No se encontró la tabla del usuario')),
+            );
+          });
+          debugPrint('Error: No user table found for avatar update');
           return;
         }
         if (!_isOnline) {
@@ -649,38 +729,62 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'table': table,
             'timestamp': DateTime.now().toIso8601String(),
           });
-          await box.put('user_profile_image_$userId', imageUrl);
-          setState(() {
-            profileImageUrl = imageUrl;
+          await box.put('user_profile_image_$userId', localPath);
+          profileImageProvider.updateProfileImage(localPath, notify: true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Foto de perfil actualizada offline, se sincronizará cuando estés en línea')),
+            );
+            debugPrint(
+                'Updated profile image offline: $localPath, notifying listeners');
           });
+        } else {
+          try {
+            await supabase
+                .from(table)
+                .update({'profile_image': imageUrl}).eq('user_id', userId);
+            await box.put('user_profile_image_$userId', localPath);
+            profileImageProvider.updateProfileImage(localPath, notify: true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Foto de perfil actualizada con éxito')),
+              );
+              debugPrint(
+                  'Updated profile image online: $localPath, table: $table');
+            });
+          } catch (e) {
+            debugPrint('Error updating profile image in Supabase: $e');
+            await box.put('user_profile_image_$userId', localPath);
+            profileImageProvider.updateProfileImage(localPath, notify: true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content:
+                        Text('Error al actualizar la foto de perfil en línea')),
+              );
+            });
+          }
+        }
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Foto de perfil actualizada offline, se sincronizará cuando estés en línea')),
+                    'Objeto ${item['name']} usado${_isOnline ? '' : ' offline'}')),
           );
-        } else {
-          await supabase.from(table).update(
-              {'profile_image': item['image_url']}).eq('user_id', userId);
-          await box.put('user_profile_image_$userId', imageUrl);
-          setState(() {
-            profileImageUrl = imageUrl;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Foto de perfil actualizada con éxito')),
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Objeto ${item['name']} usado${_isOnline ? '' : ' offline'}')),
-        );
+        });
+        debugPrint(
+            'Used object: ${item['name']} ${_isOnline ? 'online' : 'offline'}');
       }
     } catch (e) {
       debugPrint('Error al usar objeto: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al usar el objeto: $e')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al usar el objeto: $e')),
+        );
+      });
     }
   }
 
@@ -694,9 +798,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final newCoins = totalCoins - price;
 
     if (newCoins < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: No tienes suficientes monedas')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: No tienes suficientes monedas')),
+        );
+      });
+      debugPrint('Insufficient coins: $totalCoins < $price');
       return;
     }
 
@@ -717,11 +824,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
           totalCoins = newCoins;
           userObjets.add(item['id']);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Compra guardada para sincronizar cuando estés en línea')),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'Compra guardada para sincronizar cuando estés en línea')),
+          );
+        });
+        debugPrint(
+            'Purchase saved offline: objet_id=${item['id']}, newCoins=$newCoins');
         return;
       }
 
@@ -740,11 +851,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
         totalCoins = newCoins;
         userObjets.add(item['id']);
       });
+      debugPrint(
+          'Purchase completed online: objet_id=${item['id']}, newCoins=$newCoins');
     } catch (e) {
       debugPrint('Error al comprar objeto: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al comprar el objeto: $e')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al comprar el objeto: $e')),
+        );
+      });
     }
   }
 
@@ -829,71 +944,79 @@ class _ObjetsPageState extends State<ObjetsPage> {
   Future<void> fetchObjets() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'objets_${widget.instrumentName}';
+    final countCacheKey = 'category_counts_${widget.instrumentName}';
 
     try {
       if (!_isOnline) {
         final cachedObjets = box.get(cacheKey, defaultValue: {});
+        final cachedCounts = box.get(countCacheKey, defaultValue: {});
         setState(() {
           groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
               cachedObjets.map((key, value) => MapEntry(
                   key,
                   List<Map<String, dynamic>>.from(
                       value.map((item) => Map<String, dynamic>.from(item))))));
+          categoryCounts = Map<String, int>.from(cachedCounts);
         });
+        debugPrint('Loaded objets offline: $groupedObjets');
         return;
       }
 
-      final response = await supabase.from('objets').select();
-      final data = List<Map<String, dynamic>>.from(response);
-
+      final allObjetsResponse = await supabase.from('objets').select();
+      final allObjets = List<Map<String, dynamic>>.from(allObjetsResponse);
+      final categories =
+          allObjets.map((item) => item['category'] as String).toSet().toList();
       Map<String, List<Map<String, dynamic>>> grouped = {};
-      for (var item in data) {
-        final category = item['category'] ?? 'GENERAL';
-        if (!grouped.containsKey(category)) {
-          grouped[category] = [];
-        }
-        final imageUrl = item['image_url'] ?? '';
-        if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
-          try {
-            final localPath =
-                await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
-            item['local_image_path'] = localPath;
-          } catch (e) {
-            debugPrint('Error caching object image for ${item['id']}: $e');
+      Map<String, int> counts = {};
+
+      for (var category in categories) {
+        final countResponse =
+            await supabase.from('objets').select().eq('category', category);
+        counts[category] = countResponse.length;
+
+        final response = await supabase
+            .from('objets')
+            .select()
+            .eq('category', category)
+            .order('created_at', ascending: false)
+            .limit(6);
+        final data = List<Map<String, dynamic>>.from(response);
+
+        for (var item in data) {
+          final imageUrl = item['image_url'] ?? '';
+          if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
+            try {
+              final localPath =
+                  await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
+              item['local_image_path'] = localPath;
+            } catch (e) {
+              debugPrint('Error caching object image for ${item['id']}: $e');
+            }
           }
         }
-        grouped[category]!.add(item);
+        grouped[category] = data;
       }
-
-      grouped.forEach((key, value) {
-        value.sort((a, b) {
-          final aDate = a['created_at'] != null
-              ? DateTime.tryParse(a['created_at'])
-              : null;
-          final bDate = b['created_at'] != null
-              ? DateTime.tryParse(b['created_at'])
-              : null;
-          if (aDate == null && bDate == null) return 0;
-          if (aDate == null) return 1;
-          if (bDate == null) return -1;
-          return bDate.compareTo(aDate);
-        });
-      });
 
       setState(() {
         groupedObjets = grouped;
+        categoryCounts = counts;
       });
       await box.put(cacheKey, grouped);
+      await box.put(countCacheKey, counts);
+      debugPrint('Fetched objets online: $groupedObjets');
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
       final cachedObjets = box.get(cacheKey, defaultValue: {});
+      final cachedCounts = box.get(countCacheKey, defaultValue: {});
       setState(() {
         groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
             cachedObjets.map((key, value) => MapEntry(
                 key,
                 List<Map<String, dynamic>>.from(
                     value.map((item) => Map<String, dynamic>.from(item))))));
+        categoryCounts = Map<String, int>.from(cachedCounts);
       });
+      debugPrint('Loaded cached objets due to error: $groupedObjets');
     }
   }
 
@@ -907,6 +1030,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
         item['image_url'] ??
         'assets/images/refmmp.png';
 
+    debugPrint(
+        'Showing dialog for object: ${item['name']}, imagePath: $imagePath');
     showDialog(
       context: context,
       builder: (context) {
@@ -974,9 +1099,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
                             fit: BoxFit.cover,
                             width: double.infinity,
                             height: double.infinity,
+                            frameBuilder: (context, child, frame,
+                                wasSynchronouslyLoaded) {
+                              return child;
+                            },
                             errorBuilder: (context, error, stackTrace) {
                               debugPrint(
-                                  'Error loading local image: $error, path: $imagePath');
+                                  'Error loading local image in dialog: $error, path: $imagePath');
                               return Image.asset(
                                 'assets/images/refmmp.png',
                                 fit: BoxFit.cover,
@@ -997,7 +1126,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                 ),
                                 errorWidget: (context, url, error) {
                                   debugPrint(
-                                      'Error loading network image: $error, url: $url');
+                                      'Error loading network image in dialog: $error, url: $url');
                                   return Image.asset(
                                     'assets/images/refmmp.png',
                                     fit: BoxFit.cover,
@@ -1330,9 +1459,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
               crossAxisCount: 3,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: title.toLowerCase() == 'avatares' ? 0.7 : 0.9,
+              childAspectRatio: title.toLowerCase() == 'avatares' ? 1.0 : 0.9,
             ),
-            itemCount: items.length > 6 ? 6 : items.length,
+            itemCount: items.length,
             itemBuilder: (context, index) {
               final item = items[index];
               final category = title.toLowerCase();
@@ -1342,6 +1471,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   'assets/images/refmmp.png';
               Widget imageWidget;
 
+              debugPrint(
+                  'Building grid item: ${item['name']}, imagePath: $imagePath');
               if (category == 'trompetas') {
                 imageWidget = Padding(
                   padding: const EdgeInsets.all(4.0),
@@ -1366,6 +1497,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                     fit: BoxFit.contain,
                                     width: double.infinity,
                                     height: double.infinity,
+                                    frameBuilder: (context, child, frame,
+                                        wasSynchronouslyLoaded) {
+                                      return child;
+                                    },
                                     errorBuilder:
                                         (context, error, stackTrace) =>
                                             Image.asset(
@@ -1417,75 +1552,58 @@ class _ObjetsPageState extends State<ObjetsPage> {
               } else if (category == 'avatares') {
                 imageWidget = Padding(
                   padding: const EdgeInsets.all(4.0),
-                  child: Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.transparent,
-                      border: Border.all(
-                        color: isObtained ? Colors.green : Colors.blue,
-                        width: 2,
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isObtained ? Colors.green : Colors.blue,
+                          width: 2,
+                        ),
                       ),
-                    ),
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: ClipOval(
-                            child: imagePath.isNotEmpty &&
-                                    !imagePath.startsWith('http') &&
-                                    File(imagePath).existsSync()
-                                ? Image.file(
-                                    File(imagePath),
+                      child: ClipOval(
+                        child: imagePath.isNotEmpty &&
+                                !imagePath.startsWith('http') &&
+                                File(imagePath).existsSync()
+                            ? Image.file(
+                                File(imagePath),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                frameBuilder: (context, child, frame,
+                                    wasSynchronouslyLoaded) {
+                                  return child;
+                                },
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : imagePath.isNotEmpty &&
+                                    Uri.tryParse(imagePath)?.isAbsolute == true
+                                ? CachedNetworkImage(
+                                    imageUrl: imagePath,
+                                    cacheManager: CustomCacheManager.instance,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     height: double.infinity,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Image.asset(
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.blue),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Image.asset(
                                       'assets/images/refmmp.png',
                                       fit: BoxFit.cover,
                                     ),
                                   )
-                                : imagePath.isNotEmpty &&
-                                        Uri.tryParse(imagePath)?.isAbsolute ==
-                                            true
-                                    ? CachedNetworkImage(
-                                        imageUrl: imagePath,
-                                        cacheManager:
-                                            CustomCacheManager.instance,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        placeholder: (context, url) =>
-                                            const Center(
-                                          child: CircularProgressIndicator(
-                                              color: Colors.blue),
-                                        ),
-                                        errorWidget: (context, url, error) =>
-                                            Image.asset(
-                                          'assets/images/refmmp.png',
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    : Image.asset(
-                                        'assets/images/refmmp.png',
-                                        fit: BoxFit.cover,
-                                      ),
-                          ),
-                        ),
-                        if (isObtained)
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: Icon(
-                              Icons.check_circle_rounded,
-                              color: Colors.green,
-                              size: 17,
-                            ),
-                          ),
-                      ],
+                                : Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                      ),
                     ),
                   ),
                 );
@@ -1511,6 +1629,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,
+                                  frameBuilder: (context, child, frame,
+                                      wasSynchronouslyLoaded) {
+                                    return child;
+                                  },
                                   errorBuilder: (context, error, stackTrace) =>
                                       Image.asset(
                                     'assets/images/refmmp.png',
@@ -1634,7 +1756,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             },
           ),
         ),
-        if (items.length > 6)
+        if (categoryCounts[title] != null && categoryCounts[title]! > 6)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Container(
@@ -1645,19 +1767,18 @@ class _ObjetsPageState extends State<ObjetsPage> {
               ),
               child: TextButton(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ObjetsDetailsPage(
-                        title: title,
-                        items: items,
-                        instrumentName: widget.instrumentName,
-                      ),
-                    ),
-                  );
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => ObjetsDetailsPage(
+                  //       title: title,
+                  //       category: title,
+                  //     ),
+                  //   ),
+                  // );
                 },
                 child: Text(
-                  'TODOS L@S ${title.toUpperCase()} (${items.length})',
+                  'TODOS L@S ${title.toUpperCase()} (${categoryCounts[title] ?? items.length})',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -1681,6 +1802,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final profileImageProvider = Provider.of<ProfileImageProvider>(context);
+    final numberFormat = NumberFormat('#,##0', 'es_ES');
+
+    debugPrint(
+        'Building ObjetsPage with wallpaperUrl: ${profileImageProvider.wallpaperUrl}, profileImageUrl: ${profileImageProvider.profileImageUrl}');
+
     return Scaffold(
       body: RefreshIndicator(
         color: Colors.blue,
@@ -1727,7 +1854,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '$totalCoins',
+                    numberFormat.format(totalCoins),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1751,27 +1878,31 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 background: Stack(
                   fit: StackFit.expand,
                   children: [
-                    wallpaperUrl != null &&
-                            wallpaperUrl!.isNotEmpty &&
-                            !wallpaperUrl!.startsWith('http') &&
-                            File(wallpaperUrl!).existsSync()
+                    profileImageProvider.wallpaperUrl != null &&
+                            profileImageProvider.wallpaperUrl!.isNotEmpty &&
+                            !profileImageProvider.wallpaperUrl!
+                                .startsWith('http') &&
+                            File(profileImageProvider.wallpaperUrl!)
+                                .existsSync()
                         ? Image.file(
-                            File(wallpaperUrl!),
+                            File(profileImageProvider.wallpaperUrl!),
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
                               debugPrint(
-                                  'Error loading local wallpaper: $error, path: $wallpaperUrl');
+                                  'Error loading local wallpaper in SliverAppBar: $error, path: ${profileImageProvider.wallpaperUrl}');
                               return Image.asset(
                                 'assets/images/refmmp.png',
                                 fit: BoxFit.cover,
                               );
                             },
                           )
-                        : wallpaperUrl != null &&
-                                wallpaperUrl!.isNotEmpty &&
-                                Uri.tryParse(wallpaperUrl!)?.isAbsolute == true
+                        : profileImageProvider.wallpaperUrl != null &&
+                                profileImageProvider.wallpaperUrl!.isNotEmpty &&
+                                Uri.tryParse(profileImageProvider.wallpaperUrl!)
+                                        ?.isAbsolute ==
+                                    true
                             ? CachedNetworkImage(
-                                imageUrl: wallpaperUrl!,
+                                imageUrl: profileImageProvider.wallpaperUrl!,
                                 cacheManager: CustomCacheManager.instance,
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => const Center(
@@ -1780,7 +1911,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                 ),
                                 errorWidget: (context, url, error) {
                                   debugPrint(
-                                      'Error loading network wallpaper: $error, url: $url');
+                                      'Error loading network wallpaper in SliverAppBar: $error, url: $url');
                                   return Image.asset(
                                     'assets/images/refmmp.png',
                                     fit: BoxFit.cover,
@@ -1859,7 +1990,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
               ? FloatingActionButton(
                   backgroundColor: Colors.blue,
                   onPressed: () {
-                    // Navegación comentada temporalmente
                     // Navigator.push(
                     //   context,
                     //   MaterialPageRoute(builder: (context) => const AddEventForm()),
@@ -1870,11 +2000,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
               : const SizedBox.shrink();
         },
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
-        profileImageUrl: profileImageUrl,
       ),
     );
   }

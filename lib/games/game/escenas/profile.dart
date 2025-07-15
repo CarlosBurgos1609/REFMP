@@ -1189,7 +1189,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
-        profileImageUrl: profileImageUrl,
       ),
     );
   }

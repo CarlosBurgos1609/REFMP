@@ -880,7 +880,6 @@ class _MusicPageState extends State<MusicPage> {
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
-        profileImageUrl: profileImageUrl,
       ),
     );
   }

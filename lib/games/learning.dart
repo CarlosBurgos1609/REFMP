@@ -310,8 +310,6 @@ class _LearningPageState extends State<LearningPage> {
       bottomNavigationBar: CustomNavigationBar(
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
-        profileImageUrl:
-            profileImageUrl, // Ya no será 'student' sino la URL real
       ),
     );
   }
