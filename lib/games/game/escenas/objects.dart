@@ -170,13 +170,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
   Future<String> _downloadAndCacheImage(String url, String cacheKey) async {
     final box = Hive.box('offline_data');
-    final cachedData = box.get(cacheKey, defaultValue: null);
+    final cachedData = box.get(cacheKey);
 
-    // Log the cached data for debugging
-    debugPrint(
-        'Checking cached data for $cacheKey: $cachedData (type: ${cachedData.runtimeType})');
-
-    // Validate cached data
     if (cachedData != null && cachedData is Map) {
       final cachedUrl = cachedData['url'] as String?;
       final cachedPath = cachedData['path'] as String?;
@@ -184,23 +179,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
           cachedPath != null &&
           File(cachedPath).existsSync()) {
         debugPrint('Using cached image for $cacheKey: $cachedPath');
-        if (cachedPath.endsWith('.gif')) {
-          await precacheImage(FileImage(File(cachedPath)), context);
-          debugPrint('Precached GIF image: $cachedPath');
-        }
         return cachedPath;
-      } else {
-        debugPrint(
-            'Cached data invalid or mismatched for $cacheKey: url=$cachedUrl, path=$cachedPath');
       }
-    } else if (cachedData != null) {
-      debugPrint(
-          'Invalid cached data type for $cacheKey: expected Map, got ${cachedData.runtimeType}');
-      // Optionally, clear invalid data to prevent repeated errors
-      await box.delete(cacheKey);
     }
 
-    // Validate input URL
     if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
       debugPrint('Invalid URL: $url, returning default image');
       return 'assets/images/refmmp.png';
@@ -211,20 +193,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final filePath = fileInfo.file.path;
       await box.put(cacheKey, {'path': filePath, 'url': url});
       debugPrint('Image downloaded and cached for $cacheKey: $filePath');
-      if (filePath.endsWith('.gif')) {
-        await precacheImage(FileImage(File(filePath)), context);
-        debugPrint('Precached GIF image: $filePath');
-      }
       return filePath;
     } catch (e) {
       debugPrint('Error downloading image for $cacheKey: $e');
-      // Fallback to cached path if available and valid, otherwise default image
-      if (cachedData is Map &&
-          cachedData['path'] != null &&
-          File(cachedData['path']).existsSync()) {
-        debugPrint('Falling back to cached path: ${cachedData['path']}');
-        return cachedData['path'] as String;
-      }
       return 'assets/images/refmmp.png';
     }
   }
@@ -363,7 +334,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 File(cachedProfileImage).existsSync())
             ? cachedProfileImage
             : 'assets/images/refmmp.png';
-        profileImageProvider.updateProfileImage(profileImagePath, notify: true);
+        profileImageProvider.updateProfileImage(profileImagePath,
+            notify: true, isOnline: false);
         debugPrint('Loaded cached profile image offline: $profileImagePath');
         return;
       }
@@ -389,20 +361,16 @@ class _ObjetsPageState extends State<ObjetsPage> {
           imageUrl = response['profile_image'];
           userTable = table;
           if (Uri.tryParse(imageUrl!)?.isAbsolute == true) {
-            try {
-              final localPath = await _downloadAndCacheImage(
-                  imageUrl, 'profile_image_${user.id}');
-              imageUrl = localPath;
-            } catch (e) {
-              debugPrint('Error caching profile image: $e');
-              imageUrl = 'assets/images/refmmp.png';
-            }
+            final localPath = await _downloadAndCacheImage(
+                imageUrl, 'profile_image_${user.id}');
+            imageUrl = localPath;
           }
           break;
         }
       }
       imageUrl ??= 'assets/images/refmmp.png';
-      profileImageProvider.updateProfileImage(imageUrl, notify: true);
+      profileImageProvider.updateProfileImage(imageUrl,
+          notify: true, isOnline: true, userTable: userTable);
       await box.put(cacheKey, imageUrl);
       await box.put('user_table_${user.id}', userTable);
       debugPrint('Fetched profile image online: $imageUrl, table: $userTable');
@@ -410,7 +378,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
       debugPrint('Error al obtener la imagen del perfil: $e');
       final cachedProfileImage =
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
-      profileImageProvider.updateProfileImage(cachedProfileImage, notify: true);
+      profileImageProvider.updateProfileImage(cachedProfileImage,
+          notify: true, isOnline: false);
       debugPrint(
           'Loaded cached profile image due to error: $cachedProfileImage');
     }
@@ -435,7 +404,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 File(cachedWallpaper).existsSync())
             ? cachedWallpaper
             : 'assets/images/refmmp.png';
-        profileImageProvider.updateWallpaper(wallpaperPath, notify: true);
+        profileImageProvider.updateWallpaper(wallpaperPath,
+            notify: true, isOnline: false);
         debugPrint('Loaded cached wallpaper offline: $wallpaperPath');
         await _loadImageHeight();
         return;
@@ -453,16 +423,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
       if (imageUrl != 'assets/images/refmmp.png' &&
           Uri.tryParse(imageUrl!)?.isAbsolute == true) {
-        try {
-          final localPath =
-              await _downloadAndCacheImage(imageUrl, 'wallpaper_$userId');
-          imageUrl = localPath;
-        } catch (e) {
-          debugPrint('Error caching wallpaper: $e');
-          imageUrl = 'assets/images/refmmp.png';
-        }
+        final localPath =
+            await _downloadAndCacheImage(imageUrl, 'wallpaper_$userId');
+        imageUrl = localPath;
       }
-      profileImageProvider.updateWallpaper(imageUrl!, notify: true);
+      profileImageProvider.updateWallpaper(imageUrl!,
+          notify: true, isOnline: true);
       await box.put(cacheKey, imageUrl);
       debugPrint('Fetched wallpaper online: $imageUrl');
       await _loadImageHeight();
@@ -470,7 +436,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
       debugPrint('Error al obtener el fondo de pantalla: $e');
       final cachedWallpaper =
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
-      profileImageProvider.updateWallpaper(cachedWallpaper, notify: true);
+      profileImageProvider.updateWallpaper(cachedWallpaper,
+          notify: true, isOnline: false);
       debugPrint('Loaded cached wallpaper due to error: $cachedWallpaper');
       await _loadImageHeight();
     }
@@ -554,13 +521,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
               if (mounted) {
                 final profileImageProvider =
                     Provider.of<ProfileImageProvider>(context, listen: false);
-                profileImageProvider.updateWallpaper(localPath, notify: true);
+                profileImageProvider.updateWallpaper(localPath,
+                    notify: true, isOnline: _isOnline);
                 await _loadImageHeight();
                 debugPrint('Synced wallpaper: $localPath');
               }
             }
           } else if (actionType == 'use_avatar') {
-            final table = action['table'] as String? ?? await _getUserTable();
+            final table = action['table'] as String?;
             final imageUrl = action['image_url'] as String?;
             if (table != null && imageUrl != null) {
               final localPath = await _downloadAndCacheImage(
@@ -576,7 +544,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 final profileImageProvider =
                     Provider.of<ProfileImageProvider>(context, listen: false);
                 profileImageProvider.updateProfileImage(localPath,
-                    notify: true);
+                    notify: true, isOnline: _isOnline, userTable: table);
                 debugPrint('Synced avatar: $localPath, table: $table');
               }
             } else {
@@ -603,55 +571,21 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
   }
 
-  Future<String?> _getUserTable() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('No user ID found in _getUserTable');
-      return null;
-    }
-
-    final box = Hive.box('offline_data');
-    final cachedTable = box.get('user_table_$userId', defaultValue: null);
-    if (!_isOnline && cachedTable != null) {
-      debugPrint('Using cached user table: $cachedTable');
-      return cachedTable;
-    }
-
-    final tables = [
-      'users',
-      'students',
-      'graduates',
-      'teachers',
-      'advisors',
-      'parents',
-      'directors'
-    ];
-
-    for (final table in tables) {
-      try {
-        final response = await supabase
-            .from(table)
-            .select('user_id')
-            .eq('user_id', userId)
-            .maybeSingle();
-        if (response != null) {
-          await box.put('user_table_$userId', table);
-          debugPrint('Found user table: $table');
-          return table;
-        }
-      } catch (e) {
-        debugPrint('Error checking table $table: $e');
-      }
-    }
-    debugPrint('No user table found for user_id: $userId');
-    return null;
-  }
-
   Future<void> _useObject(Map<String, dynamic> item, String category) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('No user ID found, cannot use object');
       return;
+    }
+
+    // Ensure Hive boxes are open
+    if (!Hive.isBoxOpen('offline_data')) {
+      await Hive.openBox('offline_data');
+      debugPrint('Opened offline_data box in _useObject');
+    }
+    if (!Hive.isBoxOpen('pending_actions')) {
+      await Hive.openBox('pending_actions');
+      debugPrint('Opened pending_actions box in _useObject');
     }
 
     final box = Hive.box('offline_data');
@@ -672,7 +606,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     try {
       if (category == 'fondos') {
-        // Logic for updating wallpaper
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
@@ -682,7 +615,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'timestamp': DateTime.now().toIso8601String(),
           });
           await box.put('user_wallpaper_$userId', localPath);
-          profileImageProvider.updateWallpaper(localPath, notify: true);
+          profileImageProvider.updateWallpaper(localPath,
+              notify: true, isOnline: false);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -697,7 +631,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
               .from('users_games')
               .update({'wallpapers': imageUrl}).eq('user_id', userId);
           await box.put('user_wallpaper_$userId', localPath);
-          profileImageProvider.updateWallpaper(localPath, notify: true);
+          profileImageProvider.updateWallpaper(localPath,
+              notify: true, isOnline: true);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -708,8 +643,37 @@ class _ObjetsPageState extends State<ObjetsPage> {
           debugPrint('Updated wallpaper online: $localPath');
         }
       } else if (category == 'avatares') {
-        // Logic for updating avatar
-        final table = await _getUserTable();
+        String? table;
+        if (_isOnline) {
+          // Buscar la tabla del usuario en Supabase
+          List<String> tables = [
+            'users',
+            'students',
+            'graduates',
+            'teachers',
+            'advisors',
+            'parents',
+            'directors'
+          ];
+          for (String t in tables) {
+            final response = await supabase
+                .from(t)
+                .select('user_id')
+                .eq('user_id', userId)
+                .maybeSingle();
+            if (response != null) {
+              table = t;
+              await box.put('user_table_$userId', table);
+              debugPrint('Found user table online: $table');
+              break;
+            }
+          }
+        } else {
+          // Usar la tabla almacenada en caché
+          table = box.get('user_table_$userId', defaultValue: null);
+          debugPrint('Loaded user table offline: $table');
+        }
+
         if (table == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -720,6 +684,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
           debugPrint('Error: No user table found for avatar update');
           return;
         }
+
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
@@ -730,7 +695,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'timestamp': DateTime.now().toIso8601String(),
           });
           await box.put('user_profile_image_$userId', localPath);
-          profileImageProvider.updateProfileImage(localPath, notify: true);
+          profileImageProvider.updateProfileImage(localPath,
+              notify: true, isOnline: false, userTable: table);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -746,7 +712,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 .from(table)
                 .update({'profile_image': imageUrl}).eq('user_id', userId);
             await box.put('user_profile_image_$userId', localPath);
-            profileImageProvider.updateProfileImage(localPath, notify: true);
+            await box.put(
+                'user_table_$userId', table); // Guardar tabla en caché
+            profileImageProvider.updateProfileImage(localPath,
+                notify: true, isOnline: true, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Foto de perfil actualizada con éxito')),
@@ -757,7 +726,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
           } catch (e) {
             debugPrint('Error updating profile image in Supabase: $e');
             await box.put('user_profile_image_$userId', localPath);
-            profileImageProvider.updateProfileImage(localPath, notify: true);
+            await box.put(
+                'user_table_$userId', table); // Guardar tabla en caché
+            profileImageProvider.updateProfileImage(localPath,
+                notify: true, isOnline: false, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

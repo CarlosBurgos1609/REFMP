@@ -1,77 +1,153 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class ProfileImageProvider extends ChangeNotifier {
   String? _profileImageUrl;
   String? _wallpaperUrl;
-  final Box _box = Hive.box('offline_data');
+  String? _userTable;
+  final SupabaseClient supabase = Supabase.instance.client;
 
   ProfileImageProvider() {
-    _loadProfileImage();
-    _loadWallpaper();
+    _initialize();
   }
 
   String? get profileImageUrl => _profileImageUrl;
   String? get wallpaperUrl => _wallpaperUrl;
+  String? get userTable => _userTable;
 
-  void _loadProfileImage() {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      _profileImageUrl = _box.get('user_profile_image_$userId',
-          defaultValue: 'assets/images/refmmp.png');
-    } else {
-      _profileImageUrl = 'assets/images/refmmp.png';
-    }
-    debugPrint(
-        'ProfileImageProvider initialized with profile image: $_profileImageUrl');
-    notifyListeners();
+  Future<void> _initialize() async {
+    await _loadFromCache();
+    await fetchUserTable();
   }
 
-  void _loadWallpaper() {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      _wallpaperUrl = _box.get('user_wallpaper_$userId',
-          defaultValue: 'assets/images/refmmp.png');
-    } else {
-      _wallpaperUrl = 'assets/images/refmmp.png';
+  Future<void> _loadFromCache() async {
+    // Check if box is open before accessing
+    if (!Hive.isBoxOpen('offline_data')) {
+      await Hive.openBox('offline_data');
+      debugPrint('Opened offline_data box in ProfileImageProvider');
     }
-    debugPrint(
-        'ProfileImageProvider initialized with wallpaper: $_wallpaperUrl');
-    notifyListeners();
+    final box = Hive.box('offline_data');
+    final userId = supabase.auth.currentUser?.id;
+    if (userId != null) {
+      _profileImageUrl =
+          box.get('user_profile_image_$userId', defaultValue: null);
+      _wallpaperUrl = box.get('user_wallpaper_$userId', defaultValue: null);
+      _userTable = box.get('user_table_$userId', defaultValue: null);
+      debugPrint(
+          'Loaded from cache: profileImageUrl=$_profileImageUrl, wallpaperUrl=$_wallpaperUrl, userTable=$_userTable');
+      notifyListeners();
+    }
   }
 
-  void updateProfileImage(String newImageUrl, {bool notify = true}) {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      _profileImageUrl = newImageUrl;
-      _box.put('user_profile_image_$userId', newImageUrl);
-      debugPrint('Profile image updated to: $newImageUrl, notify: $notify');
-      if (notify) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          notifyListeners();
-          debugPrint('notifyListeners called for profile image update');
-        });
+  Future<void> fetchUserTable() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('No user ID found, cannot fetch user table');
+      return;
+    }
+
+    // Check if box is open
+    if (!Hive.isBoxOpen('offline_data')) {
+      await Hive.openBox('offline_data');
+      debugPrint('Opened offline_data box in fetchUserTable');
+    }
+    final box = Hive.box('offline_data');
+    final cacheKey = 'user_table_$userId';
+
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final isOnline = connectivityResult != ConnectivityResult.none;
+
+      if (!isOnline) {
+        _userTable = box.get(cacheKey, defaultValue: null);
+        debugPrint('Loaded user table offline: $_userTable');
+        notifyListeners();
+        return;
       }
-    } else {
-      debugPrint('No user ID, cannot update profile image');
+
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents',
+        'directors'
+      ];
+      String? foundTable;
+      for (String table in tables) {
+        final response = await supabase
+            .from(table)
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (response != null) {
+          foundTable = table;
+          break;
+        }
+      }
+
+      if (foundTable != null) {
+        _userTable = foundTable;
+        await box.put(cacheKey, foundTable);
+        debugPrint('Fetched user table online: $foundTable');
+        notifyListeners();
+      } else {
+        debugPrint('No user table found for user: $userId');
+      }
+    } catch (e) {
+      debugPrint('Error fetching user table: $e');
+      _userTable = box.get(cacheKey, defaultValue: null);
+      notifyListeners();
     }
   }
 
-  void updateWallpaper(String newWallpaperUrl, {bool notify = true}) {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      _wallpaperUrl = newWallpaperUrl;
-      _box.put('user_wallpaper_$userId', newWallpaperUrl);
-      debugPrint('Wallpaper updated to: $newWallpaperUrl, notify: $notify');
-      if (notify) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          notifyListeners();
-          debugPrint('notifyListeners called for wallpaper update');
-        });
+  String? getUserTable() {
+    if (_userTable == null) {
+      debugPrint('User table is null, attempting to fetch');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        fetchUserTable();
+      });
+    }
+    return _userTable;
+  }
+
+  void updateProfileImage(String imageUrl,
+      {required bool notify, bool isOnline = true, String? userTable}) {
+    _profileImageUrl = imageUrl;
+    if (userTable != null) {
+      _userTable = userTable;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId != null) {
+        if (!Hive.isBoxOpen('offline_data')) {
+          Hive.openBox('offline_data').then((box) {
+            box.put('user_table_$userId', userTable);
+            debugPrint('Saved user table to Hive: $userTable');
+          });
+        } else {
+          Hive.box('offline_data').put('user_table_$userId', userTable);
+          debugPrint('Saved user table to Hive: $userTable');
+        }
       }
-    } else {
-      debugPrint('No user ID, cannot update wallpaper');
+    }
+    if (notify) {
+      debugPrint('Updating profile image: $imageUrl, notify=$notify');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
+    }
+  }
+
+  void updateWallpaper(String imageUrl,
+      {required bool notify, bool isOnline = true}) {
+    _wallpaperUrl = imageUrl;
+    if (notify) {
+      debugPrint('Updating wallpaper: $imageUrl, notify=$notify');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 }
