@@ -24,14 +24,10 @@ class CustomCacheManager {
 
 class ObjetsDetailsPage extends StatefulWidget {
   final String title;
-  final List<Map<String, dynamic>> items;
-  final String instrumentName;
 
   const ObjetsDetailsPage({
     Key? key,
     required this.title,
-    required this.items,
-    required this.instrumentName,
   }) : super(key: key);
 
   @override
@@ -62,7 +58,6 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     fetchWallpaper();
     fetchProfileImage();
     fetchObjets();
-    filteredItems = List.from(widget.items);
     _searchController.addListener(() {
       filterItems(_searchController.text);
     });
@@ -213,7 +208,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     if (userId == null) return;
 
     final box = Hive.box('offline_data');
-    final cacheKey = 'objets_${widget.instrumentName}_${widget.title}';
+    final cacheKey = 'objets_${widget.title}';
 
     try {
       if (!_isOnline) {
@@ -223,7 +218,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
             filteredItems = List<Map<String, dynamic>>.from(
                 cachedItems.map((item) => Map<String, dynamic>.from(item)));
           });
-        } // If cachedItems is empty, keep filteredItems as is to avoid clearing
+        }
         return;
       }
 
@@ -256,7 +251,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           filteredItems = List<Map<String, dynamic>>.from(
               cachedItems.map((item) => Map<String, dynamic>.from(item)));
         });
-      } // If cache is empty, do not reset filteredItems
+      }
     }
   }
 
@@ -760,7 +755,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
   void filterItems(String query) {
     setState(() {
-      filteredItems = widget.items.where((item) {
+      filteredItems = filteredItems.where((item) {
         final name = (item['name'] as String?)?.toLowerCase() ?? '';
         return query.isEmpty || name.contains(query.toLowerCase());
       }).toList();
@@ -1322,13 +1317,11 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
             await fetchProfileImage();
             await _syncPendingActions();
           } else {
-            // Reload from cache without resetting if cache is empty
             final box = Hive.box('offline_data');
             final userId = supabase.auth.currentUser?.id;
             if (userId != null) {
-              final cachedItems = box.get(
-                  'objets_${widget.instrumentName}_${widget.title}',
-                  defaultValue: []);
+              final cachedItems =
+                  box.get('objets_${widget.title}', defaultValue: []);
               if (cachedItems.isNotEmpty) {
                 setState(() {
                   filteredItems = List<Map<String, dynamic>>.from(cachedItems
@@ -1695,82 +1688,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                           'assets/images/refmmp.png';
                       Widget imageWidget;
 
-                      if (category == 'trompetas') {
-                        imageWidget = Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Stack(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: imagePath.isNotEmpty &&
-                                            !imagePath.startsWith('http') &&
-                                            File(imagePath).existsSync()
-                                        ? Image.file(
-                                            File(imagePath),
-                                            fit: BoxFit.contain,
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    Image.asset(
-                                              'assets/images/refmmp.png',
-                                              fit: BoxFit.contain,
-                                            ),
-                                          )
-                                        : imagePath.isNotEmpty &&
-                                                Uri.tryParse(imagePath)
-                                                        ?.isAbsolute ==
-                                                    true
-                                            ? CachedNetworkImage(
-                                                imageUrl: imagePath,
-                                                cacheManager:
-                                                    CustomCacheManager.instance,
-                                                fit: BoxFit.contain,
-                                                width: double.infinity,
-                                                height: double.infinity,
-                                                placeholder: (context, url) =>
-                                                    const Center(
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          color: Colors.blue),
-                                                ),
-                                                errorWidget:
-                                                    (context, url, error) =>
-                                                        Image.asset(
-                                                  'assets/images/refmmp.png',
-                                                  fit: BoxFit.contain,
-                                                ),
-                                              )
-                                            : Image.asset(
-                                                'assets/images/refmmp.png',
-                                                fit: BoxFit.contain,
-                                              ),
-                                  ),
-                                ),
-                                if (isObtained)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Colors.green,
-                                      size: 20,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      } else if (category == 'avatares') {
+                      if (category == 'avatares') {
                         imageWidget = Padding(
                           padding: const EdgeInsets.all(4.0),
                           child: Container(

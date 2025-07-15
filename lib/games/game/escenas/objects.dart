@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/details/objetsDetails.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/models/profile_image_provider.dart';
@@ -458,6 +459,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     bool isSyncing = false;
+    // ignore: dead_code
     if (isSyncing) {
       debugPrint('Sync already in progress, skipping');
       return;
@@ -1739,15 +1741,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
               ),
               child: TextButton(
                 onPressed: () {
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => ObjetsDetailsPage(
-                  //       title: title,
-                  //       category: title,
-                  //     ),
-                  //   ),
-                  // );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ObjetsDetailsPage(
+                        title: title,
+                        //  category: title,
+                      ),
+                    ),
+                  );
                 },
                 child: Text(
                   'TODOS L@S ${title.toUpperCase()} (${categoryCounts[title] ?? items.length})',
