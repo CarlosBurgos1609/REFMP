@@ -520,6 +520,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     bool isSyncing = false;
+    // ignore: dead_code
     if (isSyncing) {
       return;
     }
@@ -1440,7 +1441,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color.fromARGB(255, 100, 100, 100),
+              color: themeProvider.isDarkMode
+                  ? const Color.fromARGB(255, 34, 34, 34)
+                  : const Color.fromARGB(255, 202, 202, 209),
               width: 2,
             ),
           ),
@@ -1808,6 +1811,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black,
+                            offset: Offset(2, 1),
+                            blurRadius: 8,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -1821,6 +1831,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(2, 1),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     textAlign: TextAlign.center,
                   ),
