@@ -24,7 +24,7 @@ class CustomCacheManager {
     Config(
       key,
       stalePeriod: const Duration(days: 30),
-      maxNrOfCacheObjects: 200,
+      maxNrOfCacheObjects: 80,
     ),
   );
 }
@@ -936,6 +936,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         return;
       }
 
+      // Fetch all objects to get unique categories
       final allObjetsResponse = await supabase.from('objets').select();
       final allObjets = List<Map<String, dynamic>>.from(allObjetsResponse);
       final categories =
@@ -943,11 +944,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
       Map<String, List<Map<String, dynamic>>> grouped = {};
       Map<String, int> counts = {};
 
+      // For each category, fetch count and the 6 most recent objects
       for (var category in categories) {
+        // Fetch total count for the category
         final countResponse =
             await supabase.from('objets').select().eq('category', category);
         counts[category] = countResponse.length;
 
+        // Fetch the 6 most recent objects for the category
         final response = await supabase
             .from('objets')
             .select()
@@ -956,6 +960,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             .limit(6);
         final data = List<Map<String, dynamic>>.from(response);
 
+        // Cache images for each object
         for (var item in data) {
           final imageUrl = item['image_url'] ?? '';
           if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
@@ -1741,12 +1746,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
               ),
               child: TextButton(
                 onPressed: () {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
                       builder: (context) => ObjetsDetailsPage(
                         title: title,
-                        //  category: title,
                       ),
                     ),
                   );
