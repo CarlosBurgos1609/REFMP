@@ -1,3 +1,5 @@
+// ignore_for_file: dead_code
+
 import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -71,41 +73,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
   double? expandedHeight;
   final Map<String, bool> _gifVisibility = {};
   bool _canAddEvent = false;
+  final Map<String, bool> _imageLoadStatus = {}; // Track image load status
 
   @override
   void initState() {
     super.initState();
     _initializeHive();
-    _checkConnectivityStatus();
-    _checkCanAddEvent();
-    _initializeUserData();
-    fetchObjets();
-    fetchUserObjets();
+    _checkConnectivityAndInitialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadImageHeight();
     });
     Connectivity().onConnectivityChanged.listen((result) async {
       bool isOnline = result != ConnectivityResult.none;
-      if (mounted) {
-        setState(() {
-          _isOnline = isOnline;
-        });
-      }
-      if (isOnline) {
-        await _syncPendingActions();
-        await _checkCanAddEvent();
-        await fetchObjets();
-        await fetchUserObjets();
-        await fetchTotalCoins();
-        await fetchUserProfileImage();
-        await fetchWallpaper();
-      }
+      await _updateConnectivityStatus(isOnline);
     });
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   Future<void> _initializeHive() async {
@@ -114,6 +95,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
     if (!Hive.isBoxOpen('pending_actions')) {
       await Hive.openBox('pending_actions');
+    }
+  }
+
+  Future<void> _checkConnectivityAndInitialize() async {
+    bool isOnline = await _checkConnectivityStatus();
+    await _initializeUserData();
+    await _checkCanAddEvent();
+    await fetchObjets();
+    await fetchUserObjets();
+    await fetchTotalCoins();
+    await fetchUserProfileImage();
+    await fetchWallpaper();
+    if (isOnline) {
+      await _syncPendingActions();
     }
   }
 
@@ -134,16 +129,24 @@ class _ObjetsPageState extends State<ObjetsPage> {
     return isOnline;
   }
 
-  Future<void> _checkCanAddEvent() async {
-    if (!_isOnline) {
-      if (mounted) {
-        setState(() {
-          _canAddEvent = false;
-        });
-      }
-      return;
+  Future<void> _updateConnectivityStatus(bool isOnline) async {
+    if (mounted) {
+      setState(() {
+        _isOnline = isOnline;
+      });
     }
+    if (isOnline) {
+      await _syncPendingActions();
+      await _checkCanAddEvent();
+      await fetchObjets();
+      await fetchUserObjets();
+      await fetchTotalCoins();
+      await fetchUserProfileImage();
+      await fetchWallpaper();
+    }
+  }
 
+  Future<void> _checkCanAddEvent() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       if (mounted) {
@@ -249,11 +252,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
       if (cachedUrl == url &&
           cachedPath != null &&
           File(cachedPath).existsSync()) {
+        _imageLoadStatus[cacheKey] = true;
         return cachedPath;
       }
     }
 
     if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
+      _imageLoadStatus[cacheKey] = false;
       return 'assets/images/refmmp.png';
     }
 
@@ -261,8 +266,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
       await box.put(cacheKey, {'path': filePath, 'url': url});
+      _imageLoadStatus[cacheKey] = true;
       return filePath;
     } catch (e) {
+      _imageLoadStatus[cacheKey] = false;
       return 'assets/images/refmmp.png';
     }
   }
@@ -407,7 +414,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             ? cachedProfileImage
             : 'assets/images/refmmp.png';
         profileImageProvider.updateProfileImage(profileImagePath,
-            notify: true, isOnline: false);
+            notify: false, isOnline: false);
         return;
       }
 
@@ -441,7 +448,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
       }
       imageUrl ??= 'assets/images/refmmp.png';
       profileImageProvider.updateProfileImage(imageUrl,
-          notify: true, isOnline: true, userTable: userTable);
+          notify: false, isOnline: true, userTable: userTable);
       await box.put(cacheKey, imageUrl);
       await box.put('user_table_${user.id}', userTable);
     } catch (e) {
@@ -449,7 +456,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final cachedProfileImage =
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
       profileImageProvider.updateProfileImage(cachedProfileImage,
-          notify: true, isOnline: false);
+          notify: false, isOnline: false);
     }
   }
 
@@ -472,7 +479,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             ? cachedWallpaper
             : 'assets/images/refmmp.png';
         profileImageProvider.updateWallpaper(wallpaperPath,
-            notify: true, isOnline: false);
+            notify: false, isOnline: false);
         await _loadImageHeight();
         return;
       }
@@ -494,7 +501,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         imageUrl = localPath;
       }
       profileImageProvider.updateWallpaper(imageUrl!,
-          notify: true, isOnline: true);
+          notify: false, isOnline: true);
       await box.put(cacheKey, imageUrl);
       await _loadImageHeight();
     } catch (e) {
@@ -502,7 +509,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final cachedWallpaper =
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
       profileImageProvider.updateWallpaper(cachedWallpaper,
-          notify: true, isOnline: false);
+          notify: false, isOnline: false);
       await _loadImageHeight();
     }
   }
@@ -520,7 +527,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     bool isSyncing = false;
-    // ignore: dead_code
     if (isSyncing) {
       return;
     }
@@ -579,7 +585,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 final profileImageProvider =
                     Provider.of<ProfileImageProvider>(context, listen: false);
                 profileImageProvider.updateWallpaper(localPath,
-                    notify: true, isOnline: _isOnline);
+                    notify: false, isOnline: _isOnline);
                 await _loadImageHeight();
               }
             }
@@ -600,7 +606,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 final profileImageProvider =
                     Provider.of<ProfileImageProvider>(context, listen: false);
                 profileImageProvider.updateProfileImage(localPath,
-                    notify: true, isOnline: _isOnline, userTable: table);
+                    notify: false, isOnline: _isOnline, userTable: table);
               }
             } else {
               continue;
@@ -661,7 +667,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
           });
           await box.put('user_wallpaper_$userId', localPath);
           profileImageProvider.updateWallpaper(localPath,
-              notify: true, isOnline: false);
+              notify: false, isOnline: false);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -678,7 +684,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
               .update({'wallpapers': imageUrl}).eq('user_id', userId);
           await box.put('user_wallpaper_$userId', localPath);
           profileImageProvider.updateWallpaper(localPath,
-              notify: true, isOnline: true);
+              notify: false, isOnline: true);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -741,7 +747,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
           });
           await box.put('user_profile_image_$userId', localPath);
           profileImageProvider.updateProfileImage(localPath,
-              notify: true, isOnline: false, userTable: table);
+              notify: false, isOnline: false, userTable: table);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -759,7 +765,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             await box.put('user_profile_image_$userId', localPath);
             await box.put('user_table_$userId', table);
             profileImageProvider.updateProfileImage(localPath,
-                notify: true, isOnline: true, userTable: table);
+                notify: false, isOnline: true, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -773,7 +779,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             await box.put('user_profile_image_$userId', localPath);
             await box.put('user_table_$userId', table);
             profileImageProvider.updateProfileImage(localPath,
-                notify: true, isOnline: false, userTable: table);
+                notify: false, isOnline: false, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -959,6 +965,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
             categoryCounts = Map<String, int>.from(cachedCounts);
           });
         }
+        debugPrint('Loaded cached objects for ${widget.instrumentName}');
         return;
       }
 
@@ -1010,9 +1017,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
       }
       await box.put(cacheKey, grouped);
       await box.put(countCacheKey, counts);
-      debugPrint('Fetched objets online: $groupedObjets');
+      debugPrint('Fetched objects online for ${widget.instrumentName}');
       if (cachedImages.isNotEmpty) {
-        debugPrint('All cached images: [\n  ${cachedImages.join(',\n  ')}\n]');
+        debugPrint(
+            'All images cached successfully: ${cachedImages.length} items');
       }
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
@@ -1755,16 +1763,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
         body: RefreshIndicator(
           color: Colors.blue,
           onRefresh: () async {
-            await _checkConnectivityStatus();
-            await _checkCanAddEvent();
-            await fetchObjets();
-            await fetchUserObjets();
-            await fetchTotalCoins();
-            await fetchUserProfileImage();
-            await fetchWallpaper();
-            if (_isOnline) {
-              await _syncPendingActions();
-            }
+            await _checkConnectivityAndInitialize();
           },
           child: CustomScrollView(
             slivers: [
