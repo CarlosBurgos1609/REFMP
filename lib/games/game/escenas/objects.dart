@@ -17,6 +17,7 @@ import 'package:refmp/routes/navigationBar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
+import 'package:visibility_detector/visibility_detector.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -24,9 +25,31 @@ class CustomCacheManager {
     Config(
       key,
       stalePeriod: const Duration(days: 30),
-      maxNrOfCacheObjects: 80,
+      maxNrOfCacheObjects: 50,
     ),
   );
+}
+
+class FloatingActionButtonWidget extends StatelessWidget {
+  final bool canAddEvent;
+  final VoidCallback onPressed;
+
+  const FloatingActionButtonWidget({
+    Key? key,
+    required this.canAddEvent,
+    required this.onPressed,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return canAddEvent
+        ? FloatingActionButton(
+            backgroundColor: Colors.blue,
+            onPressed: onPressed,
+            child: const Icon(Icons.add, color: Colors.white),
+          )
+        : const SizedBox.shrink();
+  }
 }
 
 class ObjetsPage extends StatefulWidget {
@@ -46,12 +69,15 @@ class _ObjetsPageState extends State<ObjetsPage> {
   bool _isOnline = false;
   int _selectedIndex = 3;
   double? expandedHeight;
+  final Map<String, bool> _gifVisibility = {};
+  bool _canAddEvent = false;
 
   @override
   void initState() {
     super.initState();
     _initializeHive();
     _checkConnectivityStatus();
+    _checkCanAddEvent();
     _initializeUserData();
     fetchObjets();
     fetchUserObjets();
@@ -60,11 +86,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
     });
     Connectivity().onConnectivityChanged.listen((result) async {
       bool isOnline = result != ConnectivityResult.none;
-      setState(() {
-        _isOnline = isOnline;
-      });
+      if (mounted) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+      }
       if (isOnline) {
         await _syncPendingActions();
+        await _checkCanAddEvent();
         await fetchObjets();
         await fetchUserObjets();
         await fetchTotalCoins();
@@ -74,14 +103,17 @@ class _ObjetsPageState extends State<ObjetsPage> {
     });
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _initializeHive() async {
     if (!Hive.isBoxOpen('offline_data')) {
       await Hive.openBox('offline_data');
-      debugPrint('Hive box offline_data opened successfully');
     }
     if (!Hive.isBoxOpen('pending_actions')) {
       await Hive.openBox('pending_actions');
-      debugPrint('Hive box pending_actions opened successfully');
     }
   }
 
@@ -92,13 +124,54 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final result = await InternetAddress.lookup('google.com');
       isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
-      debugPrint('Error en verificación de internet: $e');
       isOnline = false;
     }
-    setState(() {
-      _isOnline = isOnline;
-    });
+    if (mounted) {
+      setState(() {
+        _isOnline = isOnline;
+      });
+    }
     return isOnline;
+  }
+
+  Future<void> _checkCanAddEvent() async {
+    if (!_isOnline) {
+      if (mounted) {
+        setState(() {
+          _canAddEvent = false;
+        });
+      }
+      return;
+    }
+
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      if (mounted) {
+        setState(() {
+          _canAddEvent = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final response = await supabase
+          .from('users')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (mounted) {
+        setState(() {
+          _canAddEvent = response != null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _canAddEvent = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadImageHeight() async {
@@ -106,44 +179,42 @@ class _ObjetsPageState extends State<ObjetsPage> {
         Provider.of<ProfileImageProvider>(context, listen: false);
     final wallpaperUrl = profileImageProvider.wallpaperUrl;
 
-    debugPrint('Loading image height for wallpaper: $wallpaperUrl');
     if (wallpaperUrl == null || wallpaperUrl.isEmpty) {
-      debugPrint('No valid wallpaper URL, setting default height');
-      setState(() {
-        expandedHeight = 400.0;
-      });
+      if (mounted) {
+        setState(() {
+          expandedHeight = 400.0;
+        });
+      }
       return;
     }
 
     try {
       late ImageProvider imageProvider;
       if (wallpaperUrl.startsWith('assets/')) {
-        debugPrint('Using asset wallpaper: $wallpaperUrl');
         imageProvider = AssetImage(wallpaperUrl);
       } else if (!wallpaperUrl.startsWith('http') &&
           File(wallpaperUrl).existsSync()) {
-        debugPrint('Using local wallpaper: $wallpaperUrl');
         imageProvider = FileImage(File(wallpaperUrl));
       } else if (Uri.tryParse(wallpaperUrl)?.isAbsolute == true) {
-        debugPrint('Using network wallpaper: $wallpaperUrl');
         imageProvider = NetworkImage(wallpaperUrl);
       } else {
-        debugPrint('Invalid wallpaper URL, using default');
         imageProvider = const AssetImage('assets/images/refmmp.png');
       }
 
       final image = await _loadImage(imageProvider);
       final screenWidth = MediaQuery.of(context).size.width;
       final aspectRatio = image.width / image.height;
-      setState(() {
-        expandedHeight = screenWidth / aspectRatio;
-        debugPrint('Set expandedHeight to $expandedHeight');
-      });
+      if (mounted) {
+        setState(() {
+          expandedHeight = screenWidth / aspectRatio;
+        });
+      }
     } catch (e) {
-      debugPrint('Error loading image height: $e');
-      setState(() {
-        expandedHeight = 400.0;
-      });
+      if (mounted) {
+        setState(() {
+          expandedHeight = 400.0;
+        });
+      }
     }
   }
 
@@ -160,7 +231,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
         imageStream.removeListener(listener!);
       },
       onError: (exception, stackTrace) {
-        debugPrint('Error in _loadImage: $exception');
         completer.completeError(exception, stackTrace);
         imageStream.removeListener(listener!);
       },
@@ -179,13 +249,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
       if (cachedUrl == url &&
           cachedPath != null &&
           File(cachedPath).existsSync()) {
-        debugPrint('Using cached image for $cacheKey: $cachedPath');
         return cachedPath;
       }
     }
 
     if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
-      debugPrint('Invalid URL: $url, returning default image');
       return 'assets/images/refmmp.png';
     }
 
@@ -193,10 +261,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
       await box.put(cacheKey, {'path': filePath, 'url': url});
-      debugPrint('Image downloaded and cached for $cacheKey: $filePath');
       return filePath;
     } catch (e) {
-      debugPrint('Error downloading image for $cacheKey: $e');
       return 'assets/images/refmmp.png';
     }
   }
@@ -227,7 +293,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'coins': 0,
           });
           await box.put('user_coins_$userId', 0);
-          debugPrint('User initialized in users_games: $userId');
         }
       }
     } catch (e) {
@@ -244,10 +309,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     try {
       if (!_isOnline) {
-        setState(() {
-          totalCoins = box.get(cacheKey, defaultValue: 0);
-        });
-        debugPrint('Loaded coins offline: $totalCoins');
+        if (mounted) {
+          setState(() {
+            totalCoins = box.get(cacheKey, defaultValue: 0);
+          });
+        }
         return;
       }
 
@@ -258,24 +324,27 @@ class _ObjetsPageState extends State<ObjetsPage> {
           .maybeSingle();
 
       if (response != null && response['coins'] != null) {
-        setState(() {
-          totalCoins = response['coins'] as int;
-        });
+        if (mounted) {
+          setState(() {
+            totalCoins = response['coins'] as int;
+          });
+        }
         await box.put(cacheKey, totalCoins);
-        debugPrint('Fetched coins online: $totalCoins');
       } else {
-        setState(() {
-          totalCoins = 0;
-        });
+        if (mounted) {
+          setState(() {
+            totalCoins = 0;
+          });
+        }
         await box.put(cacheKey, 0);
-        debugPrint('No coins found, set to 0');
       }
     } catch (e) {
       debugPrint('Error al obtener las monedas: $e');
-      setState(() {
-        totalCoins = box.get(cacheKey, defaultValue: 0);
-      });
-      debugPrint('Loaded cached coins due to error: $totalCoins');
+      if (mounted) {
+        setState(() {
+          totalCoins = box.get(cacheKey, defaultValue: 0);
+        });
+      }
     }
   }
 
@@ -289,10 +358,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
     try {
       if (!_isOnline) {
         final cachedObjets = box.get(cacheKey, defaultValue: []);
-        setState(() {
-          userObjets = List<dynamic>.from(cachedObjets);
-        });
-        debugPrint('Loaded user objets offline: $userObjets');
+        if (mounted) {
+          setState(() {
+            userObjets = List<dynamic>.from(cachedObjets);
+          });
+        }
         return;
       }
 
@@ -301,18 +371,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
           .select('objet_id')
           .eq('user_id', userId);
       final objets = response.map((item) => item['objet_id']).toList();
-      setState(() {
-        userObjets = objets;
-      });
+      if (mounted) {
+        setState(() {
+          userObjets = objets;
+        });
+      }
       await box.put(cacheKey, objets);
-      debugPrint('Fetched user objets online: $objets');
     } catch (e) {
       debugPrint('Error al obtener objetos del usuario: $e');
       final cachedObjets = box.get(cacheKey, defaultValue: []);
-      setState(() {
-        userObjets = List<dynamic>.from(cachedObjets);
-      });
-      debugPrint('Loaded cached user objets due to error: $userObjets');
+      if (mounted) {
+        setState(() {
+          userObjets = List<dynamic>.from(cachedObjets);
+        });
+      }
     }
   }
 
@@ -325,7 +397,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final profileImageProvider =
         Provider.of<ProfileImageProvider>(context, listen: false);
 
-    debugPrint('Fetching profile image for user: ${user.id}');
     try {
       if (!_isOnline) {
         final cachedProfileImage = box.get(cacheKey, defaultValue: null);
@@ -337,7 +408,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
             : 'assets/images/refmmp.png';
         profileImageProvider.updateProfileImage(profileImagePath,
             notify: true, isOnline: false);
-        debugPrint('Loaded cached profile image offline: $profileImagePath');
         return;
       }
 
@@ -374,15 +444,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
           notify: true, isOnline: true, userTable: userTable);
       await box.put(cacheKey, imageUrl);
       await box.put('user_table_${user.id}', userTable);
-      debugPrint('Fetched profile image online: $imageUrl, table: $userTable');
     } catch (e) {
       debugPrint('Error al obtener la imagen del perfil: $e');
       final cachedProfileImage =
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
       profileImageProvider.updateProfileImage(cachedProfileImage,
           notify: true, isOnline: false);
-      debugPrint(
-          'Loaded cached profile image due to error: $cachedProfileImage');
     }
   }
 
@@ -395,7 +462,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final profileImageProvider =
         Provider.of<ProfileImageProvider>(context, listen: false);
 
-    debugPrint('Fetching wallpaper for user: $userId');
     try {
       if (!_isOnline) {
         final cachedWallpaper = box.get(cacheKey, defaultValue: null);
@@ -407,7 +473,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
             : 'assets/images/refmmp.png';
         profileImageProvider.updateWallpaper(wallpaperPath,
             notify: true, isOnline: false);
-        debugPrint('Loaded cached wallpaper offline: $wallpaperPath');
         await _loadImageHeight();
         return;
       }
@@ -431,7 +496,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
       profileImageProvider.updateWallpaper(imageUrl!,
           notify: true, isOnline: true);
       await box.put(cacheKey, imageUrl);
-      debugPrint('Fetched wallpaper online: $imageUrl');
       await _loadImageHeight();
     } catch (e) {
       debugPrint('Error al obtener el fondo de pantalla: $e');
@@ -439,7 +503,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
           box.get(cacheKey, defaultValue: 'assets/images/refmmp.png');
       profileImageProvider.updateWallpaper(cachedWallpaper,
           notify: true, isOnline: false);
-      debugPrint('Loaded cached wallpaper due to error: $cachedWallpaper');
       await _loadImageHeight();
     }
   }
@@ -447,21 +510,17 @@ class _ObjetsPageState extends State<ObjetsPage> {
   Future<void> _syncPendingActions() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
-      debugPrint('No user ID found, skipping sync');
       return;
     }
 
     final pendingBox = Hive.box('pending_actions');
     final pendingActions = pendingBox.values.toList();
     if (pendingActions.isEmpty) {
-      debugPrint('No pending actions to sync');
       return;
     }
 
     bool isSyncing = false;
-    // ignore: dead_code
     if (isSyncing) {
-      debugPrint('Sync already in progress, skipping');
       return;
     }
     isSyncing = true;
@@ -470,13 +529,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
       for (var action in List.from(pendingActions)) {
         final actionUserId = action['user_id'] as String?;
         if (actionUserId != userId) {
-          debugPrint('Skipping action for different user: $actionUserId');
           continue;
         }
 
         final actionType = action['action'] as String?;
         if (actionType == null) {
-          debugPrint('Invalid action type, skipping');
           continue;
         }
 
@@ -501,11 +558,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   totalCoins = newCoins;
                   userObjets.add(action['objet_id']);
                 });
-                debugPrint(
-                    'Synced purchase: coins=$newCoins, objet_id=${action['objet_id']}');
               }
             } else {
-              debugPrint('Insufficient coins for purchase: $newCoins');
               continue;
             }
           } else if (actionType == 'use_wallpaper') {
@@ -526,7 +580,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 profileImageProvider.updateWallpaper(localPath,
                     notify: true, isOnline: _isOnline);
                 await _loadImageHeight();
-                debugPrint('Synced wallpaper: $localPath');
               }
             }
           } else if (actionType == 'use_avatar') {
@@ -547,19 +600,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
                     Provider.of<ProfileImageProvider>(context, listen: false);
                 profileImageProvider.updateProfileImage(localPath,
                     notify: true, isOnline: _isOnline, userTable: table);
-                debugPrint('Synced avatar: $localPath, table: $table');
               }
             } else {
-              debugPrint(
-                  'Error: Missing table or image_url for use_avatar action');
               continue;
             }
           }
           final index = pendingBox.values.toList().indexOf(action);
           if (index != -1) {
             await pendingBox.deleteAt(index);
-            debugPrint(
-                'Deleted synced action: $actionType for object ${action['objet_id']}');
           }
         } catch (e) {
           debugPrint('Error syncing action $actionType: $e');
@@ -576,18 +624,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
   Future<void> _useObject(Map<String, dynamic> item, String category) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
-      debugPrint('No user ID found, cannot use object');
       return;
     }
 
-    // Ensure Hive boxes are open
     if (!Hive.isBoxOpen('offline_data')) {
       await Hive.openBox('offline_data');
-      debugPrint('Opened offline_data box in _useObject');
     }
     if (!Hive.isBoxOpen('pending_actions')) {
       await Hive.openBox('pending_actions');
-      debugPrint('Opened pending_actions box in _useObject');
     }
 
     final box = Hive.box('offline_data');
@@ -599,8 +643,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
         category == 'fondos' ? 'wallpaper_$userId' : 'profile_image_$userId';
     String localPath = imageUrl;
 
-    debugPrint(
-        'Using object: ${item['name']}, category: $category, imageUrl: $imageUrl');
     if (imageUrl != 'assets/images/refmmp.png' &&
         Uri.tryParse(imageUrl)?.isAbsolute == true) {
       localPath = await _downloadAndCacheImage(imageUrl, cacheKey);
@@ -621,13 +663,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
               notify: true, isOnline: false);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      'Fondo de pantalla actualizado offline, se sincronizará cuando estés en línea')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        'Fondo de pantalla actualizado offline, se sincronizará cuando estés en línea')),
+              );
+            }
           });
-          debugPrint('Updated wallpaper offline: $localPath');
         } else {
           await supabase
               .from('users_games')
@@ -637,17 +680,17 @@ class _ObjetsPageState extends State<ObjetsPage> {
               notify: true, isOnline: true);
           await _loadImageHeight();
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Fondo de pantalla actualizado con éxito')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text('Fondo de pantalla actualizado con éxito')),
+              );
+            }
           });
-          debugPrint('Updated wallpaper online: $localPath');
         }
       } else if (category == 'avatares') {
         String? table;
         if (_isOnline) {
-          // Buscar la tabla del usuario en Supabase
           List<String> tables = [
             'users',
             'students',
@@ -666,24 +709,23 @@ class _ObjetsPageState extends State<ObjetsPage> {
             if (response != null) {
               table = t;
               await box.put('user_table_$userId', table);
-              debugPrint('Found user table online: $table');
               break;
             }
           }
         } else {
-          // Usar la tabla almacenada en caché
           table = box.get('user_table_$userId', defaultValue: null);
-          debugPrint('Loaded user table offline: $table');
         }
 
         if (table == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Error: No se encontró la tabla del usuario')),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content:
+                        Text('Error: No se encontró la tabla del usuario')),
+              );
+            }
           });
-          debugPrint('Error: No user table found for avatar update');
           return;
         }
 
@@ -700,13 +742,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
           profileImageProvider.updateProfileImage(localPath,
               notify: true, isOnline: false, userTable: table);
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      'Foto de perfil actualizada offline, se sincronizará cuando estés en línea')),
-            );
-            debugPrint(
-                'Updated profile image offline: $localPath, notifying listeners');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        'Foto de perfil actualizada offline, se sincronizará cuando estés en línea')),
+              );
+            }
           });
         } else {
           try {
@@ -714,50 +756,53 @@ class _ObjetsPageState extends State<ObjetsPage> {
                 .from(table)
                 .update({'profile_image': imageUrl}).eq('user_id', userId);
             await box.put('user_profile_image_$userId', localPath);
-            await box.put(
-                'user_table_$userId', table); // Guardar tabla en caché
+            await box.put('user_table_$userId', table);
             profileImageProvider.updateProfileImage(localPath,
                 notify: true, isOnline: true, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Foto de perfil actualizada con éxito')),
-              );
-              debugPrint(
-                  'Updated profile image online: $localPath, table: $table');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Foto de perfil actualizada con éxito')),
+                );
+              }
             });
           } catch (e) {
             debugPrint('Error updating profile image in Supabase: $e');
             await box.put('user_profile_image_$userId', localPath);
-            await box.put(
-                'user_table_$userId', table); // Guardar tabla en caché
+            await box.put('user_table_$userId', table);
             profileImageProvider.updateProfileImage(localPath,
                 notify: true, isOnline: false, userTable: table);
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content:
-                        Text('Error al actualizar la foto de perfil en línea')),
-              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(
+                          'Error al actualizar la foto de perfil en línea')),
+                );
+              }
             });
           }
         }
       } else {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Objeto ${item['name']} usado${_isOnline ? '' : ' offline'}')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Objeto ${item['name']} usado${_isOnline ? '' : ' offline'}')),
+            );
+          }
         });
-        debugPrint(
-            'Used object: ${item['name']} ${_isOnline ? 'online' : 'offline'}');
       }
     } catch (e) {
       debugPrint('Error al usar objeto: $e');
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al usar el objeto: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al usar el objeto: $e')),
+          );
+        }
       });
     }
   }
@@ -773,11 +818,12 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
     if (newCoins < 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: No tienes suficientes monedas')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: No tienes suficientes monedas')),
+          );
+        }
       });
-      debugPrint('Insufficient coins: $totalCoins < $price');
       return;
     }
 
@@ -794,19 +840,21 @@ class _ObjetsPageState extends State<ObjetsPage> {
         final cachedObjets = box.get('user_objets_$userId', defaultValue: []);
         cachedObjets.add(item['id']);
         await box.put('user_objets_$userId', cachedObjets);
-        setState(() {
-          totalCoins = newCoins;
-          userObjets.add(item['id']);
-        });
+        if (mounted) {
+          setState(() {
+            totalCoins = newCoins;
+            userObjets.add(item['id']);
+          });
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Compra guardada para sincronizar cuando estés en línea')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Compra guardada para sincronizar cuando estés en línea')),
+            );
+          }
         });
-        debugPrint(
-            'Purchase saved offline: objet_id=${item['id']}, newCoins=$newCoins');
         return;
       }
 
@@ -821,18 +869,20 @@ class _ObjetsPageState extends State<ObjetsPage> {
       final cachedObjets = box.get('user_objets_$userId', defaultValue: []);
       cachedObjets.add(item['id']);
       await box.put('user_objets_$userId', cachedObjets);
-      setState(() {
-        totalCoins = newCoins;
-        userObjets.add(item['id']);
-      });
-      debugPrint(
-          'Purchase completed online: objet_id=${item['id']}, newCoins=$newCoins');
+      if (mounted) {
+        setState(() {
+          totalCoins = newCoins;
+          userObjets.add(item['id']);
+        });
+      }
     } catch (e) {
       debugPrint('Error al comprar objeto: $e');
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al comprar el objeto: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al comprar el objeto: $e')),
+          );
+        }
       });
     }
   }
@@ -888,70 +938,43 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
   }
 
-  Future<bool> _canAddEvent() async {
-    if (!_isOnline) {
-      debugPrint('Sin conexión, no se muestra el botón.');
-      return false;
-    }
-
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('No hay usuario autenticado.');
-      return false;
-    }
-
-    try {
-      final response = await supabase
-          .from('users')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-      final userExists = response != null;
-      debugPrint('Usuario existe en tabla users: $userExists');
-      return userExists;
-    } catch (e) {
-      debugPrint('Error al verificar usuario en users: $e');
-      return false;
-    }
-  }
-
   Future<void> fetchObjets() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'objets_${widget.instrumentName}';
     final countCacheKey = 'category_counts_${widget.instrumentName}';
+    final List<String> cachedImages = [];
 
     try {
       if (!_isOnline) {
         final cachedObjets = box.get(cacheKey, defaultValue: {});
         final cachedCounts = box.get(countCacheKey, defaultValue: {});
-        setState(() {
-          groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
-              cachedObjets.map((key, value) => MapEntry(
-                  key,
-                  List<Map<String, dynamic>>.from(
-                      value.map((item) => Map<String, dynamic>.from(item))))));
-          categoryCounts = Map<String, int>.from(cachedCounts);
-        });
-        debugPrint('Loaded objets offline: $groupedObjets');
+        if (mounted) {
+          setState(() {
+            groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
+                cachedObjets.map((key, value) => MapEntry(
+                    key,
+                    List<Map<String, dynamic>>.from(value
+                        .map((item) => Map<String, dynamic>.from(item))))));
+            categoryCounts = Map<String, int>.from(cachedCounts);
+          });
+        }
         return;
       }
 
-      // Fetch all objects to get unique categories
-      final allObjetsResponse = await supabase.from('objets').select();
-      final allObjets = List<Map<String, dynamic>>.from(allObjetsResponse);
-      final categories =
-          allObjets.map((item) => item['category'] as String).toSet().toList();
+      final allObjetsResponse =
+          await supabase.from('objets').select('category');
+      final categories = allObjetsResponse
+          .map((item) => item['category'] as String)
+          .toSet()
+          .toList();
       Map<String, List<Map<String, dynamic>>> grouped = {};
       Map<String, int> counts = {};
 
-      // For each category, fetch count and the 6 most recent objects
       for (var category in categories) {
-        // Fetch total count for the category
         final countResponse =
             await supabase.from('objets').select().eq('category', category);
         counts[category] = countResponse.length;
 
-        // Fetch the 6 most recent objects for the category
         final response = await supabase
             .from('objets')
             .select()
@@ -960,7 +983,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
             .limit(6);
         final data = List<Map<String, dynamic>>.from(response);
 
-        // Cache images for each object
         for (var item in data) {
           final imageUrl = item['image_url'] ?? '';
           if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
@@ -968,34 +990,43 @@ class _ObjetsPageState extends State<ObjetsPage> {
               final localPath =
                   await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
               item['local_image_path'] = localPath;
+              cachedImages
+                  .add('Cached image for objet_${item['id']}: $localPath');
             } catch (e) {
               debugPrint('Error caching object image for ${item['id']}: $e');
             }
           }
+          _gifVisibility['${item['id']}'] = false;
         }
         grouped[category] = data;
       }
 
-      setState(() {
-        groupedObjets = grouped;
-        categoryCounts = counts;
-      });
+      if (mounted) {
+        setState(() {
+          groupedObjets = grouped;
+          categoryCounts = counts;
+        });
+      }
       await box.put(cacheKey, grouped);
       await box.put(countCacheKey, counts);
       debugPrint('Fetched objets online: $groupedObjets');
+      if (cachedImages.isNotEmpty) {
+        debugPrint('All cached images: [\n  ${cachedImages.join(',\n  ')}\n]');
+      }
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
       final cachedObjets = box.get(cacheKey, defaultValue: {});
       final cachedCounts = box.get(countCacheKey, defaultValue: {});
-      setState(() {
-        groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
-            cachedObjets.map((key, value) => MapEntry(
-                key,
-                List<Map<String, dynamic>>.from(
-                    value.map((item) => Map<String, dynamic>.from(item))))));
-        categoryCounts = Map<String, int>.from(cachedCounts);
-      });
-      debugPrint('Loaded cached objets due to error: $groupedObjets');
+      if (mounted) {
+        setState(() {
+          groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
+              cachedObjets.map((key, value) => MapEntry(
+                  key,
+                  List<Map<String, dynamic>>.from(
+                      value.map((item) => Map<String, dynamic>.from(item))))));
+          categoryCounts = Map<String, int>.from(cachedCounts);
+        });
+      }
     }
   }
 
@@ -1009,8 +1040,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
         item['image_url'] ??
         'assets/images/refmmp.png';
 
-    debugPrint(
-        'Showing dialog for object: ${item['name']}, imagePath: $imagePath');
     showDialog(
       context: context,
       builder: (context) {
@@ -1070,52 +1099,37 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   child: ClipRRect(
                     borderRadius:
                         BorderRadius.circular(category == 'avatares' ? 75 : 8),
-                    child: imagePath.isNotEmpty &&
-                            !imagePath.startsWith('http') &&
-                            File(imagePath).existsSync()
-                        ? Image.file(
-                            File(imagePath),
+                    child: imagePath.isNotEmpty && imagePath.startsWith('http')
+                        ? CachedNetworkImage(
+                            imageUrl: imagePath,
+                            cacheManager: CustomCacheManager.instance,
                             fit: BoxFit.cover,
                             width: double.infinity,
                             height: double.infinity,
-                            frameBuilder: (context, child, frame,
-                                wasSynchronouslyLoaded) {
-                              return child;
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              debugPrint(
-                                  'Error loading local image in dialog: $error, path: $imagePath');
+                            fadeInDuration: const Duration(milliseconds: 200),
+                            placeholder: (context, url) => const Center(
+                              child:
+                                  CircularProgressIndicator(color: Colors.blue),
+                            ),
+                            errorWidget: (context, url, error) {
                               return Image.asset(
                                 'assets/images/refmmp.png',
                                 fit: BoxFit.cover,
                               );
                             },
                           )
-                        : imagePath.isNotEmpty &&
-                                Uri.tryParse(imagePath)?.isAbsolute == true
-                            ? CachedNetworkImage(
-                                imageUrl: imagePath,
-                                cacheManager: CustomCacheManager.instance,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                placeholder: (context, url) => const Center(
-                                  child: CircularProgressIndicator(
-                                      color: Colors.blue),
-                                ),
-                                errorWidget: (context, url, error) {
-                                  debugPrint(
-                                      'Error loading network image in dialog: $error, url: $url');
-                                  return Image.asset(
-                                    'assets/images/refmmp.png',
-                                    fit: BoxFit.cover,
-                                  );
-                                },
-                              )
-                            : Image.asset(
+                        : Image.file(
+                            File(imagePath),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Image.asset(
                                 'assets/images/refmmp.png',
                                 fit: BoxFit.cover,
-                              ),
+                              );
+                            },
+                          ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1448,287 +1462,91 @@ class _ObjetsPageState extends State<ObjetsPage> {
               final imagePath = item['local_image_path'] ??
                   item['image_url'] ??
                   'assets/images/refmmp.png';
-              Widget imageWidget;
+              final visibilityKey = '${item['id']}';
 
-              debugPrint(
-                  'Building grid item: ${item['name']}, imagePath: $imagePath');
-              if (category == 'trompetas') {
-                imageWidget = Padding(
-                  padding: const EdgeInsets.all(4.0),
+              return VisibilityDetector(
+                key: Key(visibilityKey),
+                onVisibilityChanged: (visibilityInfo) {
+                  final visiblePercentage =
+                      visibilityInfo.visibleFraction * 100;
+                  if (mounted) {
+                    setState(() {
+                      _gifVisibility[visibilityKey] = visiblePercentage > 50;
+                    });
+                  }
+                },
+                child: GestureDetector(
+                  onTap: () => _showObjectDialog(context, item, category),
                   child: Container(
-                    width: double.infinity,
-                    height: double.infinity,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.blue,
+                        width: 1.5,
+                      ),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Stack(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: imagePath.isNotEmpty &&
-                                    !imagePath.startsWith('http') &&
-                                    File(imagePath).existsSync()
-                                ? Image.file(
-                                    File(imagePath),
-                                    fit: BoxFit.contain,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    frameBuilder: (context, child, frame,
-                                        wasSynchronouslyLoaded) {
-                                      return child;
-                                    },
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.contain,
-                                    ),
-                                  )
-                                : imagePath.isNotEmpty &&
-                                        Uri.tryParse(imagePath)?.isAbsolute ==
-                                            true
-                                    ? CachedNetworkImage(
-                                        imageUrl: imagePath,
-                                        cacheManager:
-                                            CustomCacheManager.instance,
-                                        fit: BoxFit.contain,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        placeholder: (context, url) =>
-                                            const Center(
-                                          child: CircularProgressIndicator(
-                                              color: Colors.blue),
-                                        ),
-                                        errorWidget: (context, url, error) =>
-                                            Image.asset(
-                                          'assets/images/refmmp.png',
-                                          fit: BoxFit.contain,
-                                        ),
-                                      )
-                                    : Image.asset(
-                                        'assets/images/refmmp.png',
-                                        fit: BoxFit.contain,
-                                      ),
-                          ),
+                        Expanded(
+                          child: _buildImageWidget(
+                              category, imagePath, isObtained, visibilityKey),
                         ),
-                        if (isObtained)
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: Icon(
-                              Icons.check_circle_rounded,
-                              color: Colors.green,
-                              size: 20,
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item['name'] ?? '',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: themeProvider.isDarkMode
+                                ? Color.fromARGB(255, 255, 255, 255)
+                                : Color.fromARGB(255, 33, 150, 243),
+                            fontWeight: FontWeight.bold,
                           ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (isObtained) ...[
+                              Icon(
+                                Icons.check_circle_rounded,
+                                color: Colors.green,
+                                size: 11,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Obtenido',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ] else ...[
+                              Image.asset(
+                                'assets/images/coin.png',
+                                width: 14,
+                                height: 14,
+                                fit: BoxFit.contain,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                numberFormat.format(item['price'] ?? 0),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ],
                     ),
-                  ),
-                );
-              } else if (category == 'avatares') {
-                imageWidget = Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: AspectRatio(
-                    aspectRatio: 1.0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isObtained ? Colors.green : Colors.blue,
-                          width: 2,
-                        ),
-                      ),
-                      child: ClipOval(
-                        child: imagePath.isNotEmpty &&
-                                !imagePath.startsWith('http') &&
-                                File(imagePath).existsSync()
-                            ? Image.file(
-                                File(imagePath),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                frameBuilder: (context, child, frame,
-                                    wasSynchronouslyLoaded) {
-                                  return child;
-                                },
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                            : imagePath.isNotEmpty &&
-                                    Uri.tryParse(imagePath)?.isAbsolute == true
-                                ? CachedNetworkImage(
-                                    imageUrl: imagePath,
-                                    cacheManager: CustomCacheManager.instance,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    placeholder: (context, url) => const Center(
-                                      child: CircularProgressIndicator(
-                                          color: Colors.blue),
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : Image.asset(
-                                    'assets/images/refmmp.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                      ),
-                    ),
-                  ),
-                );
-              } else {
-                imageWidget = Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.transparent,
-                  ),
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: imagePath.isNotEmpty &&
-                                  !imagePath.startsWith('http') &&
-                                  File(imagePath).existsSync()
-                              ? Image.file(
-                                  File(imagePath),
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  frameBuilder: (context, child, frame,
-                                      wasSynchronouslyLoaded) {
-                                    return child;
-                                  },
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Image.asset(
-                                    'assets/images/refmmp.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : imagePath.isNotEmpty &&
-                                      Uri.tryParse(imagePath)?.isAbsolute ==
-                                          true
-                                  ? CachedNetworkImage(
-                                      imageUrl: imagePath,
-                                      cacheManager: CustomCacheManager.instance,
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      placeholder: (context, url) =>
-                                          const Center(
-                                        child: CircularProgressIndicator(
-                                            color: Colors.blue),
-                                      ),
-                                      errorWidget: (context, url, error) =>
-                                          Image.asset(
-                                        'assets/images/refmmp.png',
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  : Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                    ),
-                        ),
-                      ),
-                      if (isObtained)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Icon(
-                            Icons.check_circle_rounded,
-                            color: Colors.green,
-                            size: 20,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }
-
-              return GestureDetector(
-                onTap: () => _showObjectDialog(context, item, category),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Colors.blue,
-                      width: 1.5,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Expanded(
-                        child: imageWidget,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item['name'] ?? '',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: themeProvider.isDarkMode
-                              ? Color.fromARGB(255, 255, 255, 255)
-                              : Color.fromARGB(255, 33, 150, 243),
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: true,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (isObtained) ...[
-                            Icon(
-                              Icons.check_circle_rounded,
-                              color: Colors.green,
-                              size: 11,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Obtenido',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ] else ...[
-                            Image.asset(
-                              'assets/images/coin.png',
-                              width: 14,
-                              height: 14,
-                              fit: BoxFit.contain,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              numberFormat.format(item['price'] ?? 0),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
                   ),
                 ),
               );
@@ -1777,210 +1595,345 @@ class _ObjetsPageState extends State<ObjetsPage> {
     );
   }
 
+  Widget _buildImageWidget(String category, String imagePath, bool isObtained,
+      String visibilityKey) {
+    final isVisible = _gifVisibility[visibilityKey] ?? false;
+    Widget imageWidget;
+
+    if (category == 'trompetas') {
+      imageWidget = Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _buildImageContent(imagePath, isVisible),
+                ),
+              ),
+              if (isObtained)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } else if (category == 'avatares') {
+      imageWidget = Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isObtained ? Colors.green : Colors.blue,
+                width: 2,
+              ),
+            ),
+            child: ClipOval(
+              child: _buildImageContent(imagePath, isVisible),
+            ),
+          ),
+        ),
+      );
+    } else {
+      imageWidget = Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.transparent,
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildImageContent(imagePath, isVisible),
+              ),
+            ),
+            if (isObtained)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.green,
+                  size: 20,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return imageWidget;
+  }
+
+  Widget _buildImageContent(String imagePath, bool isVisible) {
+    if (imagePath.isNotEmpty &&
+        !imagePath.startsWith('http') &&
+        File(imagePath).existsSync()) {
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    } else if (imagePath.isNotEmpty &&
+        Uri.tryParse(imagePath)?.isAbsolute == true &&
+        isVisible) {
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        cacheManager: CustomCacheManager.instance,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (context, url) => const Center(
+          child: CircularProgressIndicator(color: Colors.blue),
+        ),
+        errorWidget: (context, url, error) {
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    } else {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: BoxFit.cover,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final profileImageProvider = Provider.of<ProfileImageProvider>(context);
     final numberFormat = NumberFormat('#,##0', 'es_ES');
 
-    debugPrint(
-        'Building ObjetsPage with wallpaperUrl: ${profileImageProvider.wallpaperUrl}, profileImageUrl: ${profileImageProvider.profileImageUrl}');
-
-    return Scaffold(
-      body: RefreshIndicator(
-        color: Colors.blue,
-        onRefresh: () async {
-          await _checkConnectivityStatus();
-          await fetchObjets();
-          await fetchUserObjets();
-          await fetchTotalCoins();
-          await fetchUserProfileImage();
-          await fetchWallpaper();
-          if (_isOnline) {
-            await _syncPendingActions();
-          }
-        },
-        child: CustomScrollView(
-          slivers: [
-            SliverAppBar(
-              expandedHeight: expandedHeight ?? 400.0,
-              floating: false,
-              pinned: true,
-              leading: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_rounded,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black,
-                      offset: Offset(2, 1),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                onPressed: () => Navigator.pop(context),
-              ),
-              backgroundColor: Colors.blue,
-              title: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Image.asset(
-                    'assets/images/coin.png',
-                    width: 24,
-                    height: 24,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    numberFormat.format(totalCoins),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              flexibleSpace: FlexibleSpaceBar(
-                centerTitle: true,
-                titlePadding: const EdgeInsets.only(bottom: 16.0),
-                title: Text(
-                  'Objetos',
-                  style: const TextStyle(
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                LearningPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        return false;
+      },
+      child: Scaffold(
+        body: RefreshIndicator(
+          color: Colors.blue,
+          onRefresh: () async {
+            await _checkConnectivityStatus();
+            await _checkCanAddEvent();
+            await fetchObjets();
+            await fetchUserObjets();
+            await fetchTotalCoins();
+            await fetchUserProfileImage();
+            await fetchWallpaper();
+            if (_isOnline) {
+              await _syncPendingActions();
+            }
+          },
+          child: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                expandedHeight: expandedHeight ?? 400.0,
+                floating: false,
+                pinned: true,
+                leading: IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_rounded,
                     color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black,
+                        offset: Offset(2, 1),
+                        blurRadius: 8,
+                      ),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                background: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    profileImageProvider.wallpaperUrl != null &&
-                            profileImageProvider.wallpaperUrl!.isNotEmpty &&
-                            !profileImageProvider.wallpaperUrl!
-                                .startsWith('http') &&
-                            File(profileImageProvider.wallpaperUrl!)
-                                .existsSync()
-                        ? Image.file(
-                            File(profileImageProvider.wallpaperUrl!),
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              debugPrint(
-                                  'Error loading local wallpaper in SliverAppBar: $error, path: ${profileImageProvider.wallpaperUrl}');
-                              return Image.asset(
-                                'assets/images/refmmp.png',
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          )
-                        : profileImageProvider.wallpaperUrl != null &&
-                                profileImageProvider.wallpaperUrl!.isNotEmpty &&
-                                Uri.tryParse(profileImageProvider.wallpaperUrl!)
-                                        ?.isAbsolute ==
-                                    true
-                            ? CachedNetworkImage(
-                                imageUrl: profileImageProvider.wallpaperUrl!,
-                                cacheManager: CustomCacheManager.instance,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const Center(
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white),
-                                ),
-                                errorWidget: (context, url, error) {
-                                  debugPrint(
-                                      'Error loading network wallpaper in SliverAppBar: $error, url: $url');
-                                  return Image.asset(
-                                    'assets/images/refmmp.png',
-                                    fit: BoxFit.cover,
-                                  );
-                                },
-                              )
-                            : Image.asset(
-                                'assets/images/refmmp.png',
-                                fit: BoxFit.cover,
-                              ),
-                    Center(
-                      child: Image.asset(
-                        'assets/images/coin.png',
-                        width: 100,
-                        height: 100,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(10.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '| Descripción',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text(
-                      'Las monedas se utilizan para desbloquear objetos y mejoras. Puedes adquirirlas comprando paquetes en la tienda o ganándolas al completar desafíos y niveles.',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    const SizedBox(height: 10),
-                    Divider(
-                      height: 40,
-                      thickness: 2,
-                      color: themeProvider.isDarkMode
-                          ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 236, 234, 234),
-                    ),
-                    for (var entry
-                        in groupedObjets.entries.toList()
-                          ..sort((a, b) => a.key.compareTo(b.key)))
-                      _buildCategorySection(entry.key, entry.value, context),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FutureBuilder<bool>(
-        future: _canAddEvent(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            debugPrint('FutureBuilder esperando...');
-            return const SizedBox.shrink();
-          }
-
-          if (snapshot.hasError) {
-            debugPrint('Error en FutureBuilder: ${snapshot.error}');
-            return const SizedBox.shrink();
-          }
-
-          debugPrint('Resultado de _canAddEvent: ${snapshot.data}');
-          return snapshot.data == true
-              ? FloatingActionButton(
-                  backgroundColor: Colors.blue,
                   onPressed: () {
-                    // Navigator.push(
-                    //   context,
-                    //   MaterialPageRoute(builder: (context) => const AddEventForm()),
-                    // );
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            LearningPage(instrumentName: widget.instrumentName),
+                      ),
+                    );
                   },
-                  child: const Icon(Icons.add, color: Colors.white),
-                )
-              : const SizedBox.shrink();
-        },
-      ),
-      bottomNavigationBar: CustomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
+                ),
+                backgroundColor: Colors.blue,
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Image.asset(
+                      'assets/images/coin.png',
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      numberFormat.format(totalCoins),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                flexibleSpace: FlexibleSpaceBar(
+                  centerTitle: true,
+                  titlePadding: const EdgeInsets.only(bottom: 16.0),
+                  title: Text(
+                    'Objetos',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  background: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      profileImageProvider.wallpaperUrl != null &&
+                              profileImageProvider.wallpaperUrl!.isNotEmpty &&
+                              !profileImageProvider.wallpaperUrl!
+                                  .startsWith('http') &&
+                              File(profileImageProvider.wallpaperUrl!)
+                                  .existsSync()
+                          ? Image.file(
+                              File(profileImageProvider.wallpaperUrl!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            )
+                          : profileImageProvider.wallpaperUrl != null &&
+                                  profileImageProvider
+                                      .wallpaperUrl!.isNotEmpty &&
+                                  Uri.tryParse(profileImageProvider
+                                              .wallpaperUrl!)
+                                          ?.isAbsolute ==
+                                      true
+                              ? CachedNetworkImage(
+                                  imageUrl: profileImageProvider.wallpaperUrl!,
+                                  cacheManager: CustomCacheManager.instance,
+                                  fit: BoxFit.cover,
+                                  fadeInDuration:
+                                      const Duration(milliseconds: 200),
+                                  placeholder: (context, url) => const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white),
+                                  ),
+                                  errorWidget: (context, url, error) {
+                                    return Image.asset(
+                                      'assets/images/refmmp.png',
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                )
+                              : Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover,
+                                ),
+                      Center(
+                        child: Image.asset(
+                          'assets/images/coin.png',
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(10.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '| Descripción',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      const Text(
+                        'Las monedas se utilizan para desbloquear objetos y mejoras. Puedes adquirirlas comprando paquetes en la tienda o ganándolas al completar desafíos y niveles.',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 10),
+                      Divider(
+                        height: 40,
+                        thickness: 2,
+                        color: themeProvider.isDarkMode
+                            ? const Color.fromARGB(255, 34, 34, 34)
+                            : const Color.fromARGB(255, 236, 234, 234),
+                      ),
+                      for (var entry
+                          in groupedObjets.entries.toList()
+                            ..sort((a, b) => a.key.compareTo(b.key)))
+                        _buildCategorySection(entry.key, entry.value, context),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        floatingActionButton: FloatingActionButtonWidget(
+          canAddEvent: _canAddEvent,
+          onPressed: () {
+            // Navigator.push(
+            //   context,
+            //   MaterialPageRoute(builder: (context) => const AddEventForm()),
+            // );
+          },
+        ),
+        bottomNavigationBar: CustomNavigationBar(
+          selectedIndex: _selectedIndex,
+          onItemTapped: _onItemTapped,
+        ),
       ),
     );
   }
