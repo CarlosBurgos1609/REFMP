@@ -24,11 +24,10 @@ class CustomCacheManager {
 
 class ObjetsDetailsPage extends StatefulWidget {
   final String title;
-
-  const ObjetsDetailsPage({
-    Key? key,
-    required this.title,
-  }) : super(key: key);
+  final String instrumentName;
+  const ObjetsDetailsPage(
+      {Key? key, required this.title, required this.instrumentName})
+      : super(key: key);
 
   @override
   _ObjetsDetailsPageState createState() => _ObjetsDetailsPageState();

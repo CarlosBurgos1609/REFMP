@@ -1579,8 +1579,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => ObjetsDetailsPage(
-                        title: title,
-                      ),
+                          title: title, instrumentName: widget.instrumentName),
                     ),
                   );
                 },
