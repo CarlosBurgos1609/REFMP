@@ -36,22 +36,22 @@ class CustomNavigationBar extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        image: profileImageProvider.wallpaperUrl != null &&
-                profileImageProvider.wallpaperUrl!.isNotEmpty &&
-                _isValidImageUrl(profileImageProvider.wallpaperUrl!)
-            ? DecorationImage(
-                image: _buildImageProvider(profileImageProvider.wallpaperUrl!),
-                fit: BoxFit.cover,
-                opacity: 0.3,
-                onError: (exception, stackTrace) {
-                  debugPrint('Error loading wallpaper: $exception');
-                },
-              )
-            : null,
-        color: themeProvider.isDarkMode
-            ? const Color.fromARGB(255, 2, 2, 2)
-            : const Color.fromARGB(255, 255, 255, 255),
-      ),
+          image: profileImageProvider.wallpaperUrl != null &&
+                  profileImageProvider.wallpaperUrl!.isNotEmpty &&
+                  _isValidImageUrl(profileImageProvider.wallpaperUrl!)
+              ? DecorationImage(
+                  image:
+                      _buildImageProvider(profileImageProvider.wallpaperUrl!),
+                  fit: BoxFit.cover,
+                  opacity: 0.3,
+                  onError: (exception, stackTrace) {
+                    debugPrint('Error loading wallpaper: $exception');
+                  },
+                )
+              : null,
+          color: themeProvider.isDarkMode
+              ? const Color.fromARGB(255, 2, 2, 2)
+              : const Color.fromARGB(255, 2, 2, 2)),
       child: BottomNavigationBar(
         currentIndex: selectedIndex,
         onTap: onItemTapped,
@@ -136,11 +136,26 @@ class CustomNavigationBar extends StatelessWidget {
             ? BoxDecoration(
                 color: Colors.blue.withOpacity(0.15),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    spreadRadius: 2,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               )
             : null,
         child: Icon(
           selectedIndex == index ? selectedIcon : icon,
           color: selectedIndex == index ? Colors.blue : Colors.grey,
+          shadows: [
+            Shadow(
+              color: Colors.black,
+              offset: Offset(2, 1),
+              blurRadius: 8,
+            ),
+          ],
         ),
       ),
       label: label,
