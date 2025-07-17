@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
@@ -221,8 +222,11 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         return;
       }
 
-      final response =
-          await supabase.from('objets').select().eq('category', widget.title);
+      final response = await supabase
+          .from('objets')
+          .select()
+          .eq('category', widget.title)
+          .order('created_at', ascending: false);
       final data = List<Map<String, dynamic>>.from(response);
 
       for (var item in data) {
@@ -1379,7 +1383,15 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                       ),
                     ],
                   ),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            ObjetsPage(instrumentName: widget.instrumentName),
+                      ),
+                    );
+                  },
                 ),
                 title: isSearching
                     ? Container(

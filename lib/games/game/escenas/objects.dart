@@ -116,7 +116,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final connectivityResult = await Connectivity().checkConnectivity();
     bool isOnline = connectivityResult != ConnectivityResult.none;
     try {
-      final result = await InternetAddress.lookup('google.com');
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(Duration(seconds: 5));
       isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
       isOnline = false;
