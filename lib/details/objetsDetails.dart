@@ -1307,417 +1307,506 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     final totalCount = filteredItems.length;
     final progress = totalCount > 0 ? obtainedCount / totalCount : 0.0;
 
-    return Scaffold(
-      body: RefreshIndicator(
-        color: Colors.blue,
-        onRefresh: () async {
-          await _checkConnectivityStatus();
-          if (_isOnline) {
-            await fetchObjets();
-            await fetchTotalCoins();
-            await fetchUserObjets();
-            await fetchWallpaper();
-            await fetchProfileImage();
-            await _syncPendingActions();
-          } else {
-            final box = Hive.box('offline_data');
-            final userId = supabase.auth.currentUser?.id;
-            if (userId != null) {
-              final cachedItems =
-                  box.get('objets_${widget.title}', defaultValue: []);
-              if (cachedItems.isNotEmpty) {
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        return false;
+      },
+      child: Scaffold(
+        body: RefreshIndicator(
+          color: Colors.blue,
+          onRefresh: () async {
+            await _checkConnectivityStatus();
+            if (_isOnline) {
+              await fetchObjets();
+              await fetchTotalCoins();
+              await fetchUserObjets();
+              await fetchWallpaper();
+              await fetchProfileImage();
+              await _syncPendingActions();
+            } else {
+              final box = Hive.box('offline_data');
+              final userId = supabase.auth.currentUser?.id;
+              if (userId != null) {
+                final cachedItems =
+                    box.get('objets_${widget.title}', defaultValue: []);
+                if (cachedItems.isNotEmpty) {
+                  setState(() {
+                    filteredItems = List<Map<String, dynamic>>.from(cachedItems
+                        .map((item) => Map<String, dynamic>.from(item)));
+                  });
+                }
                 setState(() {
-                  filteredItems = List<Map<String, dynamic>>.from(cachedItems
-                      .map((item) => Map<String, dynamic>.from(item)));
+                  totalCoins =
+                      box.get('user_coins_$userId', defaultValue: totalCoins);
+                  userObjets = List<dynamic>.from(
+                      box.get('user_objets_$userId', defaultValue: userObjets));
+                  wallpaperUrl = box.get('user_wallpaper_$userId',
+                      defaultValue: wallpaperUrl ?? 'assets/images/refmmp.png');
+                  profileImageUrl = box.get('user_profile_image_$userId',
+                      defaultValue:
+                          profileImageUrl ?? 'assets/images/refmmp.png');
                 });
+                await _loadImageHeight();
               }
-              setState(() {
-                totalCoins =
-                    box.get('user_coins_$userId', defaultValue: totalCoins);
-                userObjets = List<dynamic>.from(
-                    box.get('user_objets_$userId', defaultValue: userObjets));
-                wallpaperUrl = box.get('user_wallpaper_$userId',
-                    defaultValue: wallpaperUrl ?? 'assets/images/refmmp.png');
-                profileImageUrl = box.get('user_profile_image_$userId',
-                    defaultValue:
-                        profileImageUrl ?? 'assets/images/refmmp.png');
-              });
-              await _loadImageHeight();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text('Estás offline, mostrando datos guardados')),
+              );
             }
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Estás offline, mostrando datos guardados')),
-            );
-          }
-        },
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (scrollNotification) {
-            if (scrollNotification is ScrollUpdateNotification) {
-              final offset = scrollNotification.metrics.pixels;
-              final isNowCollapsed =
-                  offset >= (expandedHeight ?? 200.0) - kToolbarHeight;
-              if (isNowCollapsed != isCollapsed) {
-                setState(() {
-                  isCollapsed = isNowCollapsed;
-                });
-              }
-            }
-            return false;
           },
-          child: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: expandedHeight ?? 200.0,
-                floating: false,
-                pinned: true,
-                backgroundColor: Colors.blue,
-                leading: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios_rounded,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black,
-                        offset: Offset(2, 1),
-                        blurRadius: 8,
-                      ),
-                    ],
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (scrollNotification) {
+              if (scrollNotification is ScrollUpdateNotification) {
+                final offset = scrollNotification.metrics.pixels;
+                final isNowCollapsed =
+                    offset >= (expandedHeight ?? 200.0) - kToolbarHeight;
+                if (isNowCollapsed != isCollapsed) {
+                  setState(() {
+                    isCollapsed = isNowCollapsed;
+                  });
+                }
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: expandedHeight ?? 200.0,
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: Colors.blue,
+                  leading: IconButton(
+                    icon: Icon(
+                      Icons.arrow_back_ios_rounded,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(2, 1),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ObjetsPage(instrumentName: widget.instrumentName),
+                        ),
+                      );
+                    },
                   ),
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            ObjetsPage(instrumentName: widget.instrumentName),
-                      ),
-                    );
-                  },
-                ),
-                title: isSearching
-                    ? Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Row(
-                          children: [
-                            if (!isCollapsed && profileImageUrl != null)
-                              CircleAvatar(
-                                radius: 15.0,
-                                backgroundImage: profileImageUrl!
-                                        .startsWith('assets/')
-                                    ? AssetImage(profileImageUrl!)
-                                        as ImageProvider
-                                    : (!profileImageUrl!.startsWith('http') &&
-                                            File(profileImageUrl!).existsSync()
-                                        ? FileImage(File(profileImageUrl!))
-                                        : NetworkImage(profileImageUrl!)),
-                                backgroundColor: Colors.transparent,
-                                onBackgroundImageError: (_, __) =>
-                                    AssetImage('assets/images/refmmp.png'),
-                              ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: _searchController,
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black,
-                                        offset: Offset(1, 1),
-                                        blurRadius: 4,
-                                      ),
-                                    ],
-                                    fontWeight: FontWeight.bold),
-                                decoration: InputDecoration(
-                                  hintText: 'Buscar...',
-                                  hintStyle: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black,
-                                        offset: Offset(1, 1),
-                                        blurRadius: 4,
-                                      ),
-                                    ],
-                                  ),
-                                  border: InputBorder.none,
+                  title: isSearching
+                      ? Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Row(
+                            children: [
+                              if (!isCollapsed && profileImageUrl != null)
+                                CircleAvatar(
+                                  radius: 15.0,
+                                  backgroundImage: profileImageUrl!
+                                          .startsWith('assets/')
+                                      ? AssetImage(profileImageUrl!)
+                                          as ImageProvider
+                                      : (!profileImageUrl!.startsWith('http') &&
+                                              File(profileImageUrl!)
+                                                  .existsSync()
+                                          ? FileImage(File(profileImageUrl!))
+                                          : NetworkImage(profileImageUrl!)),
+                                  backgroundColor: Colors.transparent,
+                                  onBackgroundImageError: (_, __) =>
+                                      AssetImage('assets/images/refmmp.png'),
                                 ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: _searchController,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black,
+                                          offset: Offset(1, 1),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                      fontWeight: FontWeight.bold),
+                                  decoration: InputDecoration(
+                                    hintText: 'Buscar...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black,
+                                          offset: Offset(1, 1),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                    border: InputBorder.none,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : (isCollapsed && !isSearching && profileImageUrl != null
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 15.0,
+                                  backgroundImage: profileImageUrl!
+                                          .startsWith('assets/')
+                                      ? AssetImage(profileImageUrl!)
+                                          as ImageProvider
+                                      : (!profileImageUrl!.startsWith('http') &&
+                                              File(profileImageUrl!)
+                                                  .existsSync()
+                                          ? FileImage(File(profileImageUrl!))
+                                          : NetworkImage(profileImageUrl!)),
+                                  backgroundColor: Colors.transparent,
+                                  onBackgroundImageError: (_, __) =>
+                                      AssetImage('assets/images/refmmp.png'),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      widget.title.toUpperCase(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : null),
+                  actions: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            spreadRadius: 1,
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          isSearching ? Icons.close : Icons.search,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            isSearching = !isSearching;
+                            if (!isSearching) {
+                              _searchController.clear();
+                              filterItems('');
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            spreadRadius: 1,
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        icon: Icon(Icons.filter_list, color: Colors.white),
+                        onPressed: showFilterDialog,
+                      ),
+                    ),
+                  ],
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        wallpaperUrl != null &&
+                                wallpaperUrl!.isNotEmpty &&
+                                !wallpaperUrl!.startsWith('http') &&
+                                File(wallpaperUrl!).existsSync()
+                            ? Image.file(
+                                File(wallpaperUrl!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  debugPrint(
+                                      'Error loading local wallpaper: $error, path: $wallpaperUrl');
+                                  return Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                  );
+                                },
+                              )
+                            : wallpaperUrl != null &&
+                                    wallpaperUrl!.isNotEmpty &&
+                                    Uri.tryParse(wallpaperUrl!)?.isAbsolute ==
+                                        true
+                                ? CachedNetworkImage(
+                                    imageUrl: wallpaperUrl!,
+                                    cacheManager: CustomCacheManager.instance,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white),
+                                    ),
+                                    errorWidget: (context, url, error) {
+                                      debugPrint(
+                                          'Error loading network wallpaper: $error, url: $url');
+                                      return Image.asset(
+                                        'assets/images/refmmp.png',
+                                        fit: BoxFit.cover,
+                                      );
+                                    },
+                                  )
+                                : Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                        if (!isCollapsed &&
+                            !isSearching &&
+                            profileImageUrl != null)
+                          Positioned(
+                            bottom: 0,
+                            left: (MediaQuery.of(context).size.width - 120) / 2,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(
+                                  radius: 70.0,
+                                  backgroundImage: profileImageUrl!
+                                          .startsWith('assets/')
+                                      ? AssetImage(profileImageUrl!)
+                                          as ImageProvider
+                                      : (!profileImageUrl!.startsWith('http') &&
+                                              File(profileImageUrl!)
+                                                  .existsSync()
+                                          ? FileImage(File(profileImageUrl!))
+                                          : NetworkImage(profileImageUrl!)),
+                                  backgroundColor: Colors.transparent,
+                                  onBackgroundImageError: (_, __) =>
+                                      AssetImage('assets/images/refmmp.png'),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          widget.title.toUpperCase(),
+                          style: TextStyle(
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Mis monedas',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Image.asset(
+                              'assets/images/coin.png',
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              numberFormat.format(totalCoins),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.white
+                                    : Colors.blue,
                               ),
                             ),
                           ],
                         ),
-                      )
-                    : (isCollapsed && !isSearching && profileImageUrl != null
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              CircleAvatar(
-                                radius: 15.0,
-                                backgroundImage: profileImageUrl!
-                                        .startsWith('assets/')
-                                    ? AssetImage(profileImageUrl!)
-                                        as ImageProvider
-                                    : (!profileImageUrl!.startsWith('http') &&
-                                            File(profileImageUrl!).existsSync()
-                                        ? FileImage(File(profileImageUrl!))
-                                        : NetworkImage(profileImageUrl!)),
-                                backgroundColor: Colors.transparent,
-                                onBackgroundImageError: (_, __) =>
-                                    AssetImage('assets/images/refmmp.png'),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Tienes $obtainedCount/$totalCount objetos',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            backgroundColor: Colors.grey[300],
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.green),
+                            minHeight: 8,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.all(16.0),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio:
+                          widget.title.toLowerCase() == 'avatares' ? 0.7 : 0.9,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = filteredItems[index];
+                        final category = widget.title.toLowerCase();
+                        final isObtained = userObjets.contains(item['id']);
+                        final imagePath = item['local_image_path'] ??
+                            item['image_url'] ??
+                            'assets/images/refmmp.png';
+                        Widget imageWidget;
+
+                        if (category == 'avatares') {
+                          imageWidget = Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Container(
+                              width: double.infinity,
+                              height: double.infinity,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.transparent,
+                                border: Border.all(
+                                  color:
+                                      isObtained ? Colors.green : Colors.blue,
+                                  width: 2,
+                                ),
                               ),
-                              Expanded(
-                                child: Center(
-                                  child: Text(
-                                    widget.title.toUpperCase(),
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 20,
+                              child: Stack(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(4.0),
+                                    child: ClipOval(
+                                      child: imagePath.isNotEmpty &&
+                                              !imagePath.startsWith('http') &&
+                                              File(imagePath).existsSync()
+                                          ? Image.file(
+                                              File(imagePath),
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              errorBuilder: (context, error,
+                                                      stackTrace) =>
+                                                  Image.asset(
+                                                'assets/images/refmmp.png',
+                                                fit: BoxFit.cover,
+                                              ),
+                                            )
+                                          : imagePath.isNotEmpty &&
+                                                  Uri.tryParse(imagePath)
+                                                          ?.isAbsolute ==
+                                                      true
+                                              ? CachedNetworkImage(
+                                                  imageUrl: imagePath,
+                                                  cacheManager:
+                                                      CustomCacheManager
+                                                          .instance,
+                                                  fit: BoxFit.cover,
+                                                  width: double.infinity,
+                                                  height: double.infinity,
+                                                  placeholder: (context, url) =>
+                                                      const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                  ),
+                                                  errorWidget:
+                                                      (context, url, error) =>
+                                                          Image.asset(
+                                                    'assets/images/refmmp.png',
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                )
+                                              : Image.asset(
+                                                  'assets/images/refmmp.png',
+                                                  fit: BoxFit.cover,
+                                                ),
                                     ),
                                   ),
-                                ),
+                                  if (isObtained)
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Icon(
+                                        Icons.check_circle_rounded,
+                                        color: Colors.green,
+                                        size: 17,
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ],
-                          )
-                        : null),
-                actions: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          spreadRadius: 1,
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        isSearching ? Icons.close : Icons.search,
-                        color: Colors.white,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          isSearching = !isSearching;
-                          if (!isSearching) {
-                            _searchController.clear();
-                            filterItems('');
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          spreadRadius: 1,
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: Icon(Icons.filter_list, color: Colors.white),
-                      onPressed: showFilterDialog,
-                    ),
-                  ),
-                ],
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      wallpaperUrl != null &&
-                              wallpaperUrl!.isNotEmpty &&
-                              !wallpaperUrl!.startsWith('http') &&
-                              File(wallpaperUrl!).existsSync()
-                          ? Image.file(
-                              File(wallpaperUrl!),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                debugPrint(
-                                    'Error loading local wallpaper: $error, path: $wallpaperUrl');
-                                return Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            )
-                          : wallpaperUrl != null &&
-                                  wallpaperUrl!.isNotEmpty &&
-                                  Uri.tryParse(wallpaperUrl!)?.isAbsolute ==
-                                      true
-                              ? CachedNetworkImage(
-                                  imageUrl: wallpaperUrl!,
-                                  cacheManager: CustomCacheManager.instance,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    debugPrint(
-                                        'Error loading network wallpaper: $error, url: $url');
-                                    return Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
-                                )
-                              : Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                ),
-                      if (!isCollapsed &&
-                          !isSearching &&
-                          profileImageUrl != null)
-                        Positioned(
-                          bottom: 0,
-                          left: (MediaQuery.of(context).size.width - 120) / 2,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(
-                                radius: 70.0,
-                                backgroundImage: profileImageUrl!
-                                        .startsWith('assets/')
-                                    ? AssetImage(profileImageUrl!)
-                                        as ImageProvider
-                                    : (!profileImageUrl!.startsWith('http') &&
-                                            File(profileImageUrl!).existsSync()
-                                        ? FileImage(File(profileImageUrl!))
-                                        : NetworkImage(profileImageUrl!)),
-                                backgroundColor: Colors.transparent,
-                                onBackgroundImageError: (_, __) =>
-                                    AssetImage('assets/images/refmmp.png'),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        widget.title.toUpperCase(),
-                        style: TextStyle(
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Mis monedas',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Image.asset(
-                            'assets/images/coin.png',
-                            width: 24,
-                            height: 24,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            numberFormat.format(totalCoins),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: themeProvider.isDarkMode
-                                  ? Colors.white
-                                  : Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Tienes $obtainedCount/$totalCount objetos',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: Colors.grey[300],
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.green),
-                          minHeight: 8,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.all(16.0),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio:
-                        widget.title.toLowerCase() == 'avatares' ? 0.7 : 0.9,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = filteredItems[index];
-                      final category = widget.title.toLowerCase();
-                      final isObtained = userObjets.contains(item['id']);
-                      final imagePath = item['local_image_path'] ??
-                          item['image_url'] ??
-                          'assets/images/refmmp.png';
-                      Widget imageWidget;
-
-                      if (category == 'avatares') {
-                        imageWidget = Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Container(
+                          );
+                        } else {
+                          imageWidget = Container(
                             width: double.infinity,
                             height: double.infinity,
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
+                              borderRadius: BorderRadius.circular(8),
                               color: Colors.transparent,
-                              border: Border.all(
-                                color: isObtained ? Colors.green : Colors.blue,
-                                width: 2,
-                              ),
                             ),
                             child: Stack(
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.all(4.0),
-                                  child: ClipOval(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
                                     child: imagePath.isNotEmpty &&
                                             !imagePath.startsWith('http') &&
                                             File(imagePath).existsSync()
@@ -1770,166 +1859,95 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                     child: Icon(
                                       Icons.check_circle_rounded,
                                       color: Colors.green,
-                                      size: 17,
+                                      size: 20,
                                     ),
                                   ),
                               ],
                             ),
-                          ),
-                        );
-                      } else {
-                        imageWidget = Container(
-                          width: double.infinity,
-                          height: double.infinity,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.transparent,
-                          ),
-                          child: Stack(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(4.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: imagePath.isNotEmpty &&
-                                          !imagePath.startsWith('http') &&
-                                          File(imagePath).existsSync()
-                                      ? Image.file(
-                                          File(imagePath),
-                                          fit: BoxFit.cover,
-                                          width: double.infinity,
-                                          height: double.infinity,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  Image.asset(
-                                            'assets/images/refmmp.png',
-                                            fit: BoxFit.cover,
-                                          ),
-                                        )
-                                      : imagePath.isNotEmpty &&
-                                              Uri.tryParse(imagePath)
-                                                      ?.isAbsolute ==
-                                                  true
-                                          ? CachedNetworkImage(
-                                              imageUrl: imagePath,
-                                              cacheManager:
-                                                  CustomCacheManager.instance,
-                                              fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              height: double.infinity,
-                                              placeholder: (context, url) =>
-                                                  const Center(
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        color: Colors.blue),
-                                              ),
-                                              errorWidget:
-                                                  (context, url, error) =>
-                                                      Image.asset(
-                                                'assets/images/refmmp.png',
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                          : Image.asset(
-                                              'assets/images/refmmp.png',
-                                              fit: BoxFit.cover,
-                                            ),
-                                ),
-                              ),
-                              if (isObtained)
-                                Positioned(
-                                  top: 4,
-                                  right: 4,
-                                  child: Icon(
-                                    Icons.check_circle_rounded,
-                                    color: Colors.green,
-                                    size: 20,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      }
+                          );
+                        }
 
-                      return GestureDetector(
-                        onTap: () => _showObjectDialog(context, item, category),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Colors.blue,
-                              width: 1.5,
+                        return GestureDetector(
+                          onTap: () =>
+                              _showObjectDialog(context, item, category),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.blue,
+                                width: 1.5,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Expanded(
-                                child: imageWidget,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item['name'] ?? '',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: themeProvider.isDarkMode
-                                      ? Color.fromARGB(255, 255, 255, 255)
-                                      : Color.fromARGB(255, 33, 150, 243),
-                                  fontWeight: FontWeight.bold,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Expanded(
+                                  child: imageWidget,
                                 ),
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: true,
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  if (isObtained) ...[
-                                    Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Colors.green,
-                                      size: 11,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Obtenido',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                                const SizedBox(height: 4),
+                                Text(
+                                  item['name'] ?? '',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: themeProvider.isDarkMode
+                                        ? Color.fromARGB(255, 255, 255, 255)
+                                        : Color.fromARGB(255, 33, 150, 243),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isObtained) ...[
+                                      Icon(
+                                        Icons.check_circle_rounded,
                                         color: Colors.green,
+                                        size: 11,
                                       ),
-                                    ),
-                                  ] else ...[
-                                    Image.asset(
-                                      'assets/images/coin.png',
-                                      width: 14,
-                                      height: 14,
-                                      fit: BoxFit.contain,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      numberFormat.format(item['price'] ?? 0),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue,
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Obtenido',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
                                       ),
-                                    ),
+                                    ] else ...[
+                                      Image.asset(
+                                        'assets/images/coin.png',
+                                        width: 14,
+                                        height: 14,
+                                        fit: BoxFit.contain,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        numberFormat.format(item['price'] ?? 0),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ],
                                   ],
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    childCount: filteredItems.length,
+                        );
+                      },
+                      childCount: filteredItems.length,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

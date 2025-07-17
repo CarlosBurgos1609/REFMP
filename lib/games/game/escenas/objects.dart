@@ -100,13 +100,13 @@ class _ObjetsPageState extends State<ObjetsPage> {
 
   Future<void> _checkConnectivityAndInitialize() async {
     bool isOnline = await _checkConnectivityStatus();
-    await _initializeUserData();
-    await _checkCanAddEvent();
+    await fetchWallpaper();
     await fetchObjets();
     await fetchUserObjets();
     await fetchTotalCoins();
     await fetchUserProfileImage();
-    await fetchWallpaper();
+    await _initializeUserData();
+    await _checkCanAddEvent();
     if (isOnline) {
       await _syncPendingActions();
     }
@@ -116,8 +116,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final connectivityResult = await Connectivity().checkConnectivity();
     bool isOnline = connectivityResult != ConnectivityResult.none;
     try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(Duration(seconds: 5));
+      final result = await InternetAddress.lookup('google.com');
       isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
       isOnline = false;
