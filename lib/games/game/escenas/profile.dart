@@ -493,6 +493,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     }
 
     bool isSyncing = false;
+    // ignore: dead_code
     if (isSyncing) {
       debugPrint('Sync already in progress, skipping');
       return;
