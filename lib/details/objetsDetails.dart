@@ -1930,86 +1930,68 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     if (category == 'avatares') {
       imageWidget = Container(
         margin: const EdgeInsets.all(8.0),
-        width: 80, // Fixed size for square container
-        height: 80, // Fixed size for square container
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: isObtained ? Colors.green : Colors.blue,
-            width: 3,
+        child: CircleAvatar(
+          radius: 40, // Ajusta el tamaño del círculo
+          backgroundColor: Colors.transparent,
+          child: ClipOval(
+            child: isVisible
+                ? (imagePath.isNotEmpty &&
+                        !imagePath.startsWith('http') &&
+                        File(imagePath).existsSync()
+                    ? Image.file(
+                        File(imagePath),
+                        fit: BoxFit.cover,
+                        width: 80,
+                        height: 80,
+                        errorBuilder: (context, error, stackTrace) {
+                          debugPrint(
+                              'Error loading local image: $error, path: $imagePath');
+                          return Image.asset(
+                            'assets/images/refmmp.png',
+                            fit: BoxFit.cover,
+                            width: 80,
+                            height: 80,
+                          );
+                        },
+                      )
+                    : imagePath.isNotEmpty &&
+                            Uri.tryParse(imagePath)?.isAbsolute == true
+                        ? CachedNetworkImage(
+                            imageUrl: imagePath,
+                            cacheManager: CustomCacheManager.instance,
+                            fit: BoxFit.cover,
+                            width: 80,
+                            height: 80,
+                            placeholder: (context, url) => const Center(
+                              child:
+                                  CircularProgressIndicator(color: Colors.blue),
+                            ),
+                            errorWidget: (context, url, error) {
+                              debugPrint(
+                                  'Error loading network image: $error, url: $url');
+                              return Image.asset(
+                                'assets/images/refmmp.png',
+                                fit: BoxFit.cover,
+                                width: 80,
+                                height: 80,
+                              );
+                            },
+                          )
+                        : Image.asset(
+                            'assets/images/refmmp.png',
+                            fit: BoxFit.cover,
+                            width: 80,
+                            height: 80,
+                          ))
+                : Image.asset(
+                    'assets/images/refmmp.png',
+                    fit: BoxFit.cover,
+                    width: 80,
+                    height: 80,
+                  ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              spreadRadius: 1,
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipOval(
-          child: Container(
-            width: 80, // Explicitly enforce square size
-            height: 80, // Explicitly enforce square size
-            color: Colors.transparent, // Background to fill any empty space
-            child: Center(
-              child: isVisible
-                  ? (imagePath.isNotEmpty &&
-                          !imagePath.startsWith('http') &&
-                          File(imagePath).existsSync()
-                      ? Image.file(
-                          File(imagePath),
-                          fit: BoxFit.cover,
-                          width: 80,
-                          height: 80,
-                          errorBuilder: (context, error, stackTrace) {
-                            debugPrint(
-                                'Error loading local image: $error, path: $imagePath');
-                            return Image.asset(
-                              'assets/images/refmmp.png',
-                              fit: BoxFit.cover,
-                              width: 80,
-                              height: 80,
-                            );
-                          },
-                        )
-                      : imagePath.isNotEmpty &&
-                              Uri.tryParse(imagePath)?.isAbsolute == true
-                          ? CachedNetworkImage(
-                              imageUrl: imagePath,
-                              cacheManager: CustomCacheManager.instance,
-                              fit: BoxFit.cover,
-                              width: 80,
-                              height: 80,
-                              placeholder: (context, url) => const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.blue),
-                              ),
-                              errorWidget: (context, url, error) {
-                                debugPrint(
-                                    'Error loading network image: $error, url: $url');
-                                return Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                  width: 80,
-                                  height: 80,
-                                );
-                              },
-                            )
-                          : Image.asset(
-                              'assets/images/refmmp.png',
-                              fit: BoxFit.cover,
-                              width: 80,
-                              height: 80,
-                            ))
-                  : Image.asset(
-                      'assets/images/refmmp.png',
-                      fit: BoxFit.cover,
-                      width: 80,
-                      height: 80,
-                    ),
-            ),
-          ),
+          foregroundColor: isObtained ? Colors.green : Colors.blue,
+          foregroundImage: null, // Usamos ClipOval para manejar la imagen
         ),
       );
     } else {
