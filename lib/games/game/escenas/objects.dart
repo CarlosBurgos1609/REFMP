@@ -26,8 +26,9 @@ class CustomCacheManager {
   static CacheManager instance = CacheManager(
     Config(
       key,
-      stalePeriod: const Duration(days: 7), // Reducido para liberar memoria
-      maxNrOfCacheObjects: 100, // Aumentado para manejar más imágenes
+      stalePeriod: const Duration(days: 3),
+      maxNrOfCacheObjects: 200,
+      fileService: HttpFileService(),
     ),
   );
 }
@@ -265,13 +266,6 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     try {
-      if (cachedData != null &&
-          cachedData['path'] != null &&
-          File(cachedData['path']).existsSync()) {
-        await File(cachedData['path']).delete();
-        debugPrint('Deleted old cached image: ${cachedData['path']}');
-      }
-
       final fileInfo = await CustomCacheManager.instance.downloadFile(url);
       final filePath = fileInfo.file.path;
       await box.put(cacheKey, {'path': filePath, 'url': url});
@@ -598,24 +592,38 @@ class _ObjetsPageState extends State<ObjetsPage> {
     final cacheKey = 'objets_${widget.instrumentName}';
     final countCacheKey = 'category_counts_${widget.instrumentName}';
 
-    try {
-      if (!_isOnline) {
-        final cachedObjets = box.get(cacheKey, defaultValue: {});
-        final cachedCounts = box.get(countCacheKey, defaultValue: {});
-        if (mounted) {
-          setState(() {
-            groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
-                cachedObjets.map((key, value) => MapEntry(
-                    key,
-                    List<Map<String, dynamic>>.from(value
-                        .map((item) => Map<String, dynamic>.from(item))))));
-            categoryCounts = Map<String, int>.from(cachedCounts);
-          });
-        }
-        debugPrint('Loaded cached objects for ${widget.instrumentName}');
-        return;
-      }
+    final cachedObjets = box.get(cacheKey, defaultValue: {});
+    final cachedCounts = box.get(countCacheKey, defaultValue: {});
+    if (cachedObjets.isNotEmpty && mounted) {
+      setState(() {
+        groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
+            cachedObjets.map((key, value) => MapEntry(
+                key,
+                List<Map<String, dynamic>>.from(
+                    value.map((item) => Map<String, dynamic>.from(item))))));
+        categoryCounts = Map<String, int>.from(cachedCounts);
+      });
+      debugPrint('Loaded cached objects for ${widget.instrumentName}');
+    }
 
+    if (!_isOnline) {
+      // Preload profile image for offline use
+      final profileImageProvider =
+          Provider.of<ProfileImageProvider>(context, listen: false);
+      final profileImageCacheKey = 'user_profile_image_$userId';
+      final cachedProfileImage = box.get(profileImageCacheKey,
+          defaultValue: profileImageProvider.profileImageUrl);
+      if (cachedProfileImage != null &&
+          cachedProfileImage.isNotEmpty &&
+          !cachedProfileImage.startsWith('http') &&
+          File(cachedProfileImage).existsSync()) {
+        profileImageProvider.updateProfileImage(cachedProfileImage,
+            notify: true, isOnline: false);
+      }
+      return;
+    }
+
+    try {
       final allObjetsResponse =
           await supabase.from('objets').select('category');
       final categories = allObjetsResponse
@@ -639,20 +647,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
         final data = List<Map<String, dynamic>>.from(response);
 
         for (var item in data) {
-          final imageUrl = item['image_url'] ?? '';
-          if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
-            try {
-              final localPath =
-                  await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
-              item['local_image_path'] = localPath;
-            } catch (e) {
-              debugPrint('Error caching object image for ${item['id']}: $e');
-              item['local_image_path'] = 'assets/images/refmmp.png';
-            }
-          } else {
-            item['local_image_path'] = 'assets/images/refmmp.png';
-          }
-          _gifVisibility['${item['id']}'] = false;
+          final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
+          final objectCacheKey = 'object_image_${item['id']}';
+          item['local_image_path'] =
+              await _downloadAndCacheImage(imageUrl, objectCacheKey);
+          _gifVisibility['${item['id']}'] = true; // Preload avatars
         }
         grouped[category] = data;
       }
@@ -668,16 +667,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
       debugPrint('Fetched objects online for ${widget.instrumentName}');
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
-      final cachedObjets = box.get(cacheKey, defaultValue: {});
-      final cachedCounts = box.get(countCacheKey, defaultValue: {});
-      if (mounted) {
+      if (cachedObjets.isEmpty && mounted) {
         setState(() {
-          groupedObjets = Map<String, List<Map<String, dynamic>>>.from(
-              cachedObjets.map((key, value) => MapEntry(
-                  key,
-                  List<Map<String, dynamic>>.from(
-                      value.map((item) => Map<String, dynamic>.from(item))))));
-          categoryCounts = Map<String, int>.from(cachedCounts);
+          groupedObjets = {};
+          categoryCounts = {};
         });
       }
     }
@@ -847,6 +840,11 @@ class _ObjetsPageState extends State<ObjetsPage> {
           }
           return;
         }
+        final localPath = item['local_image_path'] != null &&
+                File(item['local_image_path']).existsSync()
+            ? item['local_image_path']
+            : await _downloadAndCacheImage(
+                item['image_url'], 'object_image_${item['id']}');
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
@@ -856,9 +854,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
             'table': table,
             'timestamp': DateTime.now().toIso8601String(),
           });
-          await box.put('user_profile_image_$userId', imageUrl);
+          await box.put('user_profile_image_$userId', localPath);
           if (mounted) {
-            profileImageProvider.updateProfileImage(imageUrl,
+            profileImageProvider.updateProfileImage(localPath,
                 notify: true, isOnline: false, userTable: table);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -869,10 +867,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
         } else {
           await supabase.from(table).update(
               {'profile_image': item['image_url']}).eq('user_id', userId);
-          await box.put('user_profile_image_$userId', imageUrl);
+          await box.put('user_profile_image_$userId', localPath);
           await box.put('user_table_$userId', table);
           if (mounted) {
-            profileImageProvider.updateProfileImage(imageUrl,
+            profileImageProvider.updateProfileImage(localPath,
                 notify: true, isOnline: true, userTable: table);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Foto de perfil actualizada con éxito')),
@@ -1131,6 +1129,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                     fit: BoxFit.cover,
                                   );
                                 },
+                                memCacheWidth: 200,
+                                memCacheHeight: 200,
+                                fadeInDuration:
+                                    const Duration(milliseconds: 200),
                               )
                             : Image.asset(
                                 'assets/images/refmmp.png',
@@ -1483,7 +1485,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                       visibilityInfo.visibleFraction * 100;
                   if (mounted) {
                     setState(() {
-                      _gifVisibility[visibilityKey] = visiblePercentage > 50;
+                      _gifVisibility[visibilityKey] = visiblePercentage > 10;
                     });
                   }
                 },
@@ -1706,9 +1708,14 @@ class _ObjetsPageState extends State<ObjetsPage> {
     debugPrint(
         'Loading image: $imagePath, isVisible: $isVisible, isAnimated: $isAnimatedFormat');
 
-    if (imagePath.isNotEmpty &&
-        !imagePath.startsWith('http') &&
-        File(imagePath).existsSync()) {
+    if (!isVisible || imagePath.isEmpty) {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: BoxFit.cover,
+      );
+    }
+
+    if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
       return Image.file(
         File(imagePath),
         fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
@@ -1722,14 +1729,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
           );
         },
       );
-    } else if (imagePath.isNotEmpty &&
-        Uri.tryParse(imagePath)?.isAbsolute == true) {
-      if (isAnimatedFormat && !isVisible) {
-        return Image.asset(
-          'assets/images/refmmp.png',
-          fit: BoxFit.cover,
-        );
-      }
+    } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
       return CachedNetworkImage(
         imageUrl: imagePath,
         cacheManager: CustomCacheManager.instance,
@@ -1746,9 +1746,9 @@ class _ObjetsPageState extends State<ObjetsPage> {
             fit: BoxFit.cover,
           );
         },
-        memCacheWidth: 300,
-        memCacheHeight: 300,
-        fadeInDuration: const Duration(milliseconds: 300),
+        memCacheWidth: 200,
+        memCacheHeight: 200,
+        fadeInDuration: const Duration(milliseconds: 200),
       );
     } else {
       return Image.asset(
@@ -1900,6 +1900,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                       fit: BoxFit.cover,
                                     );
                                   },
+                                  memCacheWidth: 200,
+                                  memCacheHeight: 200,
+                                  fadeInDuration:
+                                      const Duration(milliseconds: 200),
                                 )
                               : Image.asset(
                                   'assets/images/refmmp.png',
