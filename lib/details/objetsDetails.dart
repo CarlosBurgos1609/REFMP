@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable
+
 import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,11 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
+import 'package:refmp/models/profile_image_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'dart:ui' as ui;
 
 class CustomCacheManager {
@@ -44,9 +48,11 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
   bool isCollapsed = false;
   bool _isOnline = false;
   final _searchController = TextEditingController();
+  List<Map<String, dynamic>> allItems = [];
   List<Map<String, dynamic>> filteredItems = [];
   String? selectedSortOption;
   double? expandedHeight;
+  final Map<String, bool> _gifVisibility = {};
 
   @override
   void initState() {
@@ -209,15 +215,31 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'objets_${widget.title}';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
 
     try {
       if (!_isOnline) {
         final cachedItems = box.get(cacheKey, defaultValue: []);
         if (cachedItems.isNotEmpty) {
           setState(() {
-            filteredItems = List<Map<String, dynamic>>.from(
+            allItems = List<Map<String, dynamic>>.from(
                 cachedItems.map((item) => Map<String, dynamic>.from(item)));
+            filteredItems = List.from(allItems);
           });
+          final profileImageCacheKey = 'user_profile_image_$userId';
+          final cachedProfileImage = box.get(profileImageCacheKey,
+              defaultValue: profileImageProvider.profileImageUrl);
+          if (cachedProfileImage != null &&
+              cachedProfileImage.isNotEmpty &&
+              !cachedProfileImage.startsWith('http') &&
+              File(cachedProfileImage).existsSync()) {
+            profileImageProvider.updateProfileImage(cachedProfileImage,
+                notify: true, isOnline: false);
+            setState(() {
+              profileImageUrl = cachedProfileImage;
+            });
+          }
         }
         return;
       }
@@ -236,6 +258,9 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
             final localPath =
                 await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
             item['local_image_path'] = localPath;
+            if (widget.title.toLowerCase() == 'avatares') {
+              _gifVisibility['${item['id']}'] = true;
+            }
           } catch (e) {
             debugPrint('Error caching object image for ${item['id']}: $e');
           }
@@ -243,7 +268,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
       }
 
       setState(() {
-        filteredItems = data;
+        allItems = data;
+        filteredItems = List.from(allItems);
       });
       await box.put(cacheKey, data);
     } catch (e) {
@@ -251,8 +277,9 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
       final cachedItems = box.get(cacheKey, defaultValue: []);
       if (cachedItems.isNotEmpty) {
         setState(() {
-          filteredItems = List<Map<String, dynamic>>.from(
+          allItems = List<Map<String, dynamic>>.from(
               cachedItems.map((item) => Map<String, dynamic>.from(item)));
+          filteredItems = List.from(allItems);
         });
       }
     }
@@ -337,6 +364,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_wallpaper_$userId';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
 
     try {
       if (!_isOnline) {
@@ -350,6 +379,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         setState(() {
           wallpaperUrl = wallpaperPath;
         });
+        profileImageProvider.updateWallpaper(wallpaperPath,
+            notify: true, isOnline: false);
         await _loadImageHeight();
         return;
       }
@@ -378,6 +409,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
       setState(() {
         wallpaperUrl = imageUrl;
       });
+      profileImageProvider.updateWallpaper(imageUrl!,
+          notify: true, isOnline: true);
       await box.put(cacheKey, imageUrl);
       await _loadImageHeight();
     } catch (e) {
@@ -386,6 +419,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         wallpaperUrl = box.get(cacheKey,
             defaultValue: wallpaperUrl ?? 'assets/images/refmmp.png');
       });
+      profileImageProvider.updateWallpaper(wallpaperUrl!,
+          notify: true, isOnline: false);
       await _loadImageHeight();
     }
   }
@@ -396,6 +431,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_profile_image_$userId';
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
 
     try {
       if (!_isOnline) {
@@ -410,6 +447,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         setState(() {
           profileImageUrl = profileImagePath;
         });
+        profileImageProvider.updateProfileImage(profileImagePath,
+            notify: true, isOnline: false);
         return;
       }
 
@@ -446,10 +485,13 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           break;
         }
       }
-      imageUrl ??= profileImageUrl ?? 'assets/images/refmmp.png';
+      imageUrl ??=
+          profileImageProvider.profileImageUrl ?? 'assets/images/refmmp.png';
       setState(() {
         profileImageUrl = imageUrl;
       });
+      profileImageProvider.updateProfileImage(imageUrl,
+          notify: true, isOnline: true, userTable: userTable);
       await box.put(cacheKey, imageUrl);
       if (userTable != null) {
         await box.put('user_table_$userId', userTable);
@@ -460,6 +502,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         profileImageUrl = box.get(cacheKey,
             defaultValue: profileImageUrl ?? 'assets/images/refmmp.png');
       });
+      profileImageProvider.updateProfileImage(profileImageUrl!,
+          notify: true, isOnline: false);
     }
   }
 
@@ -548,16 +592,22 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           } else if (actionType == 'use_wallpaper') {
             final imageUrl = action['image_url'] as String?;
             if (imageUrl != null) {
+              final localPath =
+                  await _downloadAndCacheImage(imageUrl, 'wallpaper_$userId');
               if (_isOnline) {
                 await supabase
                     .from('users_games')
                     .update({'wallpapers': imageUrl}).eq('user_id', userId);
               }
               final box = Hive.box('offline_data');
-              await box.put('user_wallpaper_$userId', imageUrl);
+              await box.put('user_wallpaper_$userId', localPath);
               if (mounted) {
+                final profileImageProvider =
+                    Provider.of<ProfileImageProvider>(context, listen: false);
+                profileImageProvider.updateWallpaper(localPath,
+                    notify: true, isOnline: _isOnline);
                 setState(() {
-                  wallpaperUrl = imageUrl;
+                  wallpaperUrl = localPath;
                 });
                 await _loadImageHeight();
               }
@@ -566,16 +616,23 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
             final table = action['table'] as String? ?? await _getUserTable();
             final imageUrl = action['image_url'] as String?;
             if (table != null && imageUrl != null) {
+              final localPath = await _downloadAndCacheImage(
+                  imageUrl, 'profile_image_$userId');
               if (_isOnline) {
                 await supabase
                     .from(table)
                     .update({'profile_image': imageUrl}).eq('user_id', userId);
               }
               final box = Hive.box('offline_data');
-              await box.put('user_profile_image_$userId', imageUrl);
+              await box.put('user_profile_image_$userId', localPath);
+              await box.put('user_table_$userId', table);
               if (mounted) {
+                final profileImageProvider =
+                    Provider.of<ProfileImageProvider>(context, listen: false);
+                profileImageProvider.updateProfileImage(localPath,
+                    notify: true, isOnline: _isOnline, userTable: table);
                 setState(() {
-                  profileImageUrl = imageUrl;
+                  profileImageUrl = localPath;
                 });
               }
             }
@@ -651,6 +708,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
       setState(() {
         totalCoins = newCoins;
         userObjets.add(item['id']);
+        allItems = List.from(allItems); // Ensure allItems is updated
+        filteredItems = List.from(allItems); // Reset filteredItems
       });
     } catch (e) {
       debugPrint('Error al comprar objeto: $e');
@@ -666,24 +725,33 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
     final box = Hive.box('offline_data');
     final pendingBox = Hive.box('pending_actions');
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
     final imageUrl = item['local_image_path'] ??
         item['image_url'] ??
         'assets/images/refmmp.png';
 
     try {
       if (category == 'fondos') {
+        final localPath = item['local_image_path'] != null &&
+                File(item['local_image_path']).existsSync()
+            ? item['local_image_path']
+            : await _downloadAndCacheImage(
+                item['image_url'], 'wallpaper_$userId');
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
             'action': 'use_wallpaper',
-            'image_url': imageUrl,
+            'image_url': item['image_url'],
             'objet_id': item['id'],
             'timestamp': DateTime.now().toIso8601String(),
           });
-          await box.put('user_wallpaper_$userId', imageUrl);
+          await box.put('user_wallpaper_$userId', localPath);
           setState(() {
-            wallpaperUrl = imageUrl;
+            wallpaperUrl = localPath;
           });
+          profileImageProvider.updateWallpaper(localPath,
+              notify: true, isOnline: false);
           await _loadImageHeight();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -694,10 +762,12 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           await supabase
               .from('users_games')
               .update({'wallpapers': item['image_url']}).eq('user_id', userId);
-          await box.put('user_wallpaper_$userId', imageUrl);
+          await box.put('user_wallpaper_$userId', localPath);
           setState(() {
-            wallpaperUrl = imageUrl;
+            wallpaperUrl = localPath;
           });
+          profileImageProvider.updateWallpaper(localPath,
+              notify: true, isOnline: true);
           await _loadImageHeight();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Fondo de pantalla actualizado con éxito')),
@@ -712,19 +782,26 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           );
           return;
         }
+        final localPath = item['local_image_path'] != null &&
+                File(item['local_image_path']).existsSync()
+            ? item['local_image_path']
+            : await _downloadAndCacheImage(
+                item['image_url'], 'objet_${item['id']}');
         if (!_isOnline) {
           await pendingBox.add({
             'user_id': userId,
             'action': 'use_avatar',
-            'image_url': imageUrl,
+            'image_url': item['image_url'],
             'objet_id': item['id'],
             'table': table,
             'timestamp': DateTime.now().toIso8601String(),
           });
-          await box.put('user_profile_image_$userId', imageUrl);
+          await box.put('user_profile_image_$userId', localPath);
           setState(() {
-            profileImageUrl = imageUrl;
+            profileImageUrl = localPath;
           });
+          profileImageProvider.updateProfileImage(localPath,
+              notify: true, isOnline: false, userTable: table);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -733,10 +810,13 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         } else {
           await supabase.from(table).update(
               {'profile_image': item['image_url']}).eq('user_id', userId);
-          await box.put('user_profile_image_$userId', imageUrl);
+          await box.put('user_profile_image_$userId', localPath);
+          await box.put('user_table_$userId', table);
           setState(() {
-            profileImageUrl = imageUrl;
+            profileImageUrl = localPath;
           });
+          profileImageProvider.updateProfileImage(localPath,
+              notify: true, isOnline: true, userTable: table);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Foto de perfil actualizada con éxito')),
           );
@@ -758,10 +838,14 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
 
   void filterItems(String query) {
     setState(() {
-      filteredItems = filteredItems.where((item) {
-        final name = (item['name'] as String?)?.toLowerCase() ?? '';
-        return query.isEmpty || name.contains(query.toLowerCase());
-      }).toList();
+      if (query.isEmpty) {
+        filteredItems = List.from(allItems);
+      } else {
+        filteredItems = allItems.where((item) {
+          final name = (item['name'] as String?)?.toLowerCase() ?? '';
+          return name.contains(query.toLowerCase());
+        }).toList();
+      }
       applySort(selectedSortOption);
     });
   }
@@ -814,7 +898,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           break;
         case 'Menos Costoso':
           filteredItems
-              .sort((a, b) => (a['price'] ?? 0).compareTo(b['price'] ?? 0));
+              .sort((a, b) => (a['price'] ?? 0).compareTo(a['price'] ?? 0));
           break;
       }
     });
@@ -1338,8 +1422,9 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                     box.get('objets_${widget.title}', defaultValue: []);
                 if (cachedItems.isNotEmpty) {
                   setState(() {
-                    filteredItems = List<Map<String, dynamic>>.from(cachedItems
+                    allItems = List<Map<String, dynamic>>.from(cachedItems
                         .map((item) => Map<String, dynamic>.from(item)));
+                    filteredItems = List.from(allItems);
                   });
                 }
                 setState(() {
@@ -1518,7 +1603,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                             isSearching = !isSearching;
                             if (!isSearching) {
                               _searchController.clear();
-                              filterItems('');
+                              filteredItems = List.from(allItems);
                             }
                           });
                         },
@@ -1711,233 +1796,112 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                         final imagePath = item['local_image_path'] ??
                             item['image_url'] ??
                             'assets/images/refmmp.png';
-                        Widget imageWidget;
+                        final visibilityKey = '${item['id']}';
 
-                        if (category == 'avatares') {
-                          imageWidget = Padding(
-                            padding: const EdgeInsets.all(4.0),
+                        return VisibilityDetector(
+                          key: Key(visibilityKey),
+                          onVisibilityChanged: (visibilityInfo) {
+                            final visiblePercentage =
+                                visibilityInfo.visibleFraction * 100;
+                            if (mounted) {
+                              setState(() {
+                                _gifVisibility[visibilityKey] =
+                                    visiblePercentage > 10;
+                              });
+                            }
+                          },
+                          child: GestureDetector(
+                            onTap: () =>
+                                _showObjectDialog(context, item, category),
                             child: Container(
-                              width: double.infinity,
-                              height: double.infinity,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.transparent,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.grey[900]
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color:
                                       isObtained ? Colors.green : Colors.blue,
                                   width: 2,
                                 ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(4.0),
-                                    child: ClipOval(
-                                      child: imagePath.isNotEmpty &&
-                                              !imagePath.startsWith('http') &&
-                                              File(imagePath).existsSync()
-                                          ? Image.file(
-                                              File(imagePath),
-                                              fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              height: double.infinity,
-                                              errorBuilder: (context, error,
-                                                      stackTrace) =>
-                                                  Image.asset(
-                                                'assets/images/refmmp.png',
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                          : imagePath.isNotEmpty &&
-                                                  Uri.tryParse(imagePath)
-                                                          ?.isAbsolute ==
-                                                      true
-                                              ? CachedNetworkImage(
-                                                  imageUrl: imagePath,
-                                                  cacheManager:
-                                                      CustomCacheManager
-                                                          .instance,
-                                                  fit: BoxFit.cover,
-                                                  width: double.infinity,
-                                                  height: double.infinity,
-                                                  placeholder: (context, url) =>
-                                                      const Center(
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                            color: Colors.blue),
-                                                  ),
-                                                  errorWidget:
-                                                      (context, url, error) =>
-                                                          Image.asset(
-                                                    'assets/images/refmmp.png',
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                )
-                                              : Image.asset(
-                                                  'assets/images/refmmp.png',
-                                                  fit: BoxFit.cover,
-                                                ),
-                                    ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    spreadRadius: 2,
+                                    blurRadius: 8,
+                                    offset: Offset(0, 4),
                                   ),
-                                  if (isObtained)
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: Icon(
-                                        Icons.check_circle_rounded,
-                                        color: Colors.green,
-                                        size: 17,
-                                      ),
-                                    ),
                                 ],
                               ),
-                            ),
-                          );
-                        } else {
-                          imageWidget = Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: Colors.transparent,
-                            ),
-                            child: Stack(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: imagePath.isNotEmpty &&
-                                            !imagePath.startsWith('http') &&
-                                            File(imagePath).existsSync()
-                                        ? Image.file(
-                                            File(imagePath),
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    Image.asset(
-                                              'assets/images/refmmp.png',
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
-                                        : imagePath.isNotEmpty &&
-                                                Uri.tryParse(imagePath)
-                                                        ?.isAbsolute ==
-                                                    true
-                                            ? CachedNetworkImage(
-                                                imageUrl: imagePath,
-                                                cacheManager:
-                                                    CustomCacheManager.instance,
-                                                fit: BoxFit.cover,
-                                                width: double.infinity,
-                                                height: double.infinity,
-                                                placeholder: (context, url) =>
-                                                    const Center(
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          color: Colors.blue),
-                                                ),
-                                                errorWidget:
-                                                    (context, url, error) =>
-                                                        Image.asset(
-                                                  'assets/images/refmmp.png',
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              )
-                                            : Image.asset(
-                                                'assets/images/refmmp.png',
-                                                fit: BoxFit.cover,
-                                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Expanded(
+                                    child: _buildImageWidget(category,
+                                        imagePath, isObtained, visibilityKey),
                                   ),
-                                ),
-                                if (isObtained)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Colors.green,
-                                      size: 20,
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0),
+                                    child: Text(
+                                      item['name'] ?? '',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: themeProvider.isDarkMode
+                                            ? Colors.white
+                                            : Colors.blue[800],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return GestureDetector(
-                          onTap: () =>
-                              _showObjectDialog(context, item, category),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.blue,
-                                width: 1.5,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Expanded(
-                                  child: imageWidget,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item['name'] ?? '',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: themeProvider.isDarkMode
-                                        ? Color.fromARGB(255, 255, 255, 255)
-                                        : Color.fromARGB(255, 33, 150, 243),
-                                    fontWeight: FontWeight.bold,
+                                  SizedBox(height: 4),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (isObtained) ...[
+                                          Icon(
+                                            Icons.check_circle,
+                                            color: Colors.green,
+                                            size: 16,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Obtenido',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          Image.asset(
+                                            'assets/images/coin.png',
+                                            width: 16,
+                                            height: 16,
+                                            fit: BoxFit.contain,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            numberFormat
+                                                .format(item['price'] ?? 0),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue[800],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: true,
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (isObtained) ...[
-                                      Icon(
-                                        Icons.check_circle_rounded,
-                                        color: Colors.green,
-                                        size: 11,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Obtenido',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green,
-                                        ),
-                                      ),
-                                    ] else ...[
-                                      Image.asset(
-                                        'assets/images/coin.png',
-                                        width: 14,
-                                        height: 14,
-                                        fit: BoxFit.contain,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        numberFormat.format(item['price'] ?? 0),
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -1952,5 +1916,184 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildImageWidget(String category, String imagePath, bool isObtained,
+      String visibilityKey) {
+    final isVisible = _gifVisibility[visibilityKey] ?? false;
+    Widget imageWidget;
+
+    if (category == 'avatares') {
+      imageWidget = Container(
+        margin: EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isObtained ? Colors.green : Colors.blue,
+            width: 3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              spreadRadius: 1,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            ClipOval(
+              child: Container(
+                color: Colors.transparent, // Background to fill any empty space
+                child: isVisible
+                    ? (imagePath.isNotEmpty &&
+                            !imagePath.startsWith('http') &&
+                            File(imagePath).existsSync()
+                        ? Image.file(
+                            File(imagePath),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : imagePath.isNotEmpty &&
+                                Uri.tryParse(imagePath)?.isAbsolute == true
+                            ? CachedNetworkImage(
+                                imageUrl: imagePath,
+                                cacheManager: CustomCacheManager.instance,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                placeholder: (context, url) => Center(
+                                  child: CircularProgressIndicator(
+                                      color: Colors.blue),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/images/refmmp.png',
+                                fit: BoxFit.cover,
+                              ))
+                    : Image.asset(
+                        'assets/images/refmmp.png',
+                        fit: BoxFit.cover,
+                      ),
+              ),
+            ),
+            if (isObtained)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 18,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    } else {
+      imageWidget = Container(
+        margin: EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isObtained ? Colors.green : Colors.blue,
+            width: 3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              spreadRadius: 1,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: isVisible
+                  ? (imagePath.isNotEmpty &&
+                          !imagePath.startsWith('http') &&
+                          File(imagePath).existsSync()
+                      ? Image.file(
+                          File(imagePath),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Image.asset(
+                            'assets/images/refmmp.png',
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : imagePath.isNotEmpty &&
+                              Uri.tryParse(imagePath)?.isAbsolute == true
+                          ? CachedNetworkImage(
+                              imageUrl: imagePath,
+                              cacheManager: CustomCacheManager.instance,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              placeholder: (context, url) => Center(
+                                child: CircularProgressIndicator(
+                                    color: Colors.blue),
+                              ),
+                              errorWidget: (context, url, error) => Image.asset(
+                                'assets/images/refmmp.png',
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : Image.asset(
+                              'assets/images/refmmp.png',
+                              fit: BoxFit.cover,
+                            ))
+                  : Image.asset(
+                      'assets/images/refmmp.png',
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            if (isObtained)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 18,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return imageWidget;
   }
 }
