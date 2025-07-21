@@ -1241,7 +1241,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'No tienes suficientes monedas. Tus monedas son de: ($totalCoins) y son menores que el precio del objeto que es: ($price) monedas.',
+                                  'No tienes suficientes monedas. Tienes: ($totalCoins) monedas y son menores que el precio del objeto que es: ($price) monedas.',
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                   textAlign: TextAlign.center,
                                 ),
@@ -1912,8 +1912,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                       Center(
                         child: Image.asset(
                           'assets/images/coin.png',
-                          width: 100,
-                          height: 100,
+                          width: 200,
+                          height: 200,
                           fit: BoxFit.contain,
                         ),
                       ),
