@@ -1494,7 +1494,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
                   child: Container(
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: Colors.blue,
+                        color: isObtained ? Colors.green : Colors.blue,
                         width: 1.5,
                       ),
                       borderRadius: BorderRadius.circular(8),
