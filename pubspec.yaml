@@ -89,6 +89,7 @@ dependencies:
   geocoding: ^4.0.0
   font_awesome_flutter: ^10.8.0
   visibility_detector: ^0.4.0+2
+  marquee: ^2.3.0
 
   # flutter_native_timezone: ^2.0.0
 
