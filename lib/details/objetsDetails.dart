@@ -1789,8 +1789,11 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                       crossAxisCount: 3,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio:
-                          widget.title.toLowerCase() == 'avatares' ? 0.7 : 0.9,
+                      childAspectRatio: widget.title.toLowerCase() == 'avatares'
+                          ? 0.55
+                          : widget.title.toLowerCase() == 'fondos'
+                              ? 0.8
+                              : 0.9,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -1839,26 +1842,38 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Expanded(
+                                  SizedBox(
+                                    height: category == 'fondos'
+                                        ? 60
+                                        : 100, // Más pequeño para fondos
+                                    width: category == 'fondos'
+                                        ? 80
+                                        : 100, // Más pequeño para fondos
                                     child: _buildImageWidget(category,
                                         imagePath, isObtained, visibilityKey),
                                   ),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8.0),
-                                    child: Text(
-                                      item['name'] ?? '',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: themeProvider.isDarkMode
-                                            ? Colors.white
-                                            : Colors.blue[800],
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                          maxHeight:
+                                              30), // Limita la altura del texto
+                                      child: Text(
+                                        item['name'] ?? '',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: themeProvider.isDarkMode
+                                              ? Colors.white
+                                              : Colors.blue[800],
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   SizedBox(height: 4),
@@ -1913,7 +1928,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                       childCount: filteredItems.length,
                     ),
                   ),
-                ),
+                )
               ],
             ),
           ),
@@ -1927,150 +1942,83 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     final isVisible = _gifVisibility[visibilityKey] ?? false;
     Widget imageWidget;
 
-    if (category == 'avatares') {
-      imageWidget = Container(
-        margin: const EdgeInsets.all(8.0),
-        child: CircleAvatar(
-          radius: 40, // Ajusta el tamaño del círculo
-          backgroundColor: Colors.transparent,
-          child: ClipOval(
-            child: isVisible
-                ? (imagePath.isNotEmpty &&
-                        !imagePath.startsWith('http') &&
-                        File(imagePath).existsSync()
-                    ? Image.file(
-                        File(imagePath),
-                        fit: BoxFit.cover,
-                        width: 80,
-                        height: 80,
-                        errorBuilder: (context, error, stackTrace) {
-                          debugPrint(
-                              'Error loading local image: $error, path: $imagePath');
-                          return Image.asset(
-                            'assets/images/refmmp.png',
-                            fit: BoxFit.cover,
-                            width: 80,
-                            height: 80,
-                          );
-                        },
-                      )
-                    : imagePath.isNotEmpty &&
-                            Uri.tryParse(imagePath)?.isAbsolute == true
-                        ? CachedNetworkImage(
-                            imageUrl: imagePath,
-                            cacheManager: CustomCacheManager.instance,
-                            fit: BoxFit.cover,
-                            width: 80,
-                            height: 80,
-                            placeholder: (context, url) => const Center(
-                              child:
-                                  CircularProgressIndicator(color: Colors.blue),
-                            ),
-                            errorWidget: (context, url, error) {
-                              debugPrint(
-                                  'Error loading network image: $error, url: $url');
-                              return Image.asset(
-                                'assets/images/refmmp.png',
-                                fit: BoxFit.cover,
-                                width: 80,
-                                height: 80,
-                              );
-                            },
-                          )
-                        : Image.asset(
-                            'assets/images/refmmp.png',
-                            fit: BoxFit.cover,
-                            width: 80,
-                            height: 80,
-                          ))
-                : Image.asset(
-                    'assets/images/refmmp.png',
-                    fit: BoxFit.cover,
-                    width: 80,
-                    height: 80,
-                  ),
+    if (category == 'trompetas') {
+      imageWidget = Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
           ),
-          foregroundColor: isObtained ? Colors.green : Colors.blue,
-          foregroundImage: null, // Usamos ClipOval para manejar la imagen
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _buildImageContent(imagePath, isVisible, category),
+                ),
+              ),
+              if (isObtained)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } else if (category == 'avatares') {
+      imageWidget = Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isObtained ? Colors.green : Colors.blue,
+                width: 2,
+              ),
+            ),
+            child: ClipOval(
+              child: _buildImageContent(imagePath, isVisible, category),
+            ),
+          ),
         ),
       );
     } else {
       imageWidget = Container(
-        margin: const EdgeInsets.all(8.0),
+        width: double.infinity,
+        height: double.infinity,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              spreadRadius: 1,
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.transparent,
         ),
         child: Stack(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: isVisible
-                  ? (imagePath.isNotEmpty &&
-                          !imagePath.startsWith('http') &&
-                          File(imagePath).existsSync()
-                      ? Image.file(
-                          File(imagePath),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Image.asset(
-                            'assets/images/refmmp.png',
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : imagePath.isNotEmpty &&
-                              Uri.tryParse(imagePath)?.isAbsolute == true
-                          ? CachedNetworkImage(
-                              imageUrl: imagePath,
-                              cacheManager: CustomCacheManager.instance,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              placeholder: (context, url) => const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.blue),
-                              ),
-                              errorWidget: (context, url, error) => Image.asset(
-                                'assets/images/refmmp.png',
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : Image.asset(
-                              'assets/images/refmmp.png',
-                              fit: BoxFit.cover,
-                            ))
-                  : Image.asset(
-                      'assets/images/refmmp.png',
-                      fit: BoxFit.cover,
-                    ),
+            Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildImageContent(imagePath, isVisible, category),
+              ),
             ),
             if (isObtained)
               Positioned(
                 top: 4,
                 right: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                  child: const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 18,
-                  ),
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.green,
+                  size: 20,
                 ),
               ),
           ],
@@ -2079,5 +2027,63 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     }
 
     return imageWidget;
+  }
+
+  Widget _buildImageContent(String imagePath, bool isVisible, String category) {
+    final isAnimatedFormat = imagePath.toLowerCase().endsWith('.gif') ||
+        imagePath.toLowerCase().endsWith('.avif') ||
+        imagePath.toLowerCase().endsWith('.webp');
+
+    debugPrint(
+        'Loading image: $imagePath, isVisible: $isVisible, isAnimated: $isAnimatedFormat');
+
+    if (!isVisible || imagePath.isEmpty) {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: BoxFit.cover,
+      );
+    }
+
+    if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
+      return Image.file(
+        File(imagePath),
+        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('Error loading local image: $error, path: $imagePath');
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+          );
+        },
+      );
+    } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        cacheManager: CustomCacheManager.instance,
+        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (context, url) => const Center(
+          child: CircularProgressIndicator(color: Colors.blue),
+        ),
+        errorWidget: (context, url, error) {
+          debugPrint('Error loading network image: $error, url: $url');
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+          );
+        },
+        memCacheWidth: 200,
+        memCacheHeight: 200,
+        fadeInDuration: const Duration(milliseconds: 200),
+      );
+    } else {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: BoxFit.cover,
+      );
+    }
   }
 }
