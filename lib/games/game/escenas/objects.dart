@@ -1912,8 +1912,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
                       Center(
                         child: Image.asset(
                           'assets/images/coin.png',
-                          width: 200,
-                          height: 200,
+                          width: 130,
+                          height: 130,
                           fit: BoxFit.contain,
                         ),
                       ),

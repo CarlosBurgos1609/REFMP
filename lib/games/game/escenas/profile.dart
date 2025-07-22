@@ -819,51 +819,319 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('Editar Nickname'),
-          content: TextField(
-            controller: nicknameController,
-            decoration: InputDecoration(hintText: 'Ingrese nuevo nickname'),
+        final themeProvider =
+            Provider.of<ThemeProvider>(context, listen: false);
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          backgroundColor:
+              themeProvider.isDarkMode ? Colors.grey[900] : Colors.white,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  'Editar Nickname',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nicknameController,
+                  maxLength: 14,
+                  cursorColor: Colors.blue,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.bottom,
+                  decoration: InputDecoration(
+                    hintText: 'Maximo 14 letras, Escribelo...',
+                    filled: true,
+                    fillColor: themeProvider.isDarkMode
+                        ? Colors.grey[800]
+                        : Colors.grey[200],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15, vertical: 10),
+                    counterText: '',
+                  ),
+                  style: TextStyle(
+                    color: themeProvider.isDarkMode
+                        ? Colors.white
+                        : Colors.black87,
+                  ),
+                  cursorHeight: 20,
+                  cursorWidth: 2,
+                  cursorRadius: const Radius.circular(1),
+                  // cursorHandleColor: MaterialStateProperty.all(Colors.blue),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isOnline ? Colors.blue : Colors.grey,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: _isOnline
+                      ? () async {
+                          final newNickname = nicknameController.text.trim();
+                          if (newNickname.isEmpty || newNickname.length > 14) {
+                            return;
+                          }
+                          final userId = supabase.auth.currentUser?.id;
+                          if (userId != null) {
+                            try {
+                              try {
+                                await supabase
+                                    .from('users_games')
+                                    .update({'nickname': newNickname}).eq(
+                                        'user_id', userId);
+                              } catch (e) {
+                                if (e.toString().contains('23505')) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => Dialog(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      backgroundColor: themeProvider.isDarkMode
+                                          ? Colors.grey[900]
+                                          : Colors.white,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.close_rounded,
+                                              color: Colors.red,
+                                              size: MediaQuery.of(context)
+                                                      .size
+                                                      .width *
+                                                  0.3,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            const Text(
+                                              'No puedes cambiar el nombre',
+                                              style: TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.blue,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 16),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.blue,
+                                                minimumSize: const Size(
+                                                    double.infinity, 48),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                              ),
+                                              onPressed: () =>
+                                                  Navigator.pop(context),
+                                              child: const Text(
+                                                'OK',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                rethrow;
+                              }
+                              final box = Hive.box('offline_data');
+                              await box.put(
+                                  'user_nickname_$userId', newNickname);
+                              setState(() {
+                                nickname = newNickname;
+                              });
+
+                              showDialog(
+                                context: context,
+                                builder: (context) => Dialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  backgroundColor: themeProvider.isDarkMode
+                                      ? Colors.grey[900]
+                                      : Colors.white,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          color: Colors.green,
+                                          size: MediaQuery.of(context)
+                                                  .size
+                                                  .width *
+                                              0.3,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          '¡Se cambió correctamente!',
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue,
+                                            minimumSize:
+                                                const Size(double.infinity, 48),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.pop(
+                                                context); // Close success dialog
+                                            Navigator.pop(
+                                                context); // Close edit dialog
+                                          },
+                                          child: const Text(
+                                            'OK',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              debugPrint('Error al actualizar nickname: $e');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Error al actualizar nickname: $e')),
+                              );
+                            }
+                          }
+                        }
+                      : () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => Dialog(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              backgroundColor: themeProvider.isDarkMode
+                                  ? Colors.grey[900]
+                                  : Colors.white,
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.red,
+                                      size: MediaQuery.of(context).size.width *
+                                          0.3,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'No puedes cambiar el nombre porque estás offline',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        minimumSize:
+                                            const Size(double.infinity, 48),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text(
+                                        'OK',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                  child: const Text(
+                    'Guardar',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    minimumSize: const Size(double.infinity, 48),
+                    side: const BorderSide(color: Colors.red, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newNickname = nicknameController.text.trim();
-                if (newNickname.isNotEmpty) {
-                  final userId = supabase.auth.currentUser?.id;
-                  if (userId != null) {
-                    try {
-                      if (_isOnline) {
-                        await supabase.from('users_games').update(
-                            {'nickname': newNickname}).eq('user_id', userId);
-                      }
-                      final box = Hive.box('offline_data');
-                      await box.put('user_nickname_$userId', newNickname);
-                      setState(() {
-                        nickname = newNickname;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Nickname actualizado con éxito')),
-                      );
-                    } catch (e) {
-                      debugPrint('Error al actualizar nickname: $e');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Error al actualizar nickname: $e')),
-                      );
-                    }
-                  }
-                  Navigator.pop(context);
-                }
-              },
-              child: Text('Guardar'),
-            ),
-          ],
         );
       },
     );
@@ -876,54 +1144,106 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LearningPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  LearningPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 1:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                MusicPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  MusicPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 2:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                CupPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  CupPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 3:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                ObjetsPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  ObjetsPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 4:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                ProfilePageGame(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  ProfilePageGame(instrumentName: widget.instrumentName)),
         );
         break;
     }
   }
 
+  bool _needsMarquee(String text, double maxWidth, TextStyle style) {
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+    )..layout();
+    return textPainter.size.width > maxWidth;
+  }
+
+  Widget _buildNicknameWidget(bool isAppBar) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final textStyle = TextStyle(
+      color: isAppBar
+          ? Colors.white
+          : (themeProvider.isDarkMode ? Colors.white : Colors.black87),
+      fontWeight: FontWeight.bold,
+      fontSize: isAppBar ? 20 : 24,
+      shadows: isAppBar
+          ? [
+              const Shadow(
+                color: Colors.black,
+                offset: Offset(1, 1),
+                blurRadius: 4,
+              ),
+            ]
+          : [],
+    );
+    const maxWidth = 250.0; // Adjust for edit icon and spacing
+    final text = nickname?.toUpperCase() ?? 'USUARIO';
+
+    return _needsMarquee(text, maxWidth, textStyle)
+        ? SizedBox(
+            width: maxWidth,
+            height: isAppBar ? 40 : 50,
+            child: Marquee(
+              text: text,
+              style: textStyle,
+              scrollAxis: Axis.horizontal,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              blankSpace: 30.0,
+              velocity: 40.0,
+              pauseAfterRound: const Duration(seconds: 1),
+              startPadding: 10.0,
+              accelerationDuration: const Duration(seconds: 1),
+              accelerationCurve: Curves.linear,
+              decelerationDuration: const Duration(milliseconds: 500),
+              decelerationCurve: Curves.bounceIn,
+            ),
+          )
+        : Text(
+            text,
+            style: textStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final profileImageProvider = Provider.of<ProfileImageProvider>(context);
+    // final profileImageProvider = Provider.of<ProfileImageProvider>(context);
     final numberFormat = NumberFormat('#,##0', 'es_ES');
 
     return Scaffold(
@@ -971,9 +1291,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   onPressed: () => Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) =>
-                          LearningPage(instrumentName: widget.instrumentName),
-                    ),
+                        builder: (context) => LearningPage(
+                            instrumentName: widget.instrumentName)),
                   ),
                 ),
                 title: isCollapsed
@@ -996,37 +1315,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                   AssetImage('assets/images/refmmp.png'),
                             ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 20,
-                              child: Marquee(
-                                text: nickname?.toUpperCase() ?? 'USUARIO',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black,
-                                      offset: Offset(1, 1),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                scrollAxis: Axis.horizontal,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                blankSpace: 20.0,
-                                velocity: 50.0,
-                                pauseAfterRound: Duration(seconds: 1),
-                                startPadding: 10.0,
-                                accelerationDuration: Duration(seconds: 1),
-                                accelerationCurve: Curves.linear,
-                                decelerationDuration:
-                                    Duration(milliseconds: 500),
-                                decelerationCurve: Curves.easeOut,
-                              ),
-                            ),
-                          ),
+                          Expanded(child: _buildNicknameWidget(true)),
                         ],
                       )
                     : null,
@@ -1034,33 +1323,28 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      profileImageProvider.wallpaperUrl != null &&
-                              profileImageProvider.wallpaperUrl!.isNotEmpty &&
-                              !profileImageProvider.wallpaperUrl!
-                                  .startsWith('http') &&
-                              File(profileImageProvider.wallpaperUrl!)
-                                  .existsSync()
+                      wallpaperUrl != null &&
+                              wallpaperUrl!.isNotEmpty &&
+                              !wallpaperUrl!.startsWith('http') &&
+                              File(wallpaperUrl!).existsSync()
                           ? Image.file(
-                              File(profileImageProvider.wallpaperUrl!),
+                              File(wallpaperUrl!),
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) {
                                 debugPrint(
-                                    'Error loading local wallpaper: $error, path: ${profileImageProvider.wallpaperUrl}');
+                                    'Error loading local wallpaper: $error, path: $wallpaperUrl');
                                 return Image.asset(
                                   'assets/images/refmmp.png',
                                   fit: BoxFit.cover,
                                 );
                               },
                             )
-                          : profileImageProvider.wallpaperUrl != null &&
-                                  profileImageProvider
-                                      .wallpaperUrl!.isNotEmpty &&
-                                  Uri.tryParse(profileImageProvider
-                                              .wallpaperUrl!)
-                                          ?.isAbsolute ==
+                          : wallpaperUrl != null &&
+                                  wallpaperUrl!.isNotEmpty &&
+                                  Uri.tryParse(wallpaperUrl!)?.isAbsolute ==
                                       true
                               ? CachedNetworkImage(
-                                  imageUrl: profileImageProvider.wallpaperUrl!,
+                                  imageUrl: wallpaperUrl!,
                                   cacheManager: CustomCacheManager.instance,
                                   fit: BoxFit.cover,
                                   placeholder: (context, url) => const Center(
@@ -1087,19 +1371,22 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CircleAvatar(
-                                radius: 70.0,
-                                backgroundImage: profileImageUrl!
-                                        .startsWith('assets/')
-                                    ? AssetImage(profileImageUrl!)
-                                        as ImageProvider
-                                    : (!profileImageUrl!.startsWith('http') &&
-                                            File(profileImageUrl!).existsSync()
-                                        ? FileImage(File(profileImageUrl!))
-                                        : NetworkImage(profileImageUrl!)),
-                                backgroundColor: Colors.transparent,
-                                onBackgroundImageError: (_, __) =>
-                                    AssetImage('assets/images/refmmp.png'),
+                              Center(
+                                child: CircleAvatar(
+                                  radius: 60.0,
+                                  backgroundImage: profileImageUrl!
+                                          .startsWith('assets/')
+                                      ? AssetImage(profileImageUrl!)
+                                          as ImageProvider
+                                      : (!profileImageUrl!.startsWith('http') &&
+                                              File(profileImageUrl!)
+                                                  .existsSync()
+                                          ? FileImage(File(profileImageUrl!))
+                                          : NetworkImage(profileImageUrl!)),
+                                  backgroundColor: Colors.transparent,
+                                  onBackgroundImageError: (_, __) =>
+                                      AssetImage('assets/images/refmmp.png'),
+                                ),
                               ),
                             ],
                           ),
@@ -1117,30 +1404,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(
-                            width: 200,
-                            height: 30,
-                            child: Marquee(
-                              text: nickname ?? 'Usuario',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: themeProvider.isDarkMode
-                                    ? Colors.white
-                                    : Colors.black87,
-                              ),
-                              scrollAxis: Axis.horizontal,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              blankSpace: 20.0,
-                              velocity: 50.0,
-                              pauseAfterRound: Duration(seconds: 1),
-                              startPadding: 10.0,
-                              accelerationDuration: Duration(seconds: 1),
-                              accelerationCurve: Curves.linear,
-                              decelerationDuration: Duration(milliseconds: 500),
-                              decelerationCurve: Curves.easeOut,
-                            ),
-                          ),
+                          _buildNicknameWidget(false),
                           const SizedBox(width: 8),
                           IconButton(
                             icon: const Icon(Icons.edit_rounded,
@@ -1224,22 +1488,22 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      Row(children: [
-                                        Icon(
-                                          Icons.bolt,
-                                          color: Colors.yellow,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          numberFormat.format(pointsXpWeekend),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
+                                      Row(
+                                        children: [
+                                          Icon(Icons.bolt,
+                                              color: Colors.yellow, size: 20),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            numberFormat
+                                                .format(pointsXpWeekend),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
-                                        ),
-                                      ])
+                                        ],
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -1269,11 +1533,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                       ),
                                       Row(
                                         children: [
-                                          Icon(
-                                            Icons.bolt,
-                                            color: Colors.yellow,
-                                            size: 20,
-                                          ),
+                                          Icon(Icons.bolt,
+                                              color: Colors.yellow, size: 20),
                                           const SizedBox(width: 4),
                                           Text(
                                             numberFormat
@@ -1296,7 +1557,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                       ),
                       const SizedBox(height: 10),
                       const Divider(color: Colors.blue),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 500),
                       const Text(
                         '| Objetos Obtenidos',
                         style: TextStyle(
@@ -1345,20 +1606,18 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                       child: GestureDetector(
                                         onTap: () {
                                           showObjectDialog(
-                                            context,
-                                            objet,
-                                            category,
-                                            totalCoins,
-                                            _useObject,
-                                            _purchaseObject,
-                                          );
+                                              context,
+                                              objet,
+                                              category,
+                                              totalCoins,
+                                              _useObject,
+                                              _purchaseObject);
                                         },
                                         child: Container(
                                           decoration: BoxDecoration(
                                             border: Border.all(
-                                              color: Colors.green,
-                                              width: 1.5,
-                                            ),
+                                                color: Colors.green,
+                                                width: 1.5),
                                             borderRadius:
                                                 BorderRadius.circular(8),
                                           ),
@@ -1396,10 +1655,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                                     MainAxisAlignment.center,
                                                 children: [
                                                   Icon(
-                                                    Icons.check_circle_rounded,
-                                                    color: Colors.green,
-                                                    size: 11,
-                                                  ),
+                                                      Icons
+                                                          .check_circle_rounded,
+                                                      color: Colors.green,
+                                                      size: 11),
                                                   const SizedBox(width: 4),
                                                   Text(
                                                     'Obtenido',
@@ -1426,17 +1685,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) => ObjetsPage(
-                                              instrumentName:
-                                                  widget.instrumentName),
-                                        ),
+                                            builder: (context) => ObjetsPage(
+                                                instrumentName:
+                                                    widget.instrumentName)),
                                       );
                                     },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.blue,
                                       shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
+                                          borderRadius:
+                                              BorderRadius.circular(20)),
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 20, vertical: 10),
                                     ),
@@ -1472,10 +1730,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     final isVisible = _gifVisibility[visibilityKey] ?? false;
 
     if (!isVisible || imagePath.isEmpty) {
-      return Image.asset(
-        'assets/images/refmmp.png',
-        fit: BoxFit.cover,
-      );
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
     }
 
     if (category == 'avatares') {
@@ -1487,13 +1742,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: isObtained ? Colors.green : Colors.blue,
-                width: 2,
-              ),
+                  color: isObtained ? Colors.green : Colors.blue, width: 2),
             ),
             child: ClipOval(
-              child: _buildImageContent(imagePath, isVisible, category),
-            ),
+                child: _buildImageContent(imagePath, isVisible, category)),
           ),
         ),
       );
@@ -1520,11 +1772,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                 Positioned(
                   top: 8,
                   right: 8,
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.green,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.check_circle_rounded,
+                      color: Colors.green, size: 20),
                 ),
             ],
           ),
@@ -1551,11 +1800,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               Positioned(
                 top: 4,
                 right: 4,
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.green,
-                  size: 20,
-                ),
+                child: Icon(Icons.check_circle_rounded,
+                    color: Colors.green, size: 20),
               ),
           ],
         ),
@@ -1572,10 +1818,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('Error loading local image: $error, path: $imagePath');
-          return Image.asset(
-            'assets/images/refmmp.png',
-            fit: BoxFit.cover,
-          );
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
         },
       );
     } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
@@ -1585,25 +1828,18 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        placeholder: (context, url) => const Center(
-          child: CircularProgressIndicator(color: Colors.blue),
-        ),
+        placeholder: (context, url) =>
+            const Center(child: CircularProgressIndicator(color: Colors.blue)),
         errorWidget: (context, url, error) {
           debugPrint('Error loading network image: $error, url: $url');
-          return Image.asset(
-            'assets/images/refmmp.png',
-            fit: BoxFit.cover,
-          );
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
         },
         memCacheWidth: 200,
         memCacheHeight: 200,
         fadeInDuration: const Duration(milliseconds: 200),
       );
     } else {
-      return Image.asset(
-        'assets/images/refmmp.png',
-        fit: BoxFit.cover,
-      );
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
     }
   }
 }
