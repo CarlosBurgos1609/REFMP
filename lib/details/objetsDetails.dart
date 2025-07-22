@@ -1868,7 +1868,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                           fontWeight: FontWeight.w600,
                                           color: themeProvider.isDarkMode
                                               ? Colors.white
-                                              : Colors.blue[800],
+                                              : Colors.blue,
                                         ),
                                         textAlign: TextAlign.center,
                                         maxLines: 2,
