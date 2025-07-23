@@ -872,7 +872,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   cursorHeight: 20,
                   cursorWidth: 2,
                   cursorRadius: const Radius.circular(1),
-                  // cursorHandleColor: MaterialStateProperty.all(Colors.blue),
+                  // cursorHandleColor: MaterialStateProperty.all(Colors.blue)
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -892,76 +892,169 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           final userId = supabase.auth.currentUser?.id;
                           if (userId != null) {
                             try {
-                              try {
-                                await supabase
-                                    .from('users_games')
-                                    .update({'nickname': newNickname}).eq(
-                                        'user_id', userId);
-                              } catch (e) {
-                                if (e.toString().contains('23505')) {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => Dialog(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      backgroundColor: themeProvider.isDarkMode
-                                          ? Colors.grey[900]
-                                          : Colors.white,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.close_rounded,
-                                              color: Colors.red,
-                                              size: MediaQuery.of(context)
-                                                      .size
-                                                      .width *
-                                                  0.3,
-                                            ),
-                                            const SizedBox(height: 8),
-                                            const Text(
-                                              'No puedes cambiar el nombre',
-                                              style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.blue,
+                              // Check if user exists in users_games
+                              final response = await supabase
+                                  .from('users_games')
+                                  .select()
+                                  .eq('user_id', userId)
+                                  .maybeSingle();
+
+                              if (response == null) {
+                                // User doesn't exist, insert new record
+                                try {
+                                  await supabase.from('users_games').insert({
+                                    'user_id': userId,
+                                    'nickname': newNickname,
+                                    'points_xp_totally': 0,
+                                    'points_xp_weekend': 0,
+                                    'coins': 0,
+                                  });
+                                } catch (e) {
+                                  if (e.toString().contains('23505')) {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => Dialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        backgroundColor:
+                                            themeProvider.isDarkMode
+                                                ? Colors.grey[900]
+                                                : Colors.white,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.close_rounded,
+                                                color: Colors.red,
+                                                size: MediaQuery.of(context)
+                                                        .size
+                                                        .width *
+                                                    0.3,
                                               ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 16),
-                                            ElevatedButton(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.blue,
-                                                minimumSize: const Size(
-                                                    double.infinity, 48),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                ),
-                                              ),
-                                              onPressed: () =>
-                                                  Navigator.pop(context),
-                                              child: const Text(
-                                                'OK',
+                                              const SizedBox(height: 8),
+                                              const Text(
+                                                'No puedes cambiar el nombre',
                                                 style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 16,
+                                                  fontSize: 20,
                                                   fontWeight: FontWeight.bold,
+                                                  color: Colors.blue,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              const SizedBox(height: 16),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.blue,
+                                                  minimumSize: const Size(
+                                                      double.infinity, 48),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                  ),
+                                                ),
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: const Text(
+                                                  'OK',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                  return;
+                                    );
+                                    return;
+                                  }
+                                  rethrow;
                                 }
-                                rethrow;
+                              } else {
+                                // User exists, update nickname
+                                try {
+                                  await supabase
+                                      .from('users_games')
+                                      .update({'nickname': newNickname}).eq(
+                                          'user_id', userId);
+                                } catch (e) {
+                                  if (e.toString().contains('23505')) {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => Dialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        backgroundColor:
+                                            themeProvider.isDarkMode
+                                                ? Colors.grey[900]
+                                                : Colors.white,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.close_rounded,
+                                                color: Colors.red,
+                                                size: MediaQuery.of(context)
+                                                        .size
+                                                        .width *
+                                                    0.3,
+                                              ),
+                                              const SizedBox(height: 8),
+                                              const Text(
+                                                'No puedes cambiar el nombre',
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              const SizedBox(height: 16),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.blue,
+                                                  minimumSize: const Size(
+                                                      double.infinity, 48),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                  ),
+                                                ),
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: const Text(
+                                                  'OK',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  rethrow;
+                                }
                               }
+
+                              // Update Hive and UI after successful insert/update
                               final box = Hive.box('offline_data');
                               await box.put(
                                   'user_nickname_$userId', newNickname);
@@ -969,6 +1062,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 nickname = newNickname;
                               });
 
+                              // Show success dialog
                               showDialog(
                                 context: context,
                                 builder: (context) => Dialog(
@@ -1210,7 +1304,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             ]
           : [],
     );
-    const maxWidth = 250.0; // Adjust for edit icon and spacing
+    // Reduced maxWidth to account for CircleAvatar (40px width + 8px spacing)
+    const maxWidth = 200.0;
     final text = nickname?.toUpperCase() ?? 'USUARIO';
 
     return _needsMarquee(text, maxWidth, textStyle)
@@ -1243,7 +1338,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    // final profileImageProvider = Provider.of<ProfileImageProvider>(context);
     final numberFormat = NumberFormat('#,##0', 'es_ES');
 
     return WillPopScope(
@@ -1308,7 +1402,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   ),
                   title: isCollapsed
                       ? Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             if (profileImageUrl != null)
                               CircleAvatar(
@@ -1325,11 +1419,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 onBackgroundImageError: (_, __) =>
                                     AssetImage('assets/images/refmmp.png'),
                               ),
-                            const SizedBox(width: 8),
-                            Expanded(child: _buildNicknameWidget(true)),
+                            const SizedBox(width: 22),
+                            _buildNicknameWidget(true),
                           ],
                         )
                       : null,
+                  centerTitle: true,
                   flexibleSpace: FlexibleSpaceBar(
                     background: Stack(
                       fit: StackFit.expand,
