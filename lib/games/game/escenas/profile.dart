@@ -1246,481 +1246,496 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     // final profileImageProvider = Provider.of<ProfileImageProvider>(context);
     final numberFormat = NumberFormat('#,##0', 'es_ES');
 
-    return Scaffold(
-      body: RefreshIndicator(
-        color: Colors.blue,
-        onRefresh: () async {
-          await _checkConnectivityStatus();
-          await fetchTotalCoins();
-          await fetchUserProfileImage();
-          await fetchWallpaper();
-          await fetchUserObjects();
-          if (_isOnline) {
-            await _syncPendingActions();
-          }
-        },
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (scrollNotification) {
-            if (scrollNotification is ScrollUpdateNotification) {
-              setState(() {
-                isCollapsed = scrollNotification.metrics.pixels >=
-                    (expandedHeight ?? 200.0) - kToolbarHeight;
-              });
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                LearningPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        return false;
+      },
+      child: Scaffold(
+        body: RefreshIndicator(
+          color: Colors.blue,
+          onRefresh: () async {
+            await _checkConnectivityStatus();
+            await fetchTotalCoins();
+            await fetchUserProfileImage();
+            await fetchWallpaper();
+            await fetchUserObjects();
+            if (_isOnline) {
+              await _syncPendingActions();
             }
-            return false;
           },
-          child: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: expandedHeight ?? 200.0,
-                floating: false,
-                pinned: true,
-                backgroundColor: Colors.blue,
-                leading: IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back_ios_rounded,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black,
-                        offset: Offset(2, 1),
-                        blurRadius: 8,
-                      ),
-                    ],
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (scrollNotification) {
+              if (scrollNotification is ScrollUpdateNotification) {
+                setState(() {
+                  isCollapsed = scrollNotification.metrics.pixels >=
+                      (expandedHeight ?? 200.0) - kToolbarHeight;
+                });
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: expandedHeight ?? 200.0,
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: Colors.blue,
+                  leading: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_rounded,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(2, 1),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    onPressed: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => LearningPage(
+                              instrumentName: widget.instrumentName)),
+                    ),
                   ),
-                  onPressed: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => LearningPage(
-                            instrumentName: widget.instrumentName)),
+                  title: isCollapsed
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            if (profileImageUrl != null)
+                              CircleAvatar(
+                                radius: 20.0,
+                                backgroundImage: profileImageUrl!
+                                        .startsWith('assets/')
+                                    ? AssetImage(profileImageUrl!)
+                                        as ImageProvider
+                                    : (!profileImageUrl!.startsWith('http') &&
+                                            File(profileImageUrl!).existsSync()
+                                        ? FileImage(File(profileImageUrl!))
+                                        : NetworkImage(profileImageUrl!)),
+                                backgroundColor: Colors.transparent,
+                                onBackgroundImageError: (_, __) =>
+                                    AssetImage('assets/images/refmmp.png'),
+                              ),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildNicknameWidget(true)),
+                          ],
+                        )
+                      : null,
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        wallpaperUrl != null &&
+                                wallpaperUrl!.isNotEmpty &&
+                                !wallpaperUrl!.startsWith('http') &&
+                                File(wallpaperUrl!).existsSync()
+                            ? Image.file(
+                                File(wallpaperUrl!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  debugPrint(
+                                      'Error loading local wallpaper: $error, path: $wallpaperUrl');
+                                  return Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                  );
+                                },
+                              )
+                            : wallpaperUrl != null &&
+                                    wallpaperUrl!.isNotEmpty &&
+                                    Uri.tryParse(wallpaperUrl!)?.isAbsolute ==
+                                        true
+                                ? CachedNetworkImage(
+                                    imageUrl: wallpaperUrl!,
+                                    cacheManager: CustomCacheManager.instance,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const Center(
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white),
+                                    ),
+                                    errorWidget: (context, url, error) {
+                                      debugPrint(
+                                          'Error loading network wallpaper: $error, url: $url');
+                                      return Image.asset(
+                                        'assets/images/refmmp.png',
+                                        fit: BoxFit.cover,
+                                      );
+                                    },
+                                  )
+                                : Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                        if (!isCollapsed && profileImageUrl != null)
+                          Positioned(
+                            bottom: 0,
+                            left: (MediaQuery.of(context).size.width - 120) / 2,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Center(
+                                  child: CircleAvatar(
+                                    radius: 60.0,
+                                    backgroundImage: profileImageUrl!
+                                            .startsWith('assets/')
+                                        ? AssetImage(profileImageUrl!)
+                                            as ImageProvider
+                                        : (!profileImageUrl!
+                                                    .startsWith('http') &&
+                                                File(profileImageUrl!)
+                                                    .existsSync()
+                                            ? FileImage(File(profileImageUrl!))
+                                            : NetworkImage(profileImageUrl!)),
+                                    backgroundColor: Colors.transparent,
+                                    onBackgroundImageError: (_, __) =>
+                                        AssetImage('assets/images/refmmp.png'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                title: isCollapsed
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          if (profileImageUrl != null)
-                            CircleAvatar(
-                              radius: 20.0,
-                              backgroundImage: profileImageUrl!
-                                      .startsWith('assets/')
-                                  ? AssetImage(profileImageUrl!)
-                                      as ImageProvider
-                                  : (!profileImageUrl!.startsWith('http') &&
-                                          File(profileImageUrl!).existsSync()
-                                      ? FileImage(File(profileImageUrl!))
-                                      : NetworkImage(profileImageUrl!)),
-                              backgroundColor: Colors.transparent,
-                              onBackgroundImageError: (_, __) =>
-                                  AssetImage('assets/images/refmmp.png'),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildNicknameWidget(false),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.edit_rounded,
+                                  color: Colors.blue),
+                              onPressed: _showEditNicknameDialog,
                             ),
-                          const SizedBox(width: 8),
-                          Expanded(child: _buildNicknameWidget(true)),
-                        ],
-                      )
-                    : null,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      wallpaperUrl != null &&
-                              wallpaperUrl!.isNotEmpty &&
-                              !wallpaperUrl!.startsWith('http') &&
-                              File(wallpaperUrl!).existsSync()
-                          ? Image.file(
-                              File(wallpaperUrl!),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                debugPrint(
-                                    'Error loading local wallpaper: $error, path: $wallpaperUrl');
-                                return Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            )
-                          : wallpaperUrl != null &&
-                                  wallpaperUrl!.isNotEmpty &&
-                                  Uri.tryParse(wallpaperUrl!)?.isAbsolute ==
-                                      true
-                              ? CachedNetworkImage(
-                                  imageUrl: wallpaperUrl!,
-                                  cacheManager: CustomCacheManager.instance,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    debugPrint(
-                                        'Error loading network wallpaper: $error, url: $url');
-                                    return Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
-                                )
-                              : Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                ),
-                      if (!isCollapsed && profileImageUrl != null)
-                        Positioned(
-                          bottom: 0,
-                          left: (MediaQuery.of(context).size.width - 120) / 2,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16.0),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Center(
-                                child: CircleAvatar(
-                                  radius: 60.0,
-                                  backgroundImage: profileImageUrl!
-                                          .startsWith('assets/')
-                                      ? AssetImage(profileImageUrl!)
-                                          as ImageProvider
-                                      : (!profileImageUrl!.startsWith('http') &&
-                                              File(profileImageUrl!)
-                                                  .existsSync()
-                                          ? FileImage(File(profileImageUrl!))
-                                          : NetworkImage(profileImageUrl!)),
-                                  backgroundColor: Colors.transparent,
-                                  onBackgroundImageError: (_, __) =>
-                                      AssetImage('assets/images/refmmp.png'),
+                              Text(
+                                'Mis monedas',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black54,
+                                      offset: Offset(1, 1),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Image.asset(
+                                'assets/images/coin.png',
+                                width: 24,
+                                height: 24,
+                                fit: BoxFit.contain,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                numberFormat.format(totalCoins),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black54,
+                                      offset: Offset(1, 1),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildNicknameWidget(false),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.edit_rounded,
-                                color: Colors.blue),
-                            onPressed: _showEditNicknameDialog,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16.0),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        const SizedBox(height: 10),
+                        Row(
                           children: [
-                            Text(
-                              'Mis monedas',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black54,
-                                    offset: Offset(1, 1),
-                                    blurRadius: 4,
-                                  ),
-                                ],
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(16.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Column(
+                                      children: [
+                                        Text(
+                                          'XP Semanal',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.bolt,
+                                                color: Colors.yellow, size: 20),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              numberFormat
+                                                  .format(pointsXpWeekend),
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Image.asset(
-                              'assets/images/coin.png',
-                              width: 24,
-                              height: 24,
-                              fit: BoxFit.contain,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              numberFormat.format(totalCoins),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black54,
-                                    offset: Offset(1, 1),
-                                    blurRadius: 4,
-                                  ),
-                                ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(16.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Column(
+                                      children: [
+                                        Text(
+                                          'XP Total',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.bolt,
+                                                color: Colors.yellow, size: 20),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              numberFormat
+                                                  .format(pointsXpTotally),
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(16.0),
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Column(
-                                    children: [
-                                      Text(
-                                        'XP Semanal',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.bolt,
-                                              color: Colors.yellow, size: 20),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            numberFormat
-                                                .format(pointsXpWeekend),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
+                        const SizedBox(height: 10),
+                        const Divider(color: Colors.blue),
+                        const SizedBox(height: 500),
+                        const Text(
+                          '| Objetos Obtenidos',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(16.0),
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Column(
-                                    children: [
-                                      Text(
-                                        'XP Total',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.bolt,
-                                              color: Colors.yellow, size: 20),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            numberFormat
-                                                .format(pointsXpTotally),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      const Divider(color: Colors.blue),
-                      const SizedBox(height: 500),
-                      const Text(
-                        '| Objetos Obtenidos',
-                        style: TextStyle(
-                          color: Colors.blue,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      userObjects.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'No tienes objetos obtenidos.',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            )
-                          : Column(
-                              children: [
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    crossAxisSpacing: 10,
-                                    mainAxisSpacing: 10,
-                                    childAspectRatio: 0.8,
-                                  ),
-                                  itemCount: userObjects.length,
-                                  itemBuilder: (context, index) {
-                                    final objet = userObjects[index];
-                                    final category =
-                                        objet['category'].toLowerCase();
-                                    final visibilityKey = '${objet['id']}';
-                                    return VisibilityDetector(
-                                      key: Key(visibilityKey),
-                                      onVisibilityChanged: (visibilityInfo) {
-                                        final visiblePercentage =
-                                            visibilityInfo.visibleFraction *
-                                                100;
-                                        setState(() {
-                                          _gifVisibility[visibilityKey] =
-                                              visiblePercentage > 10;
-                                        });
-                                      },
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          showObjectDialog(
-                                              context,
-                                              objet,
-                                              category,
-                                              totalCoins,
-                                              _useObject,
-                                              _purchaseObject);
+                        const SizedBox(height: 10),
+                        userObjects.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'No tienes objetos obtenidos.',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              )
+                            : Column(
+                                children: [
+                                  GridView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 3,
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                      childAspectRatio: 0.8,
+                                    ),
+                                    itemCount: userObjects.length,
+                                    itemBuilder: (context, index) {
+                                      final objet = userObjects[index];
+                                      final category =
+                                          objet['category'].toLowerCase();
+                                      final visibilityKey = '${objet['id']}';
+                                      return VisibilityDetector(
+                                        key: Key(visibilityKey),
+                                        onVisibilityChanged: (visibilityInfo) {
+                                          final visiblePercentage =
+                                              visibilityInfo.visibleFraction *
+                                                  100;
+                                          setState(() {
+                                            _gifVisibility[visibilityKey] =
+                                                visiblePercentage > 10;
+                                          });
                                         },
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                                color: Colors.green,
-                                                width: 1.5),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Expanded(
-                                                child: _buildImageWidget(
-                                                  category,
-                                                  objet['local_image_path'] ??
-                                                      objet['image_url'] ??
-                                                      'assets/images/refmmp.png',
-                                                  true,
-                                                  visibilityKey,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                objet['name'],
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color:
-                                                      themeProvider.isDarkMode
-                                                          ? Colors.white
-                                                          : Colors.blue,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(
-                                                      Icons
-                                                          .check_circle_rounded,
-                                                      color: Colors.green,
-                                                      size: 11),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    'Obtenido',
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Colors.green,
-                                                    ),
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            showObjectDialog(
+                                                context,
+                                                objet,
+                                                category,
+                                                totalCoins,
+                                                _useObject,
+                                                _purchaseObject);
+                                          },
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                  color: Colors.green,
+                                                  width: 1.5),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Expanded(
+                                                  child: _buildImageWidget(
+                                                    category,
+                                                    objet['local_image_path'] ??
+                                                        objet['image_url'] ??
+                                                        'assets/images/refmmp.png',
+                                                    true,
+                                                    visibilityKey,
                                                   ),
-                                                ],
-                                              ),
-                                            ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  objet['name'],
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color:
+                                                        themeProvider.isDarkMode
+                                                            ? Colors.white
+                                                            : Colors.blue,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                        Icons
+                                                            .check_circle_rounded,
+                                                        color: Colors.green,
+                                                        size: 11),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      'Obtenido',
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: Colors.green,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                if (totalObjects > 3) ...[
-                                  const SizedBox(height: 10),
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (context) => ObjetsPage(
-                                                instrumentName:
-                                                    widget.instrumentName)),
                                       );
                                     },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(20)),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 20, vertical: 10),
-                                    ),
-                                    child: Text(
-                                      'Todos mis objetos ($totalObjects)',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                                  ),
+                                  if (totalObjects > 3) ...[
+                                    const SizedBox(height: 10),
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) => ObjetsPage(
+                                                  instrumentName:
+                                                      widget.instrumentName)),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20)),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 20, vertical: 10),
+                                      ),
+                                      child: Text(
+                                        'Todos mis objetos ($totalObjects)',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                    ],
+                              ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-      bottomNavigationBar: CustomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
+        bottomNavigationBar: CustomNavigationBar(
+          selectedIndex: _selectedIndex,
+          onItemTapped: _onItemTapped,
+        ),
       ),
     );
   }
