@@ -1305,7 +1305,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           : [],
     );
     // Reduced maxWidth to account for CircleAvatar (40px width + 8px spacing)
-    const maxWidth = 200.0;
+    const maxWidth = 220.0;
     final text = nickname?.toUpperCase() ?? 'USUARIO';
 
     return _needsMarquee(text, maxWidth, textStyle)
@@ -1419,7 +1419,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 onBackgroundImageError: (_, __) =>
                                     AssetImage('assets/images/refmmp.png'),
                               ),
-                            const SizedBox(width: 22),
+                            const SizedBox(width: 10),
                             _buildNicknameWidget(true),
                           ],
                         )
