@@ -70,9 +70,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     _initializeUserData();
     fetchUserProfileImage();
     fetchWallpaper();
-    fetchUserObjects();
     fetchUserAchievements();
     fetchTotalAvailableObjects();
+    fetchUserObjects();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadImageHeight();
     });
@@ -683,6 +683,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           totalObjects = cachedObjects.length;
         });
         debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
+        // Load images asynchronously after updating UI
+        for (var item in userObjects) {
+          final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
+          final objectCacheKey = 'object_image_${item['id']}';
+          final localImagePath =
+              await _downloadAndCacheImage(imageUrl, objectCacheKey);
+          item['local_image_path'] = localImagePath;
+          _gifVisibility['${item['id']}'] = true;
+        }
+        setState(() {}); // Update UI after images are loaded
         return;
       }
 
@@ -697,24 +707,20 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       final List<Map<String, dynamic>> fetchedObjects = [];
       for (var item in response) {
         final objet = item['objets'] as Map<String, dynamic>;
-        final imageUrl = objet['image_url'] ?? 'assets/images/refmmp.png';
-        final objectCacheKey = 'object_image_${objet['id']}';
-        final localImagePath =
-            await _downloadAndCacheImage(imageUrl, objectCacheKey);
         fetchedObjects.add({
           'id': objet['id'],
-          'image_url': imageUrl,
-          'local_image_path': localImagePath,
+          'image_url': objet['image_url'] ?? 'assets/images/refmmp.png',
+          'local_image_path':
+              null, // Initially null, will be set after download
           'name': objet['name'] ?? 'Objeto',
           'category': objet['category'] ?? 'otros',
           'description': objet['description'] ?? 'Sin descripción',
           'price': objet['price'] ?? 0,
           'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
         });
-        _gifVisibility['${objet['id']}'] = true;
       }
 
-      // Count total objects
+      // Update UI with metadata immediately
       final countResponse = await supabase
           .from('users_objets')
           .select('objet_id')
@@ -726,7 +732,19 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         totalObjects = countResponse.count;
       });
       await box.put(cacheKey, fetchedObjects);
-      debugPrint('Online: Fetched ${fetchedObjects.length} objects');
+      debugPrint('Online: Fetched ${fetchedObjects.length} objects metadata');
+
+      // Download images asynchronously
+      for (var item in fetchedObjects) {
+        final imageUrl = item['image_url'];
+        final objectCacheKey = 'object_image_${item['id']}';
+        final localImagePath =
+            await _downloadAndCacheImage(imageUrl, objectCacheKey);
+        item['local_image_path'] = localImagePath;
+        _gifVisibility['${item['id']}'] = true;
+      }
+      setState(() {}); // Update UI after images are loaded
+      debugPrint('Online: Loaded images for ${fetchedObjects.length} objects');
     } catch (e, stackTrace) {
       debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
       setState(() {
@@ -1551,13 +1569,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   }
 
   Widget _buildImageContent(String imagePath, bool isVisible, String category) {
-    // Use BoxFit.contain for achievements to ensure the full image is visible
     final fit = category == 'achievements'
         ? BoxFit.contain
         : (category == 'trompetas' ? BoxFit.contain : BoxFit.cover);
 
+    Widget imageWidget;
+
     if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
-      return Image.file(
+      imageWidget = Image.file(
         File(imagePath),
         fit: fit,
         width: double.infinity,
@@ -1568,7 +1587,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         },
       );
     } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
-      return CachedNetworkImage(
+      imageWidget = CachedNetworkImage(
         imageUrl: imagePath,
         cacheManager: CustomCacheManager.instance,
         fit: fit,
@@ -1585,8 +1604,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         fadeInDuration: const Duration(milliseconds: 200),
       );
     } else {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
+      imageWidget =
+          Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
     }
+
+    // Forzar recorte circular para avatares
+    if (category == 'avatares') {
+      return ClipOval(child: imageWidget);
+    }
+
+    return imageWidget;
   }
 
   @override
@@ -1613,8 +1640,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             await fetchTotalCoins();
             await fetchUserProfileImage();
             await fetchWallpaper();
-            await fetchUserObjects();
             await fetchUserAchievements();
+            await fetchUserObjects();
+            await fetchTotalAvailableObjects();
+
             if (_isOnline) {
               await _syncPendingActions();
             }
@@ -2267,7 +2296,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                   // No navigation for now
                                 },
                                 child: Text(
-                                  'Tienes $totalObjects adquiridos / $totalAvailableObjects total de objetos',
+                                  'Todos mis objetos ($totalObjects / $totalAvailableObjects)',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
