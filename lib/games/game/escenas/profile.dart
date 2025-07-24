@@ -473,7 +473,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
   Future<void> fetchUserObjects() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      debugPrint('Error: userId is null');
+      return;
+    }
+
+    debugPrint('Fetching objects for userId: $userId');
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_objects_$userId';
@@ -486,46 +491,46 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               List<Map<String, dynamic>>.from(cachedObjects).take(3).toList();
           totalObjects = cachedObjects.length;
         });
+        debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
         return;
       }
 
       final response = await supabase
           .from('users_objets')
           .select(
-              'objet_id, objets(id, image_url, name, category, description, price, created_at)')
+              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
           .eq('user_id', userId)
-          .eq('status', true)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false, referencedTable: 'objets')
+          .limit(3);
 
       final List<Map<String, dynamic>> fetchedObjects = [];
       for (var item in response) {
-        final objet = item['objets'] as Map<String, dynamic>?;
-        if (objet != null) {
-          final imageUrl = objet['image_url'] ?? 'assets/images/refmmp.png';
-          final objectCacheKey = 'object_image_${objet['id']}';
-          final localImagePath =
-              await _downloadAndCacheImage(imageUrl, objectCacheKey);
-          fetchedObjects.add({
-            'id': objet['id'],
-            'image_url': imageUrl,
-            'local_image_path': localImagePath,
-            'name': objet['name'] ?? 'Objeto',
-            'category': objet['category'] ?? 'otros',
-            'description': objet['description'] ?? 'Sin descripción',
-            'price': objet['price'] ?? 0,
-            'created_at': item['created_at'],
-          });
-          _gifVisibility['${objet['id']}'] = true;
-        }
+        final objet = item['objets'] as Map<String, dynamic>;
+        final imageUrl = objet['image_url'] ?? 'assets/images/refmmp.png';
+        final objectCacheKey = 'object_image_${objet['id']}';
+        final localImagePath =
+            await _downloadAndCacheImage(imageUrl, objectCacheKey);
+        fetchedObjects.add({
+          'id': objet['id'],
+          'image_url': imageUrl,
+          'local_image_path': localImagePath,
+          'name': objet['name'] ?? 'Objeto',
+          'category': objet['category'] ?? 'otros',
+          'description': objet['description'] ?? 'Sin descripción',
+          'price': objet['price'] ?? 0,
+          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+        _gifVisibility['${objet['id']}'] = true;
       }
 
       setState(() {
-        userObjects = fetchedObjects.take(3).toList();
+        userObjects = fetchedObjects;
         totalObjects = fetchedObjects.length;
       });
       await box.put(cacheKey, fetchedObjects);
-    } catch (e) {
-      debugPrint('Error al obtener objetos del usuario: $e');
+      debugPrint('Online: Fetched ${fetchedObjects.length} objects');
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
       setState(() {
         userObjects =
             List<Map<String, dynamic>>.from(box.get(cacheKey, defaultValue: []))
@@ -690,6 +695,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         'user_id': userId,
         'objet_id': item['id'],
         'status': true,
+        'created_at': DateTime.now().toIso8601String(),
       });
       await supabase
           .from('users_games')
@@ -742,6 +748,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   'user_id': userId,
                   'objet_id': action['objet_id'],
                   'status': true,
+                  'created_at': action['timestamp'],
                 });
                 await supabase
                     .from('users_games')
@@ -872,7 +879,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   cursorHeight: 20,
                   cursorWidth: 2,
                   cursorRadius: const Radius.circular(1),
-                  // cursorHandleColor: MaterialStateProperty.all(Colors.blue)
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -892,7 +898,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           final userId = supabase.auth.currentUser?.id;
                           if (userId != null) {
                             try {
-                              // Check if user exists in users_games
                               final response = await supabase
                                   .from('users_games')
                                   .select()
@@ -900,7 +905,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                   .maybeSingle();
 
                               if (response == null) {
-                                // User doesn't exist, insert new record
                                 try {
                                   await supabase.from('users_games').insert({
                                     'user_id': userId,
@@ -978,7 +982,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                   rethrow;
                                 }
                               } else {
-                                // User exists, update nickname
                                 try {
                                   await supabase
                                       .from('users_games')
@@ -1054,7 +1057,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 }
                               }
 
-                              // Update Hive and UI after successful insert/update
                               final box = Hive.box('offline_data');
                               await box.put(
                                   'user_nickname_$userId', newNickname);
@@ -1062,7 +1064,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 nickname = newNickname;
                               });
 
-                              // Show success dialog
                               showDialog(
                                 context: context,
                                 builder: (context) => Dialog(
@@ -1304,9 +1305,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             ]
           : [],
     );
-    // Reduced maxWidth to account for CircleAvatar (40px width + 8px spacing)
     const maxWidth = 220.0;
-    final text = nickname?.toUpperCase() ?? 'USUARIO';
+    final text = nickname?.toUpperCase() ?? 'JUGADOR';
 
     return _needsMarquee(text, maxWidth, textStyle)
         ? SizedBox(
@@ -1333,6 +1333,126 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           );
+  }
+
+  Widget _buildImageWidget(String category, String imagePath, bool isObtained,
+      String visibilityKey) {
+    // ignore: unused_local_variable
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isVisible = _gifVisibility[visibilityKey] ?? false;
+
+    if (!isVisible || imagePath.isEmpty) {
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+    }
+
+    if (category == 'avatares') {
+      return Padding(
+        padding: const EdgeInsets.all(4.0),
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: isObtained ? Colors.green : Colors.blue, width: 2),
+            ),
+            child: ClipOval(
+                child: _buildImageContent(imagePath, isVisible, category)),
+          ),
+        ),
+      );
+    } else if (category == 'trompetas') {
+      return Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _buildImageContent(imagePath, isVisible, category),
+                ),
+              ),
+              if (isObtained)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(Icons.check_circle_rounded,
+                      color: Colors.green, size: 20),
+                ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.transparent,
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildImageContent(imagePath, isVisible, category),
+              ),
+            ),
+            if (isObtained)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Icon(Icons.check_circle_rounded,
+                    color: Colors.green, size: 20),
+              ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildImageContent(String imagePath, bool isVisible, String category) {
+    if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
+      return Image.file(
+        File(imagePath),
+        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('Error loading local image: $error, path: $imagePath');
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+        },
+      );
+    } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        cacheManager: CustomCacheManager.instance,
+        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (context, url) =>
+            const Center(child: CircularProgressIndicator(color: Colors.blue)),
+        errorWidget: (context, url, error) {
+          debugPrint('Error loading network image: $error, url: $url');
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+        },
+        memCacheWidth: 200,
+        memCacheHeight: 200,
+        fadeInDuration: const Duration(milliseconds: 200),
+      );
+    } else {
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+    }
   }
 
   @override
@@ -1663,162 +1783,199 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const Divider(color: Colors.blue),
-                        const SizedBox(height: 500),
-                        const Text(
-                          '| Objetos Obtenidos',
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
                         ),
-                        const SizedBox(height: 10),
-                        userObjects.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  'No tienes objetos obtenidos.',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              )
-                            : Column(
-                                children: [
-                                  GridView.builder(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 3,
-                                      crossAxisSpacing: 10,
-                                      mainAxisSpacing: 10,
-                                      childAspectRatio: 0.8,
+                        Row(
+                          children: [
+                            Text(
+                              "| ",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            Text(
+                              'OBJETOS OBTENIDOS',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: themeProvider.isDarkMode
+                                  ? const Color.fromARGB(255, 34, 34, 34)
+                                  : const Color.fromARGB(255, 202, 202, 209),
+                              width: 2,
+                            ),
+                          ),
+                          child: userObjects.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: Center(
+                                    child: Text(
+                                      'No tienes objetos obtenidos.',
+                                      style: TextStyle(fontSize: 16),
                                     ),
-                                    itemCount: userObjects.length,
-                                    itemBuilder: (context, index) {
-                                      final objet = userObjects[index];
-                                      final category =
-                                          objet['category'].toLowerCase();
-                                      final visibilityKey = '${objet['id']}';
-                                      return VisibilityDetector(
-                                        key: Key(visibilityKey),
-                                        onVisibilityChanged: (visibilityInfo) {
-                                          final visiblePercentage =
-                                              visibilityInfo.visibleFraction *
-                                                  100;
-                                          setState(() {
-                                            _gifVisibility[visibilityKey] =
-                                                visiblePercentage > 10;
-                                          });
+                                  ),
+                                )
+                              : GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.all(12),
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    mainAxisSpacing: 12,
+                                    crossAxisSpacing: 12,
+                                    childAspectRatio: 0.9,
+                                  ),
+                                  itemCount: userObjects.length,
+                                  itemBuilder: (context, index) {
+                                    final objet = userObjects[index];
+                                    final category =
+                                        objet['category'].toLowerCase();
+                                    final visibilityKey = '${objet['id']}';
+                                    return VisibilityDetector(
+                                      key: Key(visibilityKey),
+                                      onVisibilityChanged: (visibilityInfo) {
+                                        final visiblePercentage =
+                                            visibilityInfo.visibleFraction *
+                                                100;
+                                        setState(() {
+                                          _gifVisibility[visibilityKey] =
+                                              visiblePercentage > 10;
+                                        });
+                                      },
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          showObjectDialog(
+                                            context,
+                                            objet,
+                                            category,
+                                            totalCoins,
+                                            _useObject,
+                                            _purchaseObject,
+                                          );
                                         },
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            showObjectDialog(
-                                                context,
-                                                objet,
-                                                category,
-                                                totalCoins,
-                                                _useObject,
-                                                _purchaseObject);
-                                          },
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              border: Border.all(
-                                                  color: Colors.green,
-                                                  width: 1.5),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Expanded(
-                                                  child: _buildImageWidget(
-                                                    category,
-                                                    objet['local_image_path'] ??
-                                                        objet['image_url'] ??
-                                                        'assets/images/refmmp.png',
-                                                    true,
-                                                    visibilityKey,
-                                                  ),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                                color: Colors.green,
+                                                width: 1.5),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Expanded(
+                                                child: _buildImageWidget(
+                                                  category,
+                                                  objet['local_image_path'] ??
+                                                      objet['image_url'] ??
+                                                      'assets/images/refmmp.png',
+                                                  true,
+                                                  visibilityKey,
                                                 ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  objet['name'],
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color:
-                                                        themeProvider.isDarkMode
-                                                            ? Colors.white
-                                                            : Colors.blue,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                objet['name'] ?? 'Objeto',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color:
+                                                      themeProvider.isDarkMode
+                                                          ? Colors.white
+                                                          : Colors.blue,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
-                                                const SizedBox(height: 4),
-                                                Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Icon(
-                                                        Icons
-                                                            .check_circle_rounded,
-                                                        color: Colors.green,
-                                                        size: 11),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      'Obtenido',
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color: Colors.green,
-                                                      ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.check_circle_rounded,
+                                                    color: Colors.green,
+                                                    size: 11,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Obtenido',
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.green,
                                                     ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      );
-                                    },
-                                  ),
-                                  if (totalObjects > 3) ...[
-                                    const SizedBox(height: 10),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (context) => ObjetsPage(
-                                                  instrumentName:
-                                                      widget.instrumentName)),
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(20)),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 20, vertical: 10),
                                       ),
-                                      child: Text(
-                                        'Todos mis objetos ($totalObjects)',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                                    );
+                                  },
+                                ),
+                        ),
+                        if (totalObjects > 3)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(12),
                               ),
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ObjetsPage(
+                                          instrumentName:
+                                              widget.instrumentName),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  'TODOS MIS OBJETOS ($totalObjects)',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
                       ],
                     ),
                   ),
@@ -1833,123 +1990,5 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         ),
       ),
     );
-  }
-
-  Widget _buildImageWidget(String category, String imagePath, bool isObtained,
-      String visibilityKey) {
-    final isVisible = _gifVisibility[visibilityKey] ?? false;
-
-    if (!isVisible || imagePath.isEmpty) {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
-    }
-
-    if (category == 'avatares') {
-      return Padding(
-        padding: const EdgeInsets.all(4.0),
-        child: AspectRatio(
-          aspectRatio: 1.0,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: isObtained ? Colors.green : Colors.blue, width: 2),
-            ),
-            child: ClipOval(
-                child: _buildImageContent(imagePath, isVisible, category)),
-          ),
-        ),
-      );
-    } else if (category == 'trompetas') {
-      return Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(4.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: _buildImageContent(imagePath, isVisible, category),
-                ),
-              ),
-              if (isObtained)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Icon(Icons.check_circle_rounded,
-                      color: Colors.green, size: 20),
-                ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.transparent,
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: _buildImageContent(imagePath, isVisible, category),
-              ),
-            ),
-            if (isObtained)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Icon(Icons.check_circle_rounded,
-                    color: Colors.green, size: 20),
-              ),
-          ],
-        ),
-      );
-    }
-  }
-
-  Widget _buildImageContent(String imagePath, bool isVisible, String category) {
-    if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
-      return Image.file(
-        File(imagePath),
-        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('Error loading local image: $error, path: $imagePath');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
-        },
-      );
-    } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
-      return CachedNetworkImage(
-        imageUrl: imagePath,
-        cacheManager: CustomCacheManager.instance,
-        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        placeholder: (context, url) =>
-            const Center(child: CircularProgressIndicator(color: Colors.blue)),
-        errorWidget: (context, url, error) {
-          debugPrint('Error loading network image: $error, url: $url');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
-        },
-        memCacheWidth: 200,
-        memCacheHeight: 200,
-        fadeInDuration: const Duration(milliseconds: 200),
-      );
-    } else {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
-    }
   }
 }
