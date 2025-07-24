@@ -501,7 +501,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .select('id') // Select a minimal field for count query
           .count(CountOption.exact); // Use .count() with CountOption.exact
 
-      final count = response.count ?? 0; // Access count from response
+      final count = response.count; // Access count from response
       setState(() {
         totalAvailableObjects = count;
       });
@@ -576,7 +576,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
       setState(() {
         userAchievements = fetchedAchievements;
-        totalAchievements = countResponse.count ?? fetchedAchievements.length;
+        totalAchievements = countResponse.count;
       });
       await box.put(cacheKey, fetchedAchievements);
       debugPrint('Online: Fetched ${fetchedAchievements.length} achievements');
@@ -723,7 +723,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
       setState(() {
         userObjects = fetchedObjects;
-        totalObjects = countResponse.count ?? fetchedObjects.length;
+        totalObjects = countResponse.count;
       });
       await box.put(cacheKey, fetchedObjects);
       debugPrint('Online: Fetched ${fetchedObjects.length} objects');
@@ -1472,7 +1472,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
     }
 
-    Widget imageWidget;
     if (category == 'avatares') {
       return Padding(
         padding: const EdgeInsets.all(4.0),
@@ -1978,8 +1977,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                     crossAxisCount: 3,
                                     mainAxisSpacing: 12,
                                     crossAxisSpacing: 12,
-                                    childAspectRatio:
-                                        0.7, // Adjusted to provide more vertical space
+                                    childAspectRatio: 0.7, // From previous fix
                                   ),
                                   itemCount: userAchievements.length,
                                   itemBuilder: (context, index) {
@@ -1992,10 +1990,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                         final visiblePercentage =
                                             visibilityInfo.visibleFraction *
                                                 100;
-                                        setState(() {
-                                          _gifVisibility[visibilityKey] =
-                                              visiblePercentage > 10;
-                                        });
+                                        if (mounted) {
+                                          // Check if widget is still mounted
+                                          setState(() {
+                                            _gifVisibility[visibilityKey] =
+                                                visiblePercentage > 10;
+                                          });
+                                        }
                                       },
                                       child: GestureDetector(
                                         onTap: () {
@@ -2014,8 +2015,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               AspectRatio(
-                                                aspectRatio:
-                                                    1.0, // Square container for image
+                                                aspectRatio: 1.0,
                                                 child: _buildImageWidget(
                                                   'achievements',
                                                   achievement[
@@ -2026,9 +2026,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                                   visibilityKey,
                                                 ),
                                               ),
-                                              const SizedBox(
-                                                  height:
-                                                      6), // Increased spacing
+                                              const SizedBox(height: 6),
                                               Text(
                                                 achievement['name'] ?? 'Logro',
                                                 style: TextStyle(
@@ -2043,9 +2041,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                                 maxLines: 2,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
-                                              const SizedBox(
-                                                  height:
-                                                      6), // Increased spacing
+                                              const SizedBox(height: 6),
                                               Row(
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.center,
@@ -2067,9 +2063,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                                   ),
                                                 ],
                                               ),
-                                              const SizedBox(
-                                                  height:
-                                                      4), // Added bottom padding
+                                              const SizedBox(height: 4),
                                             ],
                                           ),
                                         ),
