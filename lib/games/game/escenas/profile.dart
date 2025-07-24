@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/dialogs/dialog_achievements.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
@@ -57,6 +58,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   int totalObjects = 0;
   bool isCollapsed = false;
   final Map<String, bool> _gifVisibility = {};
+  List<Map<String, dynamic>> userAchievements = [];
+  int totalAchievements = 0;
+  int totalAvailableObjects = 0;
 
   @override
   void initState() {
@@ -67,6 +71,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     fetchUserProfileImage();
     fetchWallpaper();
     fetchUserObjects();
+    fetchUserAchievements();
+    fetchTotalAvailableObjects();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadImageHeight();
     });
@@ -78,6 +84,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       if (isOnline) {
         await _syncPendingActions();
         await fetchUserObjects();
+        await fetchUserAchievements();
+        await fetchTotalAvailableObjects();
       }
     });
   }
@@ -115,6 +123,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       await fetchUserProfileImage();
       await fetchWallpaper();
       await fetchUserObjects();
+      await fetchUserAchievements();
+      await fetchTotalAvailableObjects();
     }
   }
 
@@ -471,6 +481,186 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     return await completer.future;
   }
 
+  Future<void> fetchTotalAvailableObjects() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'total_available_objects_$userId';
+
+    try {
+      if (!_isOnline) {
+        setState(() {
+          totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
+        });
+        return;
+      }
+
+      final response = await supabase
+          .from('objets')
+          .select('id') // Select a minimal field for count query
+          .count(CountOption.exact); // Use .count() with CountOption.exact
+
+      final count = response.count ?? 0; // Access count from response
+      setState(() {
+        totalAvailableObjects = count;
+      });
+      await box.put(cacheKey, count);
+    } catch (e) {
+      debugPrint('Error fetching total available objects: $e');
+      setState(() {
+        totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
+      });
+    }
+  }
+
+  Future<void> fetchUserAchievements() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('Error: userId is null');
+      return;
+    }
+
+    debugPrint('Fetching achievements for userId: $userId');
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'user_achievements_$userId';
+
+    try {
+      if (!_isOnline) {
+        final cachedAchievements = box.get(cacheKey, defaultValue: []);
+        setState(() {
+          userAchievements = List<Map<String, dynamic>>.from(
+            cachedAchievements
+                .map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
+          totalAchievements = cachedAchievements.length;
+        });
+        debugPrint(
+            'Offline: Loaded ${userAchievements.length} achievements from cache');
+        return;
+      }
+
+      final response = await supabase
+          .from('users_achievements')
+          .select(
+              'id, created_at, achievements!inner(name, image, description)')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(3);
+
+      final List<Map<String, dynamic>> fetchedAchievements = [];
+      for (var item in response) {
+        final achievement = item['achievements'] as Map<String, dynamic>;
+        final imageUrl = achievement['image'] ?? 'assets/images/refmmp.png';
+        final objectCacheKey = 'achievement_image_${item['id']}';
+        final localImagePath =
+            await _downloadAndCacheImage(imageUrl, objectCacheKey);
+        fetchedAchievements.add({
+          'id': item['id'],
+          'image': imageUrl,
+          'local_image_path': localImagePath,
+          'name': achievement['name'] ?? 'Logro',
+          'description': achievement['description'] ?? 'Sin descripción',
+          'created_at': item['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+        _gifVisibility['achievement_${item['id']}'] = true;
+      }
+
+      // Count total achievements
+      final countResponse = await supabase
+          .from('users_achievements')
+          .select('id')
+          .eq('user_id', userId)
+          .count(CountOption.exact);
+
+      setState(() {
+        userAchievements = fetchedAchievements;
+        totalAchievements = countResponse.count ?? fetchedAchievements.length;
+      });
+      await box.put(cacheKey, fetchedAchievements);
+      debugPrint('Online: Fetched ${fetchedAchievements.length} achievements');
+    } catch (e, stackTrace) {
+      debugPrint(
+          'Error fetching user achievements: $e\nStack trace: $stackTrace');
+      setState(() {
+        final cachedAchievements = box.get(cacheKey, defaultValue: []);
+        userAchievements = List<Map<String, dynamic>>.from(
+          cachedAchievements
+              .map((item) => Map<String, dynamic>.from(item as Map)),
+        ).take(3).toList();
+        totalAchievements = cachedAchievements.length;
+      });
+    }
+  }
+
+  Future<void> _purchaseObject(Map<String, dynamic> item) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final box = Hive.box('offline_data');
+    final pendingBox = Hive.box('pending_actions');
+    final price = (item['price'] ?? 0) as int;
+    final newCoins = totalCoins - price;
+
+    if (newCoins < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: No tienes suficientes monedas')),
+      );
+      return;
+    }
+
+    try {
+      if (!_isOnline) {
+        await pendingBox.add({
+          'user_id': userId,
+          'action': 'purchase',
+          'objet_id': item['id'],
+          'price': price,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        await box.put('user_coins_$userId', newCoins);
+        final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
+        cachedObjects.add(item);
+        await box.put('user_objects_$userId', cachedObjects);
+        setState(() {
+          totalCoins = newCoins;
+          userObjects.add(item);
+          totalObjects++;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Compra guardada para sincronizar cuando estés en línea')),
+        );
+        return;
+      }
+
+      await supabase.from('users_objets').insert({
+        'user_id': userId,
+        'objet_id': item['id'],
+      });
+      await supabase
+          .from('users_games')
+          .update({'coins': newCoins}).eq('user_id', userId);
+      await box.put('user_coins_$userId', newCoins);
+      final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
+      cachedObjects.add(item);
+      await box.put('user_objects_$userId', cachedObjects);
+      setState(() {
+        totalCoins = newCoins;
+        userObjects.add(item);
+        totalObjects++;
+      });
+      await fetchUserObjects();
+    } catch (e) {
+      debugPrint('Error al comprar objeto: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al comprar el objeto: $e')),
+      );
+    }
+  }
+
   Future<void> fetchUserObjects() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
@@ -487,8 +677,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       if (!_isOnline) {
         final cachedObjects = box.get(cacheKey, defaultValue: []);
         setState(() {
-          userObjects =
-              List<Map<String, dynamic>>.from(cachedObjects).take(3).toList();
+          userObjects = List<Map<String, dynamic>>.from(
+            cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
           totalObjects = cachedObjects.length;
         });
         debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
@@ -523,20 +714,27 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         _gifVisibility['${objet['id']}'] = true;
       }
 
+      // Count total objects
+      final countResponse = await supabase
+          .from('users_objets')
+          .select('objet_id')
+          .eq('user_id', userId)
+          .count(CountOption.exact);
+
       setState(() {
         userObjects = fetchedObjects;
-        totalObjects = fetchedObjects.length;
+        totalObjects = countResponse.count ?? fetchedObjects.length;
       });
       await box.put(cacheKey, fetchedObjects);
       debugPrint('Online: Fetched ${fetchedObjects.length} objects');
     } catch (e, stackTrace) {
       debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
       setState(() {
-        userObjects =
-            List<Map<String, dynamic>>.from(box.get(cacheKey, defaultValue: []))
-                .take(3)
-                .toList();
-        totalObjects = box.get(cacheKey, defaultValue: []).length;
+        final cachedObjects = box.get(cacheKey, defaultValue: []);
+        userObjects = List<Map<String, dynamic>>.from(
+          cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
+        ).take(3).toList();
+        totalObjects = cachedObjects.length;
       });
     }
   }
@@ -645,75 +843,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       debugPrint('Error al usar objeto: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al usar el objeto: $e')),
-      );
-    }
-  }
-
-  Future<void> _purchaseObject(Map<String, dynamic> item) async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
-
-    final box = Hive.box('offline_data');
-    final pendingBox = Hive.box('pending_actions');
-    final price = (item['price'] ?? 0) as int;
-    final newCoins = totalCoins - price;
-
-    if (newCoins < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: No tienes suficientes monedas')),
-      );
-      return;
-    }
-
-    try {
-      if (!_isOnline) {
-        await pendingBox.add({
-          'user_id': userId,
-          'action': 'purchase',
-          'objet_id': item['id'],
-          'price': price,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
-        await box.put('user_coins_$userId', newCoins);
-        final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
-        cachedObjects.add(item);
-        await box.put('user_objects_$userId', cachedObjects);
-        setState(() {
-          totalCoins = newCoins;
-          userObjects.add(item);
-          totalObjects++;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Compra guardada para sincronizar cuando estés en línea')),
-        );
-        return;
-      }
-
-      await supabase.from('users_objets').insert({
-        'user_id': userId,
-        'objet_id': item['id'],
-        'status': true,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-      await supabase
-          .from('users_games')
-          .update({'coins': newCoins}).eq('user_id', userId);
-      await box.put('user_coins_$userId', newCoins);
-      final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
-      cachedObjects.add(item);
-      await box.put('user_objects_$userId', cachedObjects);
-      setState(() {
-        totalCoins = newCoins;
-        userObjects.add(item);
-        totalObjects++;
-      });
-      await fetchUserObjects();
-    } catch (e) {
-      debugPrint('Error al comprar objeto: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al comprar el objeto: $e')),
       );
     }
   }
@@ -1337,14 +1466,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
   Widget _buildImageWidget(String category, String imagePath, bool isObtained,
       String visibilityKey) {
-    // ignore: unused_local_variable
-    final themeProvider = Provider.of<ThemeProvider>(context);
     final isVisible = _gifVisibility[visibilityKey] ?? false;
 
     if (!isVisible || imagePath.isEmpty) {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
     }
 
+    Widget imageWidget;
     if (category == 'avatares') {
       return Padding(
         padding: const EdgeInsets.all(4.0),
@@ -1357,7 +1485,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   color: isObtained ? Colors.green : Colors.blue, width: 2),
             ),
             child: ClipOval(
-                child: _buildImageContent(imagePath, isVisible, category)),
+              child: _buildImageContent(imagePath, isVisible, category),
+            ),
           ),
         ),
       );
@@ -1392,6 +1521,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         ),
       );
     } else {
+      // Handle 'achievements' and other categories
       return Container(
         width: double.infinity,
         height: double.infinity,
@@ -1422,36 +1552,41 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   }
 
   Widget _buildImageContent(String imagePath, bool isVisible, String category) {
+    // Use BoxFit.contain for achievements to ensure the full image is visible
+    final fit = category == 'achievements'
+        ? BoxFit.contain
+        : (category == 'trompetas' ? BoxFit.contain : BoxFit.cover);
+
     if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {
       return Image.file(
         File(imagePath),
-        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        fit: fit,
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('Error loading local image: $error, path: $imagePath');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
         },
       );
     } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
       return CachedNetworkImage(
         imageUrl: imagePath,
         cacheManager: CustomCacheManager.instance,
-        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        fit: fit,
         width: double.infinity,
         height: double.infinity,
         placeholder: (context, url) =>
             const Center(child: CircularProgressIndicator(color: Colors.blue)),
         errorWidget: (context, url, error) {
           debugPrint('Error loading network image: $error, url: $url');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
         },
         memCacheWidth: 200,
         memCacheHeight: 200,
         fadeInDuration: const Duration(milliseconds: 200),
       );
     } else {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+      return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
     }
   }
 
@@ -1480,6 +1615,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             await fetchUserProfileImage();
             await fetchWallpaper();
             await fetchUserObjects();
+            await fetchUserAchievements();
             if (_isOnline) {
               await _syncPendingActions();
             }
@@ -1790,6 +1926,191 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ? const Color.fromARGB(255, 34, 34, 34)
                               : const Color.fromARGB(255, 236, 234, 234),
                         ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Text(
+                              "| ",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            Text(
+                              'LOGROS OBTENIDOS',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: themeProvider.isDarkMode
+                                  ? const Color.fromARGB(255, 34, 34, 34)
+                                  : const Color.fromARGB(255, 202, 202, 209),
+                              width: 2,
+                            ),
+                          ),
+                          child: userAchievements.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: Center(
+                                    child: Text(
+                                      'No tienes logros obtenidos.',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ),
+                                )
+                              : GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.all(12),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    mainAxisSpacing: 12,
+                                    crossAxisSpacing: 12,
+                                    childAspectRatio:
+                                        0.7, // Adjusted to provide more vertical space
+                                  ),
+                                  itemCount: userAchievements.length,
+                                  itemBuilder: (context, index) {
+                                    final achievement = userAchievements[index];
+                                    final visibilityKey =
+                                        'achievement_${achievement['id']}';
+                                    return VisibilityDetector(
+                                      key: Key(visibilityKey),
+                                      onVisibilityChanged: (visibilityInfo) {
+                                        final visiblePercentage =
+                                            visibilityInfo.visibleFraction *
+                                                100;
+                                        setState(() {
+                                          _gifVisibility[visibilityKey] =
+                                              visiblePercentage > 10;
+                                        });
+                                      },
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          showAchievementDialog(
+                                              context, achievement);
+                                        },
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                                color: Colors.green,
+                                                width: 1.5),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              AspectRatio(
+                                                aspectRatio:
+                                                    1.0, // Square container for image
+                                                child: _buildImageWidget(
+                                                  'achievements',
+                                                  achievement[
+                                                          'local_image_path'] ??
+                                                      achievement['image'] ??
+                                                      'assets/images/refmmp.png',
+                                                  true,
+                                                  visibilityKey,
+                                                ),
+                                              ),
+                                              const SizedBox(
+                                                  height:
+                                                      6), // Increased spacing
+                                              Text(
+                                                achievement['name'] ?? 'Logro',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color:
+                                                      themeProvider.isDarkMode
+                                                          ? Colors.white
+                                                          : Colors.blue,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(
+                                                  height:
+                                                      6), // Increased spacing
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.check_circle_rounded,
+                                                    color: Colors.green,
+                                                    size: 11,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  const Text(
+                                                    'Obtenido',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.green,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(
+                                                  height:
+                                                      4), // Added bottom padding
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                        if (totalAchievements > 3)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: TextButton(
+                                onPressed: () {
+                                  // No navigation for now
+                                },
+                                child: Text(
+                                  'TODOS MIS LOGROS ($totalAchievements)',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
                         Row(
                           children: [
                             Text(
@@ -1949,17 +2270,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ),
                               child: TextButton(
                                 onPressed: () {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ObjetsPage(
-                                          instrumentName:
-                                              widget.instrumentName),
-                                    ),
-                                  );
+                                  // No navigation for now
                                 },
                                 child: Text(
-                                  'TODOS MIS OBJETOS ($totalObjects)',
+                                  'Tienes $totalObjects adquiridos / $totalAvailableObjects total de objetos',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
