@@ -63,19 +63,28 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   int totalAvailableObjects = 0;
 
   @override
+  @override
   void initState() {
     super.initState();
     _initializeHive();
-    _checkConnectivityStatus();
-    _initializeUserData();
-    fetchUserProfileImage();
-    fetchWallpaper();
-    fetchUserAchievements();
-    fetchTotalAvailableObjects();
-    fetchUserObjects();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadImageHeight();
+    _checkConnectivityStatus().then((isOnline) {
+      _initializeUserData();
+      fetchUserProfileImage();
+      fetchWallpaper();
+      Future.wait([
+        fetchUserAchievements(),
+        fetchUserObjects(),
+        fetchTotalAvailableObjects(),
+      ]).then((_) {
+        if (mounted) {
+          setState(() {}); // Ensure UI updates with counts
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadImageHeight();
+      });
     });
+
     Connectivity().onConnectivityChanged.listen((result) async {
       bool isOnline = result != ConnectivityResult.none;
       setState(() {
@@ -86,6 +95,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         await fetchUserObjects();
         await fetchUserAchievements();
         await fetchTotalAvailableObjects();
+        if (mounted) {
+          setState(() {}); // Update UI after sync
+        }
       }
     });
   }
@@ -120,11 +132,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     if (userId != null) {
       await ensureUserInUsersGames(userId, 'user_$userId');
       await fetchTotalCoins();
-      await fetchUserProfileImage();
-      await fetchWallpaper();
-      await fetchUserObjects();
-      await fetchUserAchievements();
-      await fetchTotalAvailableObjects();
     }
   }
 
@@ -2006,7 +2013,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                     crossAxisCount: 3,
                                     mainAxisSpacing: 12,
                                     crossAxisSpacing: 12,
-                                    childAspectRatio: 0.7, // From previous fix
+                                    childAspectRatio: 0.6, // From previous fix
                                   ),
                                   itemCount: userAchievements.length,
                                   itemBuilder: (context, index) {
@@ -2059,7 +2066,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                               Text(
                                                 achievement['name'] ?? 'Logro',
                                                 style: TextStyle(
-                                                  fontSize: 10,
+                                                  fontSize: 9,
                                                   color:
                                                       themeProvider.isDarkMode
                                                           ? Colors.white
