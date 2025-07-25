@@ -1,21 +1,20 @@
-// ignore_for_file: dead_code
-
 import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/dialogs/dialog_achievements.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
+import 'package:refmp/games/play.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/dialogs/dialog_objets.dart';
@@ -61,8 +60,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   List<Map<String, dynamic>> userAchievements = [];
   int totalAchievements = 0;
   int totalAvailableObjects = 0;
+  List<Map<String, dynamic>> userFavoriteSongs = [];
+  int totalFavoriteSongs = 0;
 
-  @override
   @override
   void initState() {
     super.initState();
@@ -75,9 +75,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         fetchUserAchievements(),
         fetchUserObjects(),
         fetchTotalAvailableObjects(),
+        fetchUserFavoriteSongs(),
       ]).then((_) {
         if (mounted) {
-          setState(() {}); // Ensure UI updates with counts
+          setState(() {}); // Asegura la actualización de la UI
         }
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -87,6 +88,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
     Connectivity().onConnectivityChanged.listen((result) async {
       bool isOnline = result != ConnectivityResult.none;
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      } catch (e) {
+        debugPrint('Error en verificación de internet: $e');
+        isOnline = false;
+      }
       setState(() {
         _isOnline = isOnline;
       });
@@ -95,8 +103,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         await fetchUserObjects();
         await fetchUserAchievements();
         await fetchTotalAvailableObjects();
+        await fetchUserFavoriteSongs();
         if (mounted) {
-          setState(() {}); // Update UI after sync
+          setState(() {}); // Actualizar UI después de sincronizar
         }
       }
     });
@@ -108,6 +117,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     }
     if (!Hive.isBoxOpen('pending_actions')) {
       await Hive.openBox('pending_actions');
+    }
+    if (!Hive.isBoxOpen('pending_favorite_actions')) {
+      await Hive.openBox('pending_favorite_actions');
     }
   }
 
@@ -503,12 +515,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         return;
       }
 
-      final response = await supabase
-          .from('objets')
-          .select('id') // Select a minimal field for count query
-          .count(CountOption.exact); // Use .count() with CountOption.exact
+      final response =
+          await supabase.from('objets').select('id').count(CountOption.exact);
 
-      final count = response.count; // Access count from response
+      final count = response.count;
       setState(() {
         totalAvailableObjects = count;
       });
@@ -532,6 +542,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_achievements_$userId';
+    final countCacheKey = 'total_achievements_$userId';
 
     try {
       if (!_isOnline) {
@@ -541,10 +552,20 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             cachedAchievements
                 .map((item) => Map<String, dynamic>.from(item as Map)),
           ).take(3).toList();
-          totalAchievements = cachedAchievements.length;
+          totalAchievements =
+              box.get(countCacheKey, defaultValue: cachedAchievements.length);
         });
         debugPrint(
             'Offline: Loaded ${userAchievements.length} achievements from cache');
+        for (var item in userAchievements) {
+          final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
+          final objectCacheKey = 'achievement_image_${item['id']}';
+          final localImagePath =
+              await _downloadAndCacheImage(imageUrl, objectCacheKey);
+          item['local_image_path'] = localImagePath;
+          _gifVisibility['achievement_${item['id']}'] = true;
+        }
+        setState(() {});
         return;
       }
 
@@ -574,7 +595,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         _gifVisibility['achievement_${item['id']}'] = true;
       }
 
-      // Count total achievements
       final countResponse = await supabase
           .from('users_achievements')
           .select('id')
@@ -586,6 +606,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         totalAchievements = countResponse.count;
       });
       await box.put(cacheKey, fetchedAchievements);
+      await box.put(countCacheKey, countResponse.count);
       debugPrint('Online: Fetched ${fetchedAchievements.length} achievements');
     } catch (e, stackTrace) {
       debugPrint(
@@ -596,8 +617,205 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           cachedAchievements
               .map((item) => Map<String, dynamic>.from(item as Map)),
         ).take(3).toList();
-        totalAchievements = cachedAchievements.length;
+        totalAchievements =
+            box.get(countCacheKey, defaultValue: cachedAchievements.length);
       });
+    }
+  }
+
+  Future<void> fetchUserObjects() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('Error: userId is null');
+      return;
+    }
+
+    debugPrint('Fetching objects for userId: $userId');
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'user_objects_$userId';
+    final countCacheKey = 'total_objects_$userId';
+
+    try {
+      if (!_isOnline) {
+        final cachedObjects = box.get(cacheKey, defaultValue: []);
+        setState(() {
+          userObjects = List<Map<String, dynamic>>.from(
+            cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
+          totalObjects =
+              box.get(countCacheKey, defaultValue: cachedObjects.length);
+        });
+        debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
+        for (var item in userObjects) {
+          final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
+          final objectCacheKey = 'object_image_${item['id']}';
+          final localImagePath =
+              await _downloadAndCacheImage(imageUrl, objectCacheKey);
+          item['local_image_path'] = localImagePath;
+          _gifVisibility['${item['id']}'] = true;
+        }
+        setState(() {});
+        return;
+      }
+
+      final response = await supabase
+          .from('users_objets')
+          .select(
+              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false, referencedTable: 'objets')
+          .limit(3);
+
+      final List<Map<String, dynamic>> fetchedObjects = [];
+      for (var item in response) {
+        final objet = item['objets'] as Map<String, dynamic>;
+        fetchedObjects.add({
+          'id': objet['id'],
+          'image_url': objet['image_url'] ?? 'assets/images/refmmp.png',
+          'local_image_path': null,
+          'name': objet['name'] ?? 'Objeto',
+          'category': objet['category'] ?? 'otros',
+          'description': objet['description'] ?? 'Sin descripción',
+          'price': objet['price'] ?? 0,
+          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+      }
+
+      final countResponse = await supabase
+          .from('users_objets')
+          .select('objet_id')
+          .eq('user_id', userId)
+          .count(CountOption.exact);
+
+      setState(() {
+        userObjects = fetchedObjects;
+        totalObjects = countResponse.count;
+      });
+      await box.put(cacheKey, fetchedObjects);
+      await box.put(countCacheKey, countResponse.count);
+      debugPrint('Online: Fetched ${fetchedObjects.length} objects metadata');
+
+      for (var item in fetchedObjects) {
+        final imageUrl = item['image_url'];
+        final objectCacheKey = 'object_image_${item['id']}';
+        final localImagePath =
+            await _downloadAndCacheImage(imageUrl, objectCacheKey);
+        item['local_image_path'] = localImagePath;
+        _gifVisibility['${item['id']}'] = true;
+      }
+      setState(() {});
+      debugPrint('Online: Loaded images for ${fetchedObjects.length} objects');
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
+      setState(() {
+        final cachedObjects = box.get(cacheKey, defaultValue: []);
+        userObjects = List<Map<String, dynamic>>.from(
+          cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
+        ).take(3).toList();
+        totalObjects =
+            box.get(countCacheKey, defaultValue: cachedObjects.length);
+      });
+    }
+  }
+
+  Future<void> fetchUserFavoriteSongs() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('Error: userId is null');
+      return;
+    }
+
+    debugPrint('Fetching favorite songs for userId: $userId');
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'user_favorite_songs_$userId';
+    final countCacheKey = 'total_favorite_songs_$userId';
+
+    try {
+      if (!_isOnline) {
+        final cachedSongs = box.get(cacheKey, defaultValue: []);
+        final cachedCount = box.get(countCacheKey, defaultValue: 0);
+        debugPrint(
+            'Offline: Attempting to load $cachedCount favorite songs from cache');
+        if (cachedSongs.isNotEmpty) {
+          setState(() {
+            userFavoriteSongs = List<Map<String, dynamic>>.from(
+              cachedSongs.map((item) => Map<String, dynamic>.from(item as Map)),
+            ).take(3).toList();
+            totalFavoriteSongs = cachedCount;
+          });
+          debugPrint(
+              'Offline: Loaded ${userFavoriteSongs.length} favorite songs from cache');
+          for (var item in userFavoriteSongs) {
+            final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
+            final songCacheKey = 'song_image_${item['id']}';
+            final localImagePath =
+                await _downloadAndCacheImage(imageUrl, songCacheKey);
+            item['local_image_path'] = localImagePath;
+            _gifVisibility['song_${item['id']}'] = true;
+          }
+          setState(() {});
+        } else {
+          debugPrint('Offline: No cached favorite songs found');
+        }
+        return;
+      }
+
+      debugPrint('Online: Querying favorite songs from Supabase');
+      final response = await supabase
+          .from('songs_favorite')
+          .select('song_id, created_at, songs!inner(id, name, image)')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      debugPrint('Online: Received response with ${response.length} songs');
+
+      final List<Map<String, dynamic>> fetchedSongs = [];
+      for (var item in response) {
+        final song = item['songs'] as Map<String, dynamic>;
+        final imageUrl = song['image'] ?? 'assets/images/refmmp.png';
+        final songCacheKey = 'song_image_${item['song_id']}';
+        final localImagePath =
+            await _downloadAndCacheImage(imageUrl, songCacheKey);
+        fetchedSongs.add({
+          'id': item['song_id'],
+          'name': song['name'] ?? 'Canción',
+          'image': imageUrl,
+          'local_image_path': localImagePath,
+          'created_at': item['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+        _gifVisibility['song_${item['song_id']}'] = true;
+      }
+
+      final countResponse = await supabase
+          .from('songs_favorite')
+          .select('song_id')
+          .eq('user_id', userId)
+          .count(CountOption.exact);
+
+      debugPrint('Online: Total favorite songs count: ${countResponse.count}');
+
+      setState(() {
+        userFavoriteSongs = fetchedSongs.take(3).toList();
+        totalFavoriteSongs = countResponse.count;
+      });
+      await box.put(cacheKey, fetchedSongs);
+      await box.put(countCacheKey, countResponse.count);
+      debugPrint(
+          'Online: Fetched and cached ${fetchedSongs.length} favorite songs');
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching favorite songs: $e\nStack trace: $stackTrace');
+      final cachedSongs = box.get(cacheKey, defaultValue: []);
+      final cachedCount = box.get(countCacheKey, defaultValue: 0);
+      setState(() {
+        userFavoriteSongs = List<Map<String, dynamic>>.from(
+          cachedSongs.map((item) => Map<String, dynamic>.from(item as Map)),
+        ).take(3).toList();
+        totalFavoriteSongs = cachedCount;
+      });
+      debugPrint(
+          'Fallback: Loaded ${userFavoriteSongs.length} favorite songs from cache');
     }
   }
 
@@ -665,102 +883,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al comprar el objeto: $e')),
       );
-    }
-  }
-
-  Future<void> fetchUserObjects() async {
-    final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('Error: userId is null');
-      return;
-    }
-
-    debugPrint('Fetching objects for userId: $userId');
-
-    final box = Hive.box('offline_data');
-    final cacheKey = 'user_objects_$userId';
-
-    try {
-      if (!_isOnline) {
-        final cachedObjects = box.get(cacheKey, defaultValue: []);
-        setState(() {
-          userObjects = List<Map<String, dynamic>>.from(
-            cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
-          ).take(3).toList();
-          totalObjects = cachedObjects.length;
-        });
-        debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
-        // Load images asynchronously after updating UI
-        for (var item in userObjects) {
-          final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
-          final objectCacheKey = 'object_image_${item['id']}';
-          final localImagePath =
-              await _downloadAndCacheImage(imageUrl, objectCacheKey);
-          item['local_image_path'] = localImagePath;
-          _gifVisibility['${item['id']}'] = true;
-        }
-        setState(() {}); // Update UI after images are loaded
-        return;
-      }
-
-      final response = await supabase
-          .from('users_objets')
-          .select(
-              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false, referencedTable: 'objets')
-          .limit(3);
-
-      final List<Map<String, dynamic>> fetchedObjects = [];
-      for (var item in response) {
-        final objet = item['objets'] as Map<String, dynamic>;
-        fetchedObjects.add({
-          'id': objet['id'],
-          'image_url': objet['image_url'] ?? 'assets/images/refmmp.png',
-          'local_image_path':
-              null, // Initially null, will be set after download
-          'name': objet['name'] ?? 'Objeto',
-          'category': objet['category'] ?? 'otros',
-          'description': objet['description'] ?? 'Sin descripción',
-          'price': objet['price'] ?? 0,
-          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
-        });
-      }
-
-      // Update UI with metadata immediately
-      final countResponse = await supabase
-          .from('users_objets')
-          .select('objet_id')
-          .eq('user_id', userId)
-          .count(CountOption.exact);
-
-      setState(() {
-        userObjects = fetchedObjects;
-        totalObjects = countResponse.count;
-      });
-      await box.put(cacheKey, fetchedObjects);
-      debugPrint('Online: Fetched ${fetchedObjects.length} objects metadata');
-
-      // Download images asynchronously
-      for (var item in fetchedObjects) {
-        final imageUrl = item['image_url'];
-        final objectCacheKey = 'object_image_${item['id']}';
-        final localImagePath =
-            await _downloadAndCacheImage(imageUrl, objectCacheKey);
-        item['local_image_path'] = localImagePath;
-        _gifVisibility['${item['id']}'] = true;
-      }
-      setState(() {}); // Update UI after images are loaded
-      debugPrint('Online: Loaded images for ${fetchedObjects.length} objects');
-    } catch (e, stackTrace) {
-      debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
-      setState(() {
-        final cachedObjects = box.get(cacheKey, defaultValue: []);
-        userObjects = List<Map<String, dynamic>>.from(
-          cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
-        ).take(3).toList();
-        totalObjects = cachedObjects.length;
-      });
     }
   }
 
@@ -881,6 +1003,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     if (pendingActions.isEmpty) return;
 
     bool isSyncing = false;
+    // ignore: dead_code
     if (isSyncing) return;
     isSyncing = true;
 
@@ -1516,7 +1639,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         ),
       );
     } else {
-      // Diseño redondeado para trompetas, fondos y logros
+      // Diseño redondeado para trompetas, fondos, logros y canciones
       imageWidget = Padding(
         padding: const EdgeInsets.all(8.0),
         child: Container(
@@ -1535,16 +1658,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                   child: _buildImageContent(imagePath, isVisible, category),
                 ),
               ),
-              if (isObtained)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.green,
-                    size: 20,
-                  ),
-                ),
+              // if (isObtained)
+              //   Positioned(
+              //     top: 8,
+              //     right: 8,
+              //     child: Icon(
+              //       Icons.check_circle_rounded,
+              //       color: Colors.green,
+              //       size: 20,
+              //     ),
+              //   ),
             ],
           ),
         ),
@@ -1630,7 +1753,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             await fetchUserAchievements();
             await fetchUserObjects();
             await fetchTotalAvailableObjects();
-
+            await fetchUserFavoriteSongs();
             if (_isOnline) {
               await _syncPendingActions();
             }
@@ -1993,7 +2116,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                     crossAxisCount: 3,
                                     mainAxisSpacing: 12,
                                     crossAxisSpacing: 12,
-                                    childAspectRatio: 0.6, // From previous fix
+                                    childAspectRatio: 0.6,
                                   ),
                                   itemCount: userAchievements.length,
                                   itemBuilder: (context, index) {
@@ -2007,7 +2130,6 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                             visibilityInfo.visibleFraction *
                                                 100;
                                         if (mounted) {
-                                          // Check if widget is still mounted
                                           setState(() {
                                             _gifVisibility[visibilityKey] =
                                                 visiblePercentage > 10;
@@ -2283,7 +2405,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                   // No navigation for now
                                 },
                                 child: Text(
-                                  'Todos mis objetos ($totalObjects / $totalAvailableObjects)',
+                                  'TODOS MIS OBJETOS ($totalObjects / $totalAvailableObjects)',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -2293,6 +2415,219 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ),
                             ),
                           ),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
+                        // Agregar después del contenedor de "Objetos Obtenidos" en el método build
+
+                        Row(
+                          children: [
+                            Text(
+                              "| ",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            Text(
+                              'MIS CANCIONES FAVORITAS',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: themeProvider.isDarkMode
+                                  ? const Color.fromARGB(255, 34, 34, 34)
+                                  : const Color.fromARGB(255, 202, 202, 209),
+                              width: 2,
+                            ),
+                          ),
+                          child: userFavoriteSongs.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: Center(
+                                    child: Text(
+                                      'No tienes canciones favoritas.',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ),
+                                )
+                              : GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.all(12),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    mainAxisSpacing: 12,
+                                    crossAxisSpacing: 12,
+                                    childAspectRatio:
+                                        0.52, // Ajustado para dar más espacio al botón
+                                  ),
+                                  itemCount: userFavoriteSongs.length,
+                                  itemBuilder: (context, index) {
+                                    final song = userFavoriteSongs[index];
+                                    final visibilityKey = 'song_${song['id']}';
+                                    return VisibilityDetector(
+                                      key: Key(visibilityKey),
+                                      onVisibilityChanged: (visibilityInfo) {
+                                        final visiblePercentage =
+                                            visibilityInfo.visibleFraction *
+                                                100;
+                                        setState(() {
+                                          _gifVisibility[visibilityKey] =
+                                              visiblePercentage > 10;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(
+                                            2), // Padding interno para el contenedor
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                              color: Colors.blue, width: 1.5),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Stack(
+                                              children: [
+                                                AspectRatio(
+                                                  aspectRatio: 1.0,
+                                                  child: _buildImageWidget(
+                                                    'songs',
+                                                    song['local_image_path'] ??
+                                                        song['image'] ??
+                                                        'assets/images/refmmp.png',
+                                                    true,
+                                                    visibilityKey,
+                                                  ),
+                                                ),
+                                                Positioned(
+                                                  top: 8,
+                                                  left: 8,
+                                                  child: Icon(
+                                                    Icons.favorite,
+                                                    color: Colors.red,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              song['name'] ?? 'Canción',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: themeProvider.isDarkMode
+                                                    ? Colors.white
+                                                    : Colors.blue,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.blue,
+                                                minimumSize: const Size(
+                                                    double.infinity,
+                                                    24), // Aumentada la altura
+                                                padding: const EdgeInsets
+                                                    .symmetric(
+                                                    horizontal:
+                                                        8), // Aumentado el padding
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                              ),
+                                              onPressed: () {
+                                                debugPrint(
+                                                    'Navigating to PlayPage for song: ${song['name']}');
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        PlayPage(
+                                                            songName:
+                                                                song['name']),
+                                                  ),
+                                                );
+                                              },
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.music_note_rounded,
+                                                    color: Colors.white,
+                                                    size: 14,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Tocar',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                        if (totalFavoriteSongs > 3)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: TextButton(
+                                onPressed: () {
+                                  // Navegar a una página que muestre todas las canciones favoritas
+                                  // Por ejemplo: Navigator.push(context, MaterialPageRoute(builder: (context) => AllFavoriteSongsPage()));
+                                },
+                                child: Text(
+                                  'TODAS MIS CANCIONES FAVORITAS ($totalFavoriteSongs)',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 10),
                         Divider(
                           height: 40,
                           thickness: 2,
