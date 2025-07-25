@@ -1493,12 +1493,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       String visibilityKey) {
     final isVisible = _gifVisibility[visibilityKey] ?? false;
 
-    if (!isVisible || imagePath.isEmpty) {
-      return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
-    }
+    Widget imageWidget;
 
     if (category == 'avatares') {
-      return Padding(
+      // Diseño circular para avatares
+      imageWidget = Padding(
         padding: const EdgeInsets.all(4.0),
         child: AspectRatio(
           aspectRatio: 1.0,
@@ -1506,7 +1505,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                  color: isObtained ? Colors.green : Colors.blue, width: 2),
+                color: isObtained ? Colors.green : Colors.blue,
+                width: 2,
+              ),
             ),
             child: ClipOval(
               child: _buildImageContent(imagePath, isVisible, category),
@@ -1514,14 +1515,15 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           ),
         ),
       );
-    } else if (category == 'trompetas') {
-      return Padding(
+    } else {
+      // Diseño redondeado para trompetas, fondos y logros
+      imageWidget = Padding(
         padding: const EdgeInsets.all(8.0),
         child: Container(
           width: double.infinity,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: category == 'trompetas' ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Stack(
@@ -1537,48 +1539,30 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                 Positioned(
                   top: 8,
                   right: 8,
-                  child: Icon(Icons.check_circle_rounded,
-                      color: Colors.green, size: 20),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green,
+                    size: 20,
+                  ),
                 ),
             ],
           ),
         ),
       );
-    } else {
-      // Handle 'achievements' and other categories
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.transparent,
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: _buildImageContent(imagePath, isVisible, category),
-              ),
-            ),
-            if (isObtained)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Icon(Icons.check_circle_rounded,
-                    color: Colors.green, size: 20),
-              ),
-          ],
-        ),
-      );
     }
+
+    return imageWidget;
   }
 
   Widget _buildImageContent(String imagePath, bool isVisible, String category) {
-    final fit = category == 'achievements'
-        ? BoxFit.contain
-        : (category == 'trompetas' ? BoxFit.contain : BoxFit.cover);
+    final fit = BoxFit.cover;
+
+    if (!isVisible || imagePath.isEmpty) {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: fit,
+      );
+    }
 
     Widget imageWidget;
 
@@ -1589,11 +1573,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          debugPrint('Error loading local image: $error, path: $imagePath');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: fit,
+          );
         },
       );
-    } else if (Uri.tryParse(imagePath)?.isAbsolute == true) {
+    } else {
       imageWidget = CachedNetworkImage(
         imageUrl: imagePath,
         cacheManager: CustomCacheManager.instance,
@@ -1603,21 +1589,15 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         placeholder: (context, url) =>
             const Center(child: CircularProgressIndicator(color: Colors.blue)),
         errorWidget: (context, url, error) {
-          debugPrint('Error loading network image: $error, url: $url');
-          return Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: fit,
+          );
         },
         memCacheWidth: 200,
         memCacheHeight: 200,
         fadeInDuration: const Duration(milliseconds: 200),
       );
-    } else {
-      imageWidget =
-          Image.asset('assets/images/refmmp.png', fit: BoxFit.contain);
-    }
-
-    // Forzar recorte circular para avatares
-    if (category == 'avatares') {
-      return ClipOval(child: imageWidget);
     }
 
     return imageWidget;
