@@ -2445,6 +2445,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        const SizedBox(height: 8),
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 0),
                           decoration: BoxDecoration(
@@ -2476,7 +2477,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                     mainAxisSpacing: 12,
                                     crossAxisSpacing: 12,
                                     childAspectRatio:
-                                        0.52, // Ajustado para dar más espacio al botón
+                                        0.7, // Ajustado para mejor proporción sin botón
                                   ),
                                   itemCount: userFavoriteSongs.length,
                                   itemBuilder: (context, index) {
@@ -2493,108 +2494,71 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                               visiblePercentage > 10;
                                         });
                                       },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(
-                                            2), // Padding interno para el contenedor
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                              color: Colors.blue, width: 1.5),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Stack(
-                                              children: [
-                                                AspectRatio(
-                                                  aspectRatio: 1.0,
-                                                  child: _buildImageWidget(
-                                                    'songs',
-                                                    song['local_image_path'] ??
-                                                        song['image'] ??
-                                                        'assets/images/refmmp.png',
-                                                    true,
-                                                    visibilityKey,
-                                                  ),
-                                                ),
-                                                Positioned(
-                                                  top: 8,
-                                                  left: 8,
-                                                  child: Icon(
-                                                    Icons.favorite,
-                                                    color: Colors.red,
-                                                    size: 20,
-                                                  ),
-                                                ),
-                                              ],
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          debugPrint(
+                                              'Navigating to PlayPage for song: ${song['name']} (ID: ${song['id']})');
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => PlayPage(
+                                                  songName: song['name']),
                                             ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              song['name'] ?? 'Canción',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: themeProvider.isDarkMode
-                                                    ? Colors.white
-                                                    : Colors.blue,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            ElevatedButton(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.blue,
-                                                minimumSize: const Size(
-                                                    double.infinity,
-                                                    24), // Aumentada la altura
-                                                padding: const EdgeInsets
-                                                    .symmetric(
-                                                    horizontal:
-                                                        8), // Aumentado el padding
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6),
-                                                ),
-                                              ),
-                                              onPressed: () {
-                                                debugPrint(
-                                                    'Navigating to PlayPage for song: ${song['name']}');
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        PlayPage(
-                                                            songName:
-                                                                song['name']),
-                                                  ),
-                                                );
-                                              },
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
+                                          );
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(
+                                              2), // Padding interno para el contenedor
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                                color: Colors.blue, width: 1.5),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Stack(
                                                 children: [
-                                                  Icon(
-                                                    Icons.music_note_rounded,
-                                                    color: Colors.white,
-                                                    size: 14,
+                                                  AspectRatio(
+                                                    aspectRatio: 1.0,
+                                                    child: _buildImageWidget(
+                                                      'songs',
+                                                      song['local_image_path'] ??
+                                                          song['image'] ??
+                                                          'assets/images/refmmp.png',
+                                                      true,
+                                                      visibilityKey,
+                                                    ),
                                                   ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    'Tocar',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: Colors.white,
-                                                      fontWeight:
-                                                          FontWeight.bold,
+                                                  Positioned(
+                                                    top: 8,
+                                                    left: 8,
+                                                    child: Icon(
+                                                      Icons.favorite,
+                                                      color: Colors.red,
+                                                      size: 20,
                                                     ),
                                                   ),
                                                 ],
                                               ),
-                                            ),
-                                          ],
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                song['name'] ?? 'Canción',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color:
+                                                      themeProvider.isDarkMode
+                                                          ? Colors.white
+                                                          : Colors.blue,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     );
