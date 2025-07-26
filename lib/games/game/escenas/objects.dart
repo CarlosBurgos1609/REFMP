@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/details/objetsDetails.dart';
+import 'package:refmp/forms/onbjetsForm.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/models/profile_image_provider.dart';
@@ -1962,10 +1963,10 @@ class _ObjetsPageState extends State<ObjetsPage> {
         floatingActionButton: FloatingActionButtonWidget(
           canAddEvent: _canAddEvent,
           onPressed: () {
-            // Navigator.push(
-            //   context,
-            //   MaterialPageRoute(builder: (context) => const AddEventForm()),
-            // );
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ObjetsForm()),
+            );
           },
         ),
         bottomNavigationBar: CustomNavigationBar(
