@@ -7,6 +7,7 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path/path.dart' as path;
 
 class ObjetsForm extends StatefulWidget {
   const ObjetsForm({super.key});
@@ -23,6 +24,8 @@ class _ObjetsFormState extends State<ObjetsForm> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   File? _selectedImage;
+  String?
+      _fileExtension; // To track file extension (e.g., .jpg, .gif, .webp, .avif)
   bool _isLoading = false;
 
   List<String> selectedCategories = [];
@@ -38,7 +41,6 @@ class _ObjetsFormState extends State<ObjetsForm> {
 
   Future<void> fetchCategories() async {
     try {
-      // Fetch categories and ensure uniqueness in Dart
       final response = await supabase.from('objets').select('category');
       final uniqueCategories =
           response.map((item) => item['category'] as String).toSet().toList();
@@ -50,21 +52,41 @@ class _ObjetsFormState extends State<ObjetsForm> {
     }
   }
 
-  Future<File?> _compressImage(File file) async {
+  Future<File?> _compressImage(File file, String extension) async {
     try {
       final tempDir = Directory.systemTemp;
-      final targetPath = '${tempDir.path}/${const Uuid().v4()}.jpg';
+      final targetPath = '${tempDir.path}/${const Uuid().v4()}$extension';
+      CompressFormat format;
+
+      switch (extension.toLowerCase()) {
+        case '.jpg':
+        case '.jpeg':
+          format = CompressFormat.jpeg;
+          break;
+        case '.png':
+          format = CompressFormat.png;
+          break;
+        case '.webp':
+          format = CompressFormat.webp;
+          break;
+        case '.gif':
+          // flutter_image_compress doesn't support GIF compression
+          return file; // Return original file for GIFs
+        default:
+          return null; // Unsupported format
+      }
 
       final compressedFile = await FlutterImageCompress.compressAndGetFile(
         file.path,
         targetPath,
-        quality: 80, // Adjust quality to balance size and visual fidelity
-        minWidth: 1024, // Reasonable resolution for mobile
+        quality: extension == '.gif' ? 100 : 80, // Minimal compression for GIFs
+        minWidth: 1024,
         minHeight: 1024,
+        format: format,
       );
 
       if (compressedFile == null) {
-        debugPrint('Image compression failed');
+        debugPrint('Image compression failed for $extension');
         return null;
       }
 
@@ -80,17 +102,34 @@ class _ObjetsFormState extends State<ObjetsForm> {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
       File originalFile = File(pickedFile.path);
-      File? compressedFile = await _compressImage(originalFile);
-
-      if (compressedFile == null) {
+      final extension = path.extension(pickedFile.path).toLowerCase();
+      final supportedFormats = [
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.gif',
+        '.webp',
+        '.avif'
+      ];
+      if (!supportedFormats.contains(extension)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al comprimir la imagen')),
+          const SnackBar(content: Text('Formato de archivo no soportado')),
         );
         return;
       }
 
-      final fileSize = await compressedFile.length();
+      File? processedFile = await _compressImage(originalFile, extension);
+
+      if (processedFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error al procesar la imagen')),
+        );
+        return;
+      }
+
+      final fileSize = await processedFile.length();
       if (fileSize > maxImageSizeBytes) {
+        final formatName = extension.toUpperCase().replaceFirst('.', '');
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -104,9 +143,9 @@ class _ObjetsFormState extends State<ObjetsForm> {
                   size: 64,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Imagen demasiado pesada',
-                  style: TextStyle(
+                Text(
+                  '$formatName demasiado pesado',
+                  style: const TextStyle(
                     color: Colors.blue,
                     fontWeight: FontWeight.bold,
                     fontSize: 20,
@@ -114,7 +153,7 @@ class _ObjetsFormState extends State<ObjetsForm> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'La imagen excede el límite de 3MB (${(fileSize / 1000000).toStringAsFixed(2)}MB). Por favor, elija otra imagen o comprímala.',
+                  'El $formatName excede el límite de 3MB (${(fileSize / 1000000).toStringAsFixed(2)}MB). Por favor, elija otro $formatName o comprímalo.',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
@@ -146,7 +185,8 @@ class _ObjetsFormState extends State<ObjetsForm> {
       }
 
       setState(() {
-        _selectedImage = compressedFile;
+        _selectedImage = processedFile;
+        _fileExtension = extension;
       });
     }
   }
@@ -155,16 +195,15 @@ class _ObjetsFormState extends State<ObjetsForm> {
     try {
       final fileSize = await imageFile.length();
       if (fileSize > maxImageSizeBytes) {
-        throw Exception('Imagen excede el límite de 3MB');
+        throw Exception('Archivo excede el límite de 3MB');
       }
 
       final fileName = const Uuid().v4();
-      await supabase.storage
-          .from('objets')
-          .upload('object_images/$fileName.jpg', imageFile);
-      return supabase.storage
-          .from('objets')
-          .getPublicUrl('object_images/$fileName.jpg');
+      final extension = _fileExtension ?? '.jpg';
+      final uploadPath = 'object_images/$fileName$extension';
+
+      await supabase.storage.from('objets').upload(uploadPath, imageFile);
+      return supabase.storage.from('objets').getPublicUrl(uploadPath);
     } catch (e) {
       debugPrint('Error uploading image: $e');
       return null;
@@ -208,6 +247,7 @@ class _ObjetsFormState extends State<ObjetsForm> {
       _formKey.currentState!.reset();
       setState(() {
         _selectedImage = null;
+        _fileExtension = null;
         selectedCategories = [];
       });
       Navigator.pop(context);
