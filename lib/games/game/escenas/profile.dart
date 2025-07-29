@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/details/myobjets.dart';
 import 'package:refmp/dialogs/dialog_achievements.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
@@ -2402,7 +2403,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ),
                               child: TextButton(
                                 onPressed: () {
-                                  // No navigation for now
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => MyObjectsPage(
+                                                instrumentName:
+                                                    widget.instrumentName,
+                                              )));
                                 },
                                 child: Text(
                                   'TODOS MIS OBJETOS ($totalObjects / $totalAvailableObjects)',
@@ -2578,7 +2585,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               child: TextButton(
                                 onPressed: () {
                                   // Navegar a una página que muestre todas las canciones favoritas
-                                  // Por ejemplo: Navigator.push(context, MaterialPageRoute(builder: (context) => AllFavoriteSongsPage()));
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => MyObjectsPage(
+                                                instrumentName:
+                                                    widget.instrumentName,
+                                              )));
                                 },
                                 child: Text(
                                   'TODAS MIS CANCIONES FAVORITAS ($totalFavoriteSongs)',
