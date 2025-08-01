@@ -1,5 +1,3 @@
-// ignore_for_file: unused_local_variable
-
 import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +6,9 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/details/objetsDetails.dart';
+import 'package:refmp/games/game/escenas/MusicPage.dart';
+import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -65,16 +66,22 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
   int totalAvatars = 0;
   int totalWallpapers = 0;
   int totalTrumpets = 0;
+  int totalAvailableAvatars = 0;
+  int totalAvailableWallpapers = 0;
+  int totalAvailableTrumpets = 0;
+  int totalAvailableObjects = 0;
+  int totalAvailableAchievements = 0;
+  int totalAvailableSongs = 0;
 
   final List<Map<String, dynamic>> categories = [
     {'label': 'Logros', 'icon': Icons.star_border, 'selectedIcon': Icons.star},
     {
-      'label': 'Canciones Favoritas',
+      'label': 'Canciones',
       'icon': Icons.favorite_border,
       'selectedIcon': Icons.favorite
     },
     {
-      'label': 'Mis Objetos',
+      'label': 'Objetos',
       'icon': Icons.inventory_2_outlined,
       'selectedIcon': Icons.inventory_2
     },
@@ -210,10 +217,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       fetchProfileImage(),
       fetchUserAchievements(),
       fetchUserFavoriteSongs(),
-      fetchUserObjects('otros', userObjects, 'total_objects'),
-      fetchUserObjects('avatares', userAvatars, 'total_avatars'),
-      fetchUserObjects('fondos', userWallpapers, 'total_wallpapers'),
-      fetchUserObjects('trompetas', userTrumpets, 'total_trumpets'),
+      fetchUserObjects(),
     ]);
     updateFilteredItems();
   }
@@ -465,6 +469,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     final box = Hive.box('offline_data');
     final cacheKey = 'user_achievements_$userId';
     final countCacheKey = 'total_achievements_$userId';
+    final totalAvailableCacheKey = 'total_available_achievements_$userId';
 
     try {
       if (!_isOnline) {
@@ -475,6 +480,8 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           );
           totalAchievements =
               box.get(countCacheKey, defaultValue: cachedAchievements.length);
+          totalAvailableAchievements = box.get(totalAvailableCacheKey,
+              defaultValue: cachedAchievements.length);
         });
         for (var item in userAchievements) {
           final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
@@ -518,12 +525,19 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           .eq('user_id', userId)
           .count(CountOption.exact);
 
+      final totalAvailableResponse = await supabase
+          .from('achievements')
+          .select('id')
+          .count(CountOption.exact);
+
       setState(() {
         userAchievements = fetchedAchievements;
         totalAchievements = countResponse.count;
+        totalAvailableAchievements = totalAvailableResponse.count;
       });
       await box.put(cacheKey, fetchedAchievements);
       await box.put(countCacheKey, countResponse.count);
+      await box.put(totalAvailableCacheKey, totalAvailableResponse.count);
     } catch (e) {
       debugPrint('Error fetching user achievements: $e');
       final cachedAchievements = box.get(cacheKey, defaultValue: []);
@@ -533,6 +547,8 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         );
         totalAchievements =
             box.get(countCacheKey, defaultValue: cachedAchievements.length);
+        totalAvailableAchievements = box.get(totalAvailableCacheKey,
+            defaultValue: cachedAchievements.length);
       });
     }
   }
@@ -544,6 +560,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     final box = Hive.box('offline_data');
     final cacheKey = 'user_favorite_songs_$userId';
     final countCacheKey = 'total_favorite_songs_$userId';
+    final totalAvailableCacheKey = 'total_available_songs_$userId';
 
     try {
       if (!_isOnline) {
@@ -554,6 +571,8 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           );
           totalFavoriteSongs =
               box.get(countCacheKey, defaultValue: cachedSongs.length);
+          totalAvailableSongs =
+              box.get(totalAvailableCacheKey, defaultValue: cachedSongs.length);
         });
         for (var item in userFavoriteSongs) {
           final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
@@ -595,12 +614,17 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           .eq('user_id', userId)
           .count(CountOption.exact);
 
+      final totalAvailableResponse =
+          await supabase.from('songs').select('id').count(CountOption.exact);
+
       setState(() {
         userFavoriteSongs = fetchedSongs;
         totalFavoriteSongs = countResponse.count;
+        totalAvailableSongs = totalAvailableResponse.count;
       });
       await box.put(cacheKey, fetchedSongs);
       await box.put(countCacheKey, countResponse.count);
+      await box.put(totalAvailableCacheKey, totalAvailableResponse.count);
     } catch (e) {
       debugPrint('Error fetching favorite songs: $e');
       final cachedSongs = box.get(cacheKey, defaultValue: []);
@@ -610,12 +634,13 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         );
         totalFavoriteSongs =
             box.get(countCacheKey, defaultValue: cachedSongs.length);
+        totalAvailableSongs =
+            box.get(totalAvailableCacheKey, defaultValue: cachedSongs.length);
       });
     }
   }
 
-  Future<void> fetchUserObjects(String category,
-      List<Map<String, dynamic>> targetList, String countKey) async {
+  Future<void> fetchUserObjects() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('Error: userId is null in fetchUserObjects');
@@ -623,31 +648,53 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     }
 
     final box = Hive.box('offline_data');
-    final cacheKey = 'user_${category}_$userId';
-    final countCacheKey = '${countKey}_$userId';
+    final cacheKey = 'user_objects_$userId';
+    final countCacheKey = 'total_objects_$userId';
+    final avatarCacheKey = 'user_avatares_$userId';
+    final wallpaperCacheKey = 'user_fondos_$userId';
+    final trumpetCacheKey = 'user_trompetas_$userId';
+    final totalAvailableObjectsKey = 'total_available_objects_$userId';
+    final totalAvailableAvatarsKey = 'total_available_avatares_$userId';
+    final totalAvailableWallpapersKey = 'total_available_fondos_$userId';
+    final totalAvailableTrumpetsKey = 'total_available_trompetas_$userId';
 
     try {
       if (!_isOnline) {
         final cachedObjects = box.get(cacheKey, defaultValue: []);
+        final cachedAvatars = box.get(avatarCacheKey, defaultValue: []);
+        final cachedWallpapers = box.get(wallpaperCacheKey, defaultValue: []);
+        final cachedTrumpets = box.get(trumpetCacheKey, defaultValue: []);
         setState(() {
-          targetList.clear();
-          targetList.addAll(List<Map<String, dynamic>>.from(
+          userObjects = List<Map<String, dynamic>>.from(
             cachedObjects.map((item) => Map<String, dynamic>.from(item)),
-          ));
-          if (category == 'otros')
-            totalObjects =
-                box.get(countCacheKey, defaultValue: cachedObjects.length);
-          else if (category == 'avatares')
-            totalAvatars =
-                box.get(countCacheKey, defaultValue: cachedObjects.length);
-          else if (category == 'fondos')
-            totalWallpapers =
-                box.get(countCacheKey, defaultValue: cachedObjects.length);
-          else if (category == 'trompetas')
-            totalTrumpets =
-                box.get(countCacheKey, defaultValue: cachedObjects.length);
+          );
+          userAvatars = List<Map<String, dynamic>>.from(
+            cachedAvatars.map((item) => Map<String, dynamic>.from(item)),
+          );
+          userWallpapers = List<Map<String, dynamic>>.from(
+            cachedWallpapers.map((item) => Map<String, dynamic>.from(item)),
+          );
+          userTrumpets = List<Map<String, dynamic>>.from(
+            cachedTrumpets.map((item) => Map<String, dynamic>.from(item)),
+          );
+          totalObjects =
+              box.get(countCacheKey, defaultValue: cachedObjects.length);
+          totalAvatars =
+              box.get(avatarCacheKey, defaultValue: cachedAvatars.length);
+          totalWallpapers =
+              box.get(wallpaperCacheKey, defaultValue: cachedWallpapers.length);
+          totalTrumpets =
+              box.get(trumpetCacheKey, defaultValue: cachedTrumpets.length);
+          totalAvailableObjects = box.get(totalAvailableObjectsKey,
+              defaultValue: cachedObjects.length);
+          totalAvailableAvatars = box.get(totalAvailableAvatarsKey,
+              defaultValue: cachedAvatars.length);
+          totalAvailableWallpapers = box.get(totalAvailableWallpapersKey,
+              defaultValue: cachedWallpapers.length);
+          totalAvailableTrumpets = box.get(totalAvailableTrumpetsKey,
+              defaultValue: cachedTrumpets.length);
         });
-        for (var item in targetList) {
+        for (var item in userObjects) {
           final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
           final objectCacheKey = 'object_image_${item['id']}';
           final localImagePath =
@@ -663,7 +710,6 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           .select(
               'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
           .eq('user_id', userId)
-          .eq('objets.category', category)
           .order('created_at', ascending: false, referencedTable: 'objets');
 
       final List<Map<String, dynamic>> fetchedObjects = [];
@@ -678,7 +724,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           'image_url': imageUrl,
           'local_image_path': localImagePath,
           'name': objet['name'] ?? 'Objeto',
-          'category': objet['category'] ?? 'otros',
+          'category': objet['category']?.toLowerCase() ?? 'otros',
           'description': objet['description'] ?? 'Sin descripción',
           'price': objet['price'] ?? 0,
           'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
@@ -686,46 +732,96 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         _gifVisibility['${objet['id']}'] = true;
       }
 
-      final countResponse = await supabase
-          .from('users_objets')
-          .select('objet_id')
-          .eq('user_id', userId)
-          .eq('objets.category', category)
+      final totalAvailableObjectsResponse =
+          await supabase.from('objets').select('id').count(CountOption.exact);
+
+      final totalAvailableAvatarsResponse = await supabase
+          .from('objets')
+          .select('id')
+          .eq('category', 'avatares')
+          .count(CountOption.exact);
+
+      final totalAvailableWallpapersResponse = await supabase
+          .from('objets')
+          .select('id')
+          .eq('category', 'fondos')
+          .count(CountOption.exact);
+
+      final totalAvailableTrumpetsResponse = await supabase
+          .from('objets')
+          .select('id')
+          .eq('category', 'trompetas')
           .count(CountOption.exact);
 
       setState(() {
-        targetList.clear();
-        targetList.addAll(fetchedObjects);
-        if (category == 'otros')
-          totalObjects = countResponse.count;
-        else if (category == 'avatares')
-          totalAvatars = countResponse.count;
-        else if (category == 'fondos')
-          totalWallpapers = countResponse.count;
-        else if (category == 'trompetas') totalTrumpets = countResponse.count;
+        userObjects = fetchedObjects;
+        userAvatars = fetchedObjects
+            .where((obj) => obj['category'].toLowerCase() == 'avatares')
+            .toList();
+        userWallpapers = fetchedObjects
+            .where((obj) => obj['category'].toLowerCase() == 'fondos')
+            .toList();
+        userTrumpets = fetchedObjects
+            .where((obj) => obj['category'].toLowerCase() == 'trompetas')
+            .toList();
+        totalObjects = fetchedObjects.length;
+        totalAvatars = userAvatars.length;
+        totalWallpapers = userWallpapers.length;
+        totalTrumpets = userTrumpets.length;
+        totalAvailableObjects = totalAvailableObjectsResponse.count;
+        totalAvailableAvatars = totalAvailableAvatarsResponse.count;
+        totalAvailableWallpapers = totalAvailableWallpapersResponse.count;
+        totalAvailableTrumpets = totalAvailableTrumpetsResponse.count;
       });
+
       await box.put(cacheKey, fetchedObjects);
-      await box.put(countCacheKey, countResponse.count);
-    } catch (e) {
-      debugPrint('Error fetching $category objects: $e');
+      await box.put(avatarCacheKey, userAvatars);
+      await box.put(wallpaperCacheKey, userWallpapers);
+      await box.put(trumpetCacheKey, userTrumpets);
+      await box.put(countCacheKey, fetchedObjects.length);
+      await box.put(
+          totalAvailableObjectsKey, totalAvailableObjectsResponse.count);
+      await box.put(
+          totalAvailableAvatarsKey, totalAvailableAvatarsResponse.count);
+      await box.put(
+          totalAvailableWallpapersKey, totalAvailableWallpapersResponse.count);
+      await box.put(
+          totalAvailableTrumpetsKey, totalAvailableTrumpetsResponse.count);
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching objects: $e\nStack trace: $stackTrace');
       final cachedObjects = box.get(cacheKey, defaultValue: []);
+      final cachedAvatars = box.get(avatarCacheKey, defaultValue: []);
+      final cachedWallpapers = box.get(wallpaperCacheKey, defaultValue: []);
+      final cachedTrumpets = box.get(trumpetCacheKey, defaultValue: []);
       setState(() {
-        targetList.clear();
-        targetList.addAll(List<Map<String, dynamic>>.from(
+        userObjects = List<Map<String, dynamic>>.from(
           cachedObjects.map((item) => Map<String, dynamic>.from(item)),
-        ));
-        if (category == 'otros')
-          totalObjects =
-              box.get(countCacheKey, defaultValue: cachedObjects.length);
-        else if (category == 'avatares')
-          totalAvatars =
-              box.get(countCacheKey, defaultValue: cachedObjects.length);
-        else if (category == 'fondos')
-          totalWallpapers =
-              box.get(countCacheKey, defaultValue: cachedObjects.length);
-        else if (category == 'trompetas')
-          totalTrumpets =
-              box.get(countCacheKey, defaultValue: cachedObjects.length);
+        );
+        userAvatars = List<Map<String, dynamic>>.from(
+          cachedAvatars.map((item) => Map<String, dynamic>.from(item)),
+        );
+        userWallpapers = List<Map<String, dynamic>>.from(
+          cachedWallpapers.map((item) => Map<String, dynamic>.from(item)),
+        );
+        userTrumpets = List<Map<String, dynamic>>.from(
+          cachedTrumpets.map((item) => Map<String, dynamic>.from(item)),
+        );
+        totalObjects =
+            box.get(countCacheKey, defaultValue: cachedObjects.length);
+        totalAvatars =
+            box.get(avatarCacheKey, defaultValue: cachedAvatars.length);
+        totalWallpapers =
+            box.get(wallpaperCacheKey, defaultValue: cachedWallpapers.length);
+        totalTrumpets =
+            box.get(trumpetCacheKey, defaultValue: cachedTrumpets.length);
+        totalAvailableObjects = box.get(totalAvailableObjectsKey,
+            defaultValue: cachedObjects.length);
+        totalAvailableAvatars = box.get(totalAvailableAvatarsKey,
+            defaultValue: cachedAvatars.length);
+        totalAvailableWallpapers = box.get(totalAvailableWallpapersKey,
+            defaultValue: cachedWallpapers.length);
+        totalAvailableTrumpets = box.get(totalAvailableTrumpetsKey,
+            defaultValue: cachedTrumpets.length);
       });
     }
   }
@@ -1068,12 +1164,18 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                   child: _buildImageContent(imagePath, isVisible, category),
                 ),
               ),
-              if (isObtained)
+              if (isObtained && category != 'songs')
                 Positioned(
                   top: 8,
                   right: 8,
                   child: Icon(Icons.check_circle_rounded,
                       color: Colors.green, size: 20),
+                ),
+              if (category == 'songs')
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Icon(Icons.favorite, color: Colors.red, size: 20),
                 ),
             ],
           ),
@@ -1113,12 +1215,18 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                 child: _buildImageContent(imagePath, isVisible, category),
               ),
             ),
-            if (isObtained)
+            if (isObtained && category != 'songs')
               Positioned(
                 top: 4,
                 right: 4,
                 child: Icon(Icons.check_circle_rounded,
                     color: Colors.green, size: 20),
+              ),
+            if (category == 'songs')
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Icon(Icons.favorite, color: Colors.red, size: 20),
               ),
           ],
         ),
@@ -1173,22 +1281,80 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     });
   }
 
+  void _navigateToCategoryPage(int index) {
+    switch (index) {
+      case 1: // Canciones
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                MusicPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        break;
+      case 2: // Objetos
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ObjetsPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        break;
+      case 3: // Avatares
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ObjetsDetailsPage(
+              title: 'Avatares',
+              instrumentName: widget.instrumentName,
+            ),
+          ),
+        );
+        break;
+      case 4: // Fondos
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ObjetsDetailsPage(
+              title: 'Fondos',
+              instrumentName: widget.instrumentName,
+            ),
+          ),
+        );
+        break;
+      case 5: // Trompetas
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ObjetsDetailsPage(
+              title: 'Trompetas',
+              instrumentName: widget.instrumentName,
+            ),
+          ),
+        );
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final numberFormat = NumberFormat('#,##0', 'es_ES');
+    final userId = supabase.auth.currentUser?.id;
+    final box = Hive.box('offline_data');
     final obtainedCount = filteredItems.length;
     final totalCount = _selectedIndex == 0
-        ? totalAchievements
+        ? totalAvailableAchievements
         : _selectedIndex == 1
-            ? totalFavoriteSongs
+            ? totalAvailableSongs
             : _selectedIndex == 2
-                ? totalObjects
+                ? totalAvailableObjects
                 : _selectedIndex == 3
-                    ? totalAvatars
+                    ? totalAvailableAvatars
                     : _selectedIndex == 4
-                        ? totalWallpapers
-                        : totalTrumpets;
+                        ? totalAvailableWallpapers
+                        : totalAvailableTrumpets;
     final progress = totalCount > 0 ? obtainedCount / totalCount : 0.0;
 
     return Scaffold(
@@ -1547,53 +1713,29 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                           minHeight: 8,
                         ),
                       ),
-                      if (_selectedIndex == 0) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AllAchievementsPage(
-                                      instrumentName: widget.instrumentName),
-                                ),
-                              );
-                            },
-                            child: Text(
-                              'TODOS MIS LOGROS ($totalAchievements)',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: TextButton(
-                            onPressed: () {},
-                            child: Text(
-                              'MÁS LOGROS',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: TextButton(
+                            onPressed: _selectedIndex == 0
+                                ? null // No navigation for Logros
+                                : () => _navigateToCategoryPage(_selectedIndex),
+                            child: Text(
+                              'MÁS ${categories[_selectedIndex]['label'].toUpperCase()}',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1607,11 +1749,13 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                     crossAxisSpacing: 12,
                     childAspectRatio: _selectedIndex == 0
                         ? 0.5
-                        : _selectedIndex == 3
-                            ? 0.5
-                            : _selectedIndex == 4
-                                ? 0.7
-                                : 0.7,
+                        : _selectedIndex == 1
+                            ? 0.6
+                            : _selectedIndex == 3
+                                ? 0.5
+                                : _selectedIndex == 4
+                                    ? 0.7
+                                    : 0.6,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -1661,16 +1805,18 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                                   context,
                                   item,
                                   category,
-                                  0,
+                                  totalCoins,
                                   _useObject,
                                   (Map<String, dynamic> _) async {});
                             }
                           },
                           child: Container(
                             decoration: BoxDecoration(
-                              color: themeProvider.isDarkMode
-                                  ? Colors.grey[900]
-                                  : Colors.white,
+                              color: category == 'songs'
+                                  ? Colors.transparent
+                                  : (themeProvider.isDarkMode
+                                      ? Colors.grey[900]
+                                      : Colors.white),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.green, width: 2),
                               boxShadow: [
@@ -1732,23 +1878,31 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Icon(Icons.check_circle,
-                                          color: Colors.green, size: 16),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Obtenido',
-                                        style: TextStyle(
+                                      if (category == 'songs') ...[
+                                        Icon(Icons.favorite,
+                                            color: Colors.red, size: 16),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Me gusta',
+                                          style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.green),
-                                      ),
-                                      if (category == 'songs')
-                                        Positioned(
-                                          top: 8,
-                                          left: 8,
-                                          child: Icon(Icons.favorite,
-                                              color: Colors.red, size: 20),
+                                            color: Colors.red,
+                                          ),
                                         ),
+                                      ] else ...[
+                                        Icon(Icons.check_circle,
+                                            color: Colors.green, size: 16),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Obtenido',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -1765,182 +1919,6 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class AllAchievementsPage extends StatelessWidget {
-  final String instrumentName;
-  const AllAchievementsPage({Key? key, required this.instrumentName})
-      : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final supabase = Supabase.instance.client;
-    final userId = supabase.auth.currentUser?.id;
-    final themeProvider = Provider.of<ThemeProvider>(context);
-
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 200.0,
-            floating: false,
-            pinned: true,
-            backgroundColor: Colors.blue,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Text(
-              'TODOS MIS LOGROS',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20),
-            ),
-            centerTitle: true,
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.all(16.0),
-            sliver: SliverToBoxAdapter(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: supabase
-                    .from('users_achievements')
-                    .select(
-                        'id, created_at, achievements!inner(name, image, description)')
-                    .eq('user_id', userId!)
-                    .order('created_at', ascending: false)
-                    .then((response) => response.map((item) {
-                          final achievement =
-                              item['achievements'] as Map<String, dynamic>;
-                          return {
-                            'id': item['id'],
-                            'image': achievement['image'] ??
-                                'assets/images/refmmp.png',
-                            'name': achievement['name'] ?? 'Logro',
-                            'description':
-                                achievement['description'] ?? 'Sin descripción',
-                            'created_at': item['created_at'] ??
-                                DateTime.now().toIso8601String(),
-                          };
-                        }).toList()),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                        child: CircularProgressIndicator(color: Colors.blue));
-                  }
-                  if (snapshot.hasError) {
-                    return const Center(
-                        child: Text('Error al cargar los logros'));
-                  }
-                  final achievements = snapshot.data ?? [];
-                  if (achievements.isEmpty) {
-                    return const Center(
-                        child: Text('No tienes logros obtenidos.'));
-                  }
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.6,
-                    ),
-                    itemCount: achievements.length,
-                    itemBuilder: (context, index) {
-                      final achievement = achievements[index];
-                      return GestureDetector(
-                        onTap: () =>
-                            showAchievementDialog(context, achievement),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: themeProvider.isDarkMode
-                                ? Colors.grey[900]
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.green, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                spreadRadius: 2,
-                                blurRadius: 8,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                height: 100,
-                                width: 100,
-                                child: CachedNetworkImage(
-                                  imageUrl: achievement['image'],
-                                  cacheManager: CustomCacheManager.instance,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => const Center(
-                                      child: CircularProgressIndicator(
-                                          color: Colors.blue)),
-                                  errorWidget: (context, url, error) =>
-                                      Image.asset('assets/images/refmmp.png',
-                                          fit: BoxFit.cover),
-                                ),
-                              ),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(maxHeight: 30),
-                                  child: Text(
-                                    achievement['name'],
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: themeProvider.isDarkMode
-                                          ? Colors.white
-                                          : Colors.blue,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.check_circle,
-                                        color: Colors.green, size: 16),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Obtenido',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
