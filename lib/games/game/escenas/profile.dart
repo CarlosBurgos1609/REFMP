@@ -2223,7 +2223,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ),
                               child: TextButton(
                                 onPressed: () {
-                                  // No navigation for now
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => MyObjectsPage(
+                                                instrumentName:
+                                                    widget.instrumentName,
+                                                selectedIndex: 0,
+                                              )));
                                 },
                                 child: Text(
                                   'TODOS MIS LOGROS ($totalAchievements)',
@@ -2409,6 +2416,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                           builder: (context) => MyObjectsPage(
                                                 instrumentName:
                                                     widget.instrumentName,
+                                                selectedIndex: 2,
                                               )));
                                 },
                                 child: Text(
@@ -2591,6 +2599,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                           builder: (context) => MyObjectsPage(
                                                 instrumentName:
                                                     widget.instrumentName,
+                                                selectedIndex: 1,
                                               )));
                                 },
                                 child: Text(

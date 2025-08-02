@@ -34,7 +34,9 @@ class CustomCacheManager {
 
 class MyObjectsPage extends StatefulWidget {
   final String instrumentName;
-  const MyObjectsPage({Key? key, required this.instrumentName})
+  final int? selectedIndex;
+  const MyObjectsPage(
+      {Key? key, required this.instrumentName, this.selectedIndex})
       : super(key: key);
 
   @override
@@ -116,6 +118,11 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadImageHeight();
     });
+    if (widget.selectedIndex != null) {
+      setState(() {
+        _selectedIndex = widget.selectedIndex!;
+      });
+    }
     Connectivity().onConnectivityChanged.listen((result) async {
       bool isOnline = result != ConnectivityResult.none;
       setState(() {
