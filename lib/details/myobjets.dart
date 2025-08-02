@@ -226,6 +226,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
 
   void updateFilteredItems() {
     setState(() {
+      // Actualizar las listas filtradas según la categoría seleccionada
       switch (_selectedIndex) {
         case 0:
           filteredItems = List.from(userAchievements);
@@ -248,6 +249,304 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       }
       applySort(selectedSortOption);
     });
+  }
+
+  void filterItems(String query) {
+    setState(() {
+      List<Map<String, dynamic>> sourceItems;
+      switch (_selectedIndex) {
+        case 0:
+          sourceItems = userAchievements;
+          break;
+        case 1:
+          sourceItems = userFavoriteSongs;
+          break;
+        case 2:
+          sourceItems = userObjects;
+          break;
+        case 3:
+          sourceItems = userAvatars;
+          break;
+        case 4:
+          sourceItems = userWallpapers;
+          break;
+        case 5:
+          sourceItems = userTrumpets;
+          break;
+        default:
+          sourceItems = [];
+      }
+      if (query.isEmpty) {
+        filteredItems = List.from(sourceItems);
+        // Si la categoría es "Objetos", no filtramos por categoría específica
+        if (_selectedIndex == 2) {
+          userAvatars = userObjects
+              .where((obj) => obj['category'].toLowerCase() == 'avatares')
+              .toList();
+          userWallpapers = userObjects
+              .where((obj) => obj['category'].toLowerCase() == 'fondos')
+              .toList();
+          userTrumpets = userObjects
+              .where((obj) => obj['category'].toLowerCase() == 'trompetas')
+              .toList();
+        }
+      } else {
+        filteredItems = sourceItems.where((item) {
+          final name = (item['name'] as String?)?.toLowerCase() ?? '';
+          return name.contains(query.toLowerCase());
+        }).toList();
+        // Actualizar las listas de categorías para "Objetos"
+        if (_selectedIndex == 2) {
+          userAvatars = filteredItems
+              .where((obj) => obj['category'].toLowerCase() == 'avatares')
+              .toList();
+          userWallpapers = filteredItems
+              .where((obj) => obj['category'].toLowerCase() == 'fondos')
+              .toList();
+          userTrumpets = filteredItems
+              .where((obj) => obj['category'].toLowerCase() == 'trompetas')
+              .toList();
+        }
+      }
+      applySort(selectedSortOption);
+    });
+  }
+
+  Widget _buildCategorySection({
+    required String title,
+    required List<Map<String, dynamic>> items,
+    required String category,
+    required int totalAvailable,
+  }) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              "| ",
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
+            ),
+            Text(
+              title.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: themeProvider.isDarkMode
+                  ? const Color.fromARGB(255, 34, 34, 34)
+                  : const Color.fromARGB(255, 202, 202, 209),
+              width: 2,
+            ),
+          ),
+          child: items.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'No tienes elementos en esta categoría.',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )
+              : GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: category == 'avatares'
+                        ? 0.5
+                        : category == 'fondos'
+                            ? 0.7
+                            : 0.6,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final visibilityKey =
+                        category == 'achievements' || category == 'songs'
+                            ? '${category}_${item['id']}'
+                            : '${item['id']}';
+                    return VisibilityDetector(
+                      key: Key(visibilityKey),
+                      onVisibilityChanged: (visibilityInfo) {
+                        final visiblePercentage =
+                            visibilityInfo.visibleFraction * 100;
+                        if (mounted) {
+                          setState(() {
+                            _gifVisibility[visibilityKey] =
+                                visiblePercentage > 10;
+                          });
+                        }
+                      },
+                      child: GestureDetector(
+                        onTap: () {
+                          if (category == 'achievements') {
+                            showAchievementDialog(context, item);
+                          } else if (category == 'songs') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    PlayPage(songName: item['name']),
+                              ),
+                            );
+                          } else {
+                            showObjectDialog(
+                                context,
+                                item,
+                                category,
+                                totalCoins,
+                                _useObject,
+                                (Map<String, dynamic> _) async {});
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: category == 'songs'
+                                ? Colors.transparent
+                                : (themeProvider.isDarkMode
+                                    ? Colors.grey[900]
+                                    : Colors.white),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green, width: 2),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                height: category == 'fondos' ? 60 : 100,
+                                width: category == 'fondos' ? 80 : 100,
+                                child: _buildImageWidget(
+                                  category,
+                                  item['local_image_path'] ??
+                                      (category == 'achievements' ||
+                                              category == 'songs'
+                                          ? item['image']
+                                          : item['image_url']) ??
+                                      'assets/images/refmmp.png',
+                                  true,
+                                  visibilityKey,
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8.0),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(maxHeight: 30),
+                                  child: Text(
+                                    item['name'] ??
+                                        (category == 'achievements'
+                                            ? 'Logro'
+                                            : category == 'songs'
+                                                ? 'Canción'
+                                                : 'Objeto'),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: themeProvider.isDarkMode
+                                          ? Colors.white
+                                          : Colors.blue,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (category == 'songs') ...[
+                                      Icon(Icons.favorite,
+                                          color: Colors.red, size: 16),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Me gusta',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.red,
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Icon(Icons.check_circle,
+                                          color: Colors.green, size: 16),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Obtenido',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        if (items.length > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TextButton(
+                onPressed: () => _navigateToCategoryPage(_selectedIndex),
+                child: Text(
+                  'MÁS ${title.toUpperCase()} (${items.length}/$totalAvailable)',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        Divider(
+          height: 40,
+          thickness: 2,
+          color: themeProvider.isDarkMode
+              ? const Color.fromARGB(255, 34, 34, 34)
+              : const Color.fromARGB(255, 236, 234, 234),
+        ),
+      ],
+    );
   }
 
   Future<void> fetchTotalCoins() async {
@@ -659,6 +958,20 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     final totalAvailableAvatarsKey = 'total_available_avatares_$userId';
     final totalAvailableWallpapersKey = 'total_available_fondos_$userId';
     final totalAvailableTrumpetsKey = 'total_available_trompetas_$userId';
+    final totalAvatarsCacheKey = 'total_avatares_count_$userId';
+    final totalWallpapersCacheKey = 'total_fondos_count_$userId';
+    final totalTrumpetsCacheKey = 'total_trompetas_count_$userId';
+
+    // Limpiar datos corruptos en Hive
+    if (box.get(avatarCacheKey) is! List<Map<String, dynamic>>) {
+      await box.delete(avatarCacheKey);
+    }
+    if (box.get(wallpaperCacheKey) is! List<Map<String, dynamic>>) {
+      await box.delete(wallpaperCacheKey);
+    }
+    if (box.get(trumpetCacheKey) is! List<Map<String, dynamic>>) {
+      await box.delete(trumpetCacheKey);
+    }
 
     try {
       if (!_isOnline) {
@@ -682,19 +995,23 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           totalObjects =
               box.get(countCacheKey, defaultValue: cachedObjects.length);
           totalAvatars =
-              box.get(avatarCacheKey, defaultValue: cachedAvatars.length);
-          totalWallpapers =
-              box.get(wallpaperCacheKey, defaultValue: cachedWallpapers.length);
-          totalTrumpets =
-              box.get(trumpetCacheKey, defaultValue: cachedTrumpets.length);
-          totalAvailableObjects = box.get(totalAvailableObjectsKey,
-              defaultValue: cachedObjects.length);
-          totalAvailableAvatars = box.get(totalAvailableAvatarsKey,
-              defaultValue: cachedAvatars.length);
-          totalAvailableWallpapers = box.get(totalAvailableWallpapersKey,
+              box.get(totalAvatarsCacheKey, defaultValue: cachedAvatars.length);
+          totalWallpapers = box.get(totalWallpapersCacheKey,
               defaultValue: cachedWallpapers.length);
-          totalAvailableTrumpets = box.get(totalAvailableTrumpetsKey,
+          totalTrumpets = box.get(totalTrumpetsCacheKey,
               defaultValue: cachedTrumpets.length);
+          totalAvailableObjects =
+              box.get(totalAvailableObjectsKey, defaultValue: 0);
+          totalAvailableAvatars =
+              box.get(totalAvailableAvatarsKey, defaultValue: 0);
+          totalAvailableWallpapers =
+              box.get(totalAvailableWallpapersKey, defaultValue: 0);
+          totalAvailableTrumpets =
+              box.get(totalAvailableTrumpetsKey, defaultValue: 0);
+          debugPrint(
+              'Offline mode: totalAvailableAvatars=$totalAvailableAvatars, '
+              'totalAvailableWallpapers=$totalAvailableWallpapers, '
+              'totalAvailableTrumpets=$totalAvailableTrumpets');
         });
         for (var item in userObjects) {
           final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
@@ -704,6 +1021,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           item['local_image_path'] = localImagePath;
           _gifVisibility['${item['id']}'] = true;
         }
+        updateFilteredItems();
         return;
       }
 
@@ -736,24 +1054,29 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
 
       final totalAvailableObjectsResponse =
           await supabase.from('objets').select('id').count(CountOption.exact);
-
+      debugPrint(
+          'Total available objects response: $totalAvailableObjectsResponse');
       final totalAvailableAvatarsResponse = await supabase
           .from('objets')
           .select('id')
           .eq('category', 'avatares')
           .count(CountOption.exact);
-
+      debugPrint(
+          'Total available avatars response: $totalAvailableAvatarsResponse');
       final totalAvailableWallpapersResponse = await supabase
           .from('objets')
           .select('id')
           .eq('category', 'fondos')
           .count(CountOption.exact);
-
+      debugPrint(
+          'Total available wallpapers response: $totalAvailableWallpapersResponse');
       final totalAvailableTrumpetsResponse = await supabase
           .from('objets')
           .select('id')
           .eq('category', 'trompetas')
           .count(CountOption.exact);
+      debugPrint(
+          'Total available trumpets response: $totalAvailableTrumpetsResponse');
 
       setState(() {
         userObjects = fetchedObjects;
@@ -774,6 +1097,9 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         totalAvailableAvatars = totalAvailableAvatarsResponse.count;
         totalAvailableWallpapers = totalAvailableWallpapersResponse.count;
         totalAvailableTrumpets = totalAvailableTrumpetsResponse.count;
+        debugPrint('Online mode: totalAvailableAvatars=$totalAvailableAvatars, '
+            'totalAvailableWallpapers=$totalAvailableWallpapers, '
+            'totalAvailableTrumpets=$totalAvailableTrumpets');
       });
 
       await box.put(cacheKey, fetchedObjects);
@@ -781,6 +1107,9 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       await box.put(wallpaperCacheKey, userWallpapers);
       await box.put(trumpetCacheKey, userTrumpets);
       await box.put(countCacheKey, fetchedObjects.length);
+      await box.put(totalAvatarsCacheKey, userAvatars.length);
+      await box.put(totalWallpapersCacheKey, userWallpapers.length);
+      await box.put(totalTrumpetsCacheKey, userTrumpets.length);
       await box.put(
           totalAvailableObjectsKey, totalAvailableObjectsResponse.count);
       await box.put(
@@ -789,6 +1118,8 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           totalAvailableWallpapersKey, totalAvailableWallpapersResponse.count);
       await box.put(
           totalAvailableTrumpetsKey, totalAvailableTrumpetsResponse.count);
+
+      updateFilteredItems();
     } catch (e, stackTrace) {
       debugPrint('Error fetching objects: $e\nStack trace: $stackTrace');
       final cachedObjects = box.get(cacheKey, defaultValue: []);
@@ -811,20 +1142,24 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         totalObjects =
             box.get(countCacheKey, defaultValue: cachedObjects.length);
         totalAvatars =
-            box.get(avatarCacheKey, defaultValue: cachedAvatars.length);
-        totalWallpapers =
-            box.get(wallpaperCacheKey, defaultValue: cachedWallpapers.length);
-        totalTrumpets =
-            box.get(trumpetCacheKey, defaultValue: cachedTrumpets.length);
-        totalAvailableObjects = box.get(totalAvailableObjectsKey,
-            defaultValue: cachedObjects.length);
-        totalAvailableAvatars = box.get(totalAvailableAvatarsKey,
-            defaultValue: cachedAvatars.length);
-        totalAvailableWallpapers = box.get(totalAvailableWallpapersKey,
+            box.get(totalAvatarsCacheKey, defaultValue: cachedAvatars.length);
+        totalWallpapers = box.get(totalWallpapersCacheKey,
             defaultValue: cachedWallpapers.length);
-        totalAvailableTrumpets = box.get(totalAvailableTrumpetsKey,
-            defaultValue: cachedTrumpets.length);
+        totalTrumpets =
+            box.get(totalTrumpetsCacheKey, defaultValue: cachedTrumpets.length);
+        totalAvailableObjects =
+            box.get(totalAvailableObjectsKey, defaultValue: 0);
+        totalAvailableAvatars =
+            box.get(totalAvailableAvatarsKey, defaultValue: 0);
+        totalAvailableWallpapers =
+            box.get(totalAvailableWallpapersKey, defaultValue: 0);
+        totalAvailableTrumpets =
+            box.get(totalAvailableTrumpetsKey, defaultValue: 0);
+        debugPrint('Catch block: totalAvailableAvatars=$totalAvailableAvatars, '
+            'totalAvailableWallpapers=$totalAvailableWallpapers, '
+            'totalAvailableTrumpets=$totalAvailableTrumpets');
       });
+      updateFilteredItems();
     }
   }
 
@@ -976,43 +1311,6 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         SnackBar(content: Text('Error al usar el objeto: $e')),
       );
     }
-  }
-
-  void filterItems(String query) {
-    setState(() {
-      List<Map<String, dynamic>> sourceItems;
-      switch (_selectedIndex) {
-        case 0:
-          sourceItems = userAchievements;
-          break;
-        case 1:
-          sourceItems = userFavoriteSongs;
-          break;
-        case 2:
-          sourceItems = userObjects;
-          break;
-        case 3:
-          sourceItems = userAvatars;
-          break;
-        case 4:
-          sourceItems = userWallpapers;
-          break;
-        case 5:
-          sourceItems = userTrumpets;
-          break;
-        default:
-          sourceItems = [];
-      }
-      if (query.isEmpty) {
-        filteredItems = List.from(sourceItems);
-      } else {
-        filteredItems = sourceItems.where((item) {
-          final name = (item['name'] as String?)?.toLowerCase() ?? '';
-          return name.contains(query.toLowerCase());
-        }).toList();
-      }
-      applySort(selectedSortOption);
-    });
   }
 
   void applySort(String? sortOption) {
@@ -1716,208 +2014,80 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 16.0),
-                        child: Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: TextButton(
-                            onPressed: _selectedIndex == 0
-                                ? null // No navigation for Logros
-                                : () => _navigateToCategoryPage(_selectedIndex),
-                            child: Text(
-                              'MÁS ${categories[_selectedIndex]['label'].toUpperCase()}',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ),
-              SliverPadding(
-                padding: const EdgeInsets.all(16.0),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: _selectedIndex == 0
-                        ? 0.5
-                        : _selectedIndex == 1
-                            ? 0.6
-                            : _selectedIndex == 3
-                                ? 0.5
-                                : _selectedIndex == 4
-                                    ? 0.7
-                                    : 0.6,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = filteredItems[index];
-                      final category = _selectedIndex == 0
-                          ? 'achievements'
-                          : _selectedIndex == 1
-                              ? 'songs'
-                              : _selectedIndex == 2
-                                  ? 'otros'
-                                  : _selectedIndex == 3
-                                      ? 'avatares'
-                                      : _selectedIndex == 4
-                                          ? 'fondos'
-                                          : 'trompetas';
-                      final visibilityKey =
-                          category == 'achievements' || category == 'songs'
-                              ? '${category}_${item['id']}'
-                              : '${item['id']}';
-
-                      return VisibilityDetector(
-                        key: Key(visibilityKey),
-                        onVisibilityChanged: (visibilityInfo) {
-                          final visiblePercentage =
-                              visibilityInfo.visibleFraction * 100;
-                          if (mounted) {
-                            setState(() {
-                              _gifVisibility[visibilityKey] =
-                                  visiblePercentage > 10;
-                            });
-                          }
-                        },
-                        child: GestureDetector(
-                          onTap: () {
-                            if (category == 'achievements') {
-                              showAchievementDialog(context, item);
-                            } else if (category == 'songs') {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      PlayPage(songName: item['name']),
-                                ),
-                              );
-                            } else {
-                              showObjectDialog(
-                                  context,
-                                  item,
-                                  category,
-                                  totalCoins,
-                                  _useObject,
-                                  (Map<String, dynamic> _) async {});
-                            }
-                          },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: category == 'songs'
-                                  ? Colors.transparent
-                                  : (themeProvider.isDarkMode
-                                      ? Colors.grey[900]
-                                      : Colors.white),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.green, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  spreadRadius: 2,
-                                  blurRadius: 8,
-                                  offset: Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  height: category == 'fondos' ? 60 : 100,
-                                  width: category == 'fondos' ? 80 : 100,
-                                  child: _buildImageWidget(
-                                    category,
-                                    item['local_image_path'] ??
-                                        (category == 'achievements' ||
-                                                category == 'songs'
-                                            ? item['image']
-                                            : item['image_url']) ??
-                                        'assets/images/refmmp.png',
-                                    true,
-                                    visibilityKey,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8.0),
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(maxHeight: 30),
-                                    child: Text(
-                                      item['name'] ??
-                                          (category == 'achievements'
-                                              ? 'Logro'
-                                              : category == 'songs'
-                                                  ? 'Canción'
-                                                  : 'Objeto'),
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: themeProvider.isDarkMode
-                                            ? Colors.white
-                                            : Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (category == 'songs') ...[
-                                        Icon(Icons.favorite,
-                                            color: Colors.red, size: 16),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Me gusta',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.red,
-                                          ),
-                                        ),
-                                      ] else ...[
-                                        Icon(Icons.check_circle,
-                                            color: Colors.green, size: 16),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Obtenido',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                    childCount: filteredItems.length,
+              if (_selectedIndex == 0) // Logros
+                SliverToBoxAdapter(
+                  child: _buildCategorySection(
+                    title: 'Logros',
+                    items: filteredItems,
+                    category: 'achievements',
+                    totalAvailable: totalAvailableAchievements,
                   ),
                 ),
-              ),
+              if (_selectedIndex == 1) // Canciones
+                SliverToBoxAdapter(
+                  child: _buildCategorySection(
+                    title: 'Canciones',
+                    items: filteredItems,
+                    category: 'songs',
+                    totalAvailable: totalAvailableSongs,
+                  ),
+                ),
+              if (_selectedIndex == 2) // Objetos (mostrar todas las categorías)
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      _buildCategorySection(
+                        title: 'Avatares',
+                        items: userAvatars,
+                        category: 'avatares',
+                        totalAvailable: totalAvailableAvatars,
+                      ),
+                      _buildCategorySection(
+                        title: 'Fondos',
+                        items: userWallpapers,
+                        category: 'fondos',
+                        totalAvailable: totalAvailableWallpapers,
+                      ),
+                      _buildCategorySection(
+                        title: 'Trompetas',
+                        items: userTrumpets,
+                        category: 'trompetas',
+                        totalAvailable: totalAvailableTrumpets,
+                      ),
+                    ],
+                  ),
+                ),
+              if (_selectedIndex == 3) // Avatares
+                SliverToBoxAdapter(
+                  child: _buildCategorySection(
+                    title: 'Avatares',
+                    items: filteredItems,
+                    category: 'avatares',
+                    totalAvailable: totalAvailableAvatars,
+                  ),
+                ),
+              if (_selectedIndex == 4) // Fondos
+                SliverToBoxAdapter(
+                  child: _buildCategorySection(
+                    title: 'Fondos',
+                    items: filteredItems,
+                    category: 'fondos',
+                    totalAvailable: totalAvailableWallpapers,
+                  ),
+                ),
+              if (_selectedIndex == 5) // Trompetas
+                SliverToBoxAdapter(
+                  child: _buildCategorySection(
+                    title: 'Trompetas',
+                    items: filteredItems,
+                    category: 'trompetas',
+                    totalAvailable: totalAvailableTrumpets,
+                  ),
+                ),
             ],
           ),
         ),
