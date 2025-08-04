@@ -2082,7 +2082,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                         borderRadius: BorderRadius.circular(8),
                         child: LinearProgressIndicator(
                           value: progress,
-                          backgroundColor: Colors.grey[300],
+                          backgroundColor: Colors.grey[400],
                           valueColor:
                               AlwaysStoppedAnimation<Color>(Colors.green),
                           minHeight: 8,
