@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/menu/events.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 class AddEventForm extends StatefulWidget {
   const AddEventForm({Key? key}) : super(key: key);
@@ -25,8 +26,7 @@ class _AddEventFormState extends State<AddEventForm> {
 
   TextEditingController nameController = TextEditingController();
   TextEditingController locationController = TextEditingController();
-  TextEditingController ubicationUrlController =
-      TextEditingController(); // Added
+  TextEditingController ubicationUrlController = TextEditingController();
   DateTime? selectedDateTime;
   TimeOfDay? endTime;
   List<String> selectedSedes = [];
@@ -41,9 +41,8 @@ class _AddEventFormState extends State<AddEventForm> {
   }
 
   Future<void> fetchSedes() async {
-    final response = await Supabase.instance.client
-        .from('sedes')
-        .select('id, name'); // Asegúrate de que el campo `name` existe
+    final response =
+        await Supabase.instance.client.from('sedes').select('id, name');
 
     setState(() {
       sedes = response;
@@ -53,9 +52,26 @@ class _AddEventFormState extends State<AddEventForm> {
   Future<void> pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() {
-        imageFile = File(picked.path);
-      });
+      final tempDir = Directory.systemTemp;
+      final compressedFilePath = '${tempDir.path}/compressed_${picked.name}';
+
+      final compressedImage = await FlutterImageCompress.compressAndGetFile(
+        picked.path,
+        compressedFilePath,
+        quality: 70,
+        minWidth: 1024,
+        minHeight: 1024,
+      );
+
+      if (compressedImage != null) {
+        setState(() {
+          imageFile = File(compressedImage.path);
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error al comprimir la imagen')),
+        );
+      }
     }
   }
 
@@ -87,7 +103,6 @@ class _AddEventFormState extends State<AddEventForm> {
     final filename = 'event_${uuid}_$cleanName.jpg';
 
     try {
-      // Subir imagen
       final storagePath = 'event_images/$filename';
       await supabase.storage.from('Events').upload(storagePath, imageFile!);
 
@@ -103,7 +118,6 @@ class _AddEventFormState extends State<AddEventForm> {
         endTime!.minute,
       );
 
-      // Insertar el evento y recuperar su ID
       final response = await supabase
           .from('events')
           .insert({
@@ -113,7 +127,7 @@ class _AddEventFormState extends State<AddEventForm> {
             'time_fin':
                 '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}',
             'location': locationController.text,
-            'ubication_url': ubicationUrlController.text, // Added
+            'ubication_url': ubicationUrlController.text,
             'image': imageUrl,
             'month': date.month,
             'year': date.year,
@@ -125,13 +139,11 @@ class _AddEventFormState extends State<AddEventForm> {
 
       final eventId = response['id'];
 
-      // Obtener los IDs de las sedes seleccionadas
       final selectedSedeIds = selectedSedes.map((sedeName) {
         final match = sedes.firstWhere((s) => s['name'] == sedeName);
         return match['id'];
       }).toList();
 
-      // Insertar en la tabla intermedia
       for (var sedeId in selectedSedeIds) {
         await supabase.from('events_headquarters').insert({
           'event_id': eventId,
@@ -215,8 +227,38 @@ class _AddEventFormState extends State<AddEventForm> {
                 child: imageFile != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Image.file(imageFile!,
-                            height: 200, fit: BoxFit.cover),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return FutureBuilder<Size>(
+                              future: _getImageSize(imageFile!),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData) {
+                                  final imageSize = snapshot.data!;
+                                  return ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxHeight:
+                                          500, // Increased for larger image
+                                      maxWidth: constraints.maxWidth,
+                                    ),
+                                    child: AspectRatio(
+                                      aspectRatio:
+                                          imageSize.width / imageSize.height,
+                                      child: Image.file(
+                                        imageFile!,
+                                        fit: BoxFit
+                                            .contain, // Ensure full image is visible
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  return const Center(
+                                    child: CircularProgressIndicator(),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
                       )
                     : Container(
                         height: 200,
@@ -237,7 +279,7 @@ class _AddEventFormState extends State<AddEventForm> {
                 controller: nameController,
                 decoration: customInputDecoration(
                   'Nombre del evento',
-                  Icons.event, // ícono dinámico
+                  Icons.event,
                 ),
                 validator: (value) =>
                     value!.isEmpty ? 'Ingresa un nombre' : null,
@@ -301,7 +343,7 @@ class _AddEventFormState extends State<AddEventForm> {
                 controller: locationController,
                 decoration: customInputDecoration(
                   'Ubicación del evento',
-                  Icons.place, // ícono dinámico
+                  Icons.place,
                 ),
                 validator: (value) =>
                     value!.isEmpty ? 'Ingresa una ubicación' : null,
@@ -312,8 +354,7 @@ class _AddEventFormState extends State<AddEventForm> {
                 decoration: customInputDecoration(
                     'URL de ubicación (Google Maps)', Icons.link),
                 validator: (value) {
-                  if (value == null || value.isEmpty)
-                    return null; // Optional field
+                  if (value == null || value.isEmpty) return null;
                   final urlPattern = RegExp(
                       r'^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$');
                   return urlPattern.hasMatch(value)
@@ -333,7 +374,7 @@ class _AddEventFormState extends State<AddEventForm> {
                       ? DateFormat('dd/MM/yyyy – hh:mm a')
                           .format(selectedDateTime!)
                       : 'Seleccionar fecha y hora de inicio',
-                  style: const TextStyle(color: Colors.blue), // ← texto azul
+                  style: const TextStyle(color: Colors.blue),
                 ),
                 onTap: () async {
                   final date = await showDatePicker(
@@ -467,7 +508,7 @@ class _AddEventFormState extends State<AddEventForm> {
                   endTime != null
                       ? endTime!.format(context)
                       : 'Seleccionar hora de fin',
-                  style: const TextStyle(color: Colors.blue), // ← texto azul
+                  style: const TextStyle(color: Colors.blue),
                 ),
                 onTap: () async {
                   final picked = await showTimePicker(
@@ -477,7 +518,7 @@ class _AddEventFormState extends State<AddEventForm> {
                       return Theme(
                         data: ThemeData.light().copyWith(
                           colorScheme: const ColorScheme.light(
-                            primary: Colors.blue, // color del reloj y botón OK
+                            primary: Colors.blue,
                             onPrimary: Colors.white,
                             onSurface: Colors.blue,
                           ),
@@ -489,18 +530,16 @@ class _AddEventFormState extends State<AddEventForm> {
                             dayPeriodColor:
                                 MaterialStateColor.resolveWith((states) {
                               if (states.contains(MaterialState.selected)) {
-                                return Colors
-                                    .blueAccent; // fondo AM/PM seleccionado
+                                return Colors.blueAccent;
                               }
-                              return Colors
-                                  .transparent; // fondo AM/PM no seleccionado
+                              return Colors.transparent;
                             }),
                             dayPeriodTextColor:
                                 MaterialStateColor.resolveWith((states) {
                               if (states.contains(MaterialState.selected)) {
-                                return Colors.white; // texto AM/PM seleccionado
+                                return Colors.white;
                               }
-                              return Colors.grey; // texto AM/PM no seleccionado
+                              return Colors.grey;
                             }),
                           ),
                         ),
@@ -561,5 +600,11 @@ class _AddEventFormState extends State<AddEventForm> {
         ),
       ),
     );
+  }
+
+  // Helper method to get image size
+  Future<Size> _getImageSize(File imageFile) async {
+    final image = await decodeImageFromList(await imageFile.readAsBytes());
+    return Size(image.width.toDouble(), image.height.toDouble());
   }
 }
