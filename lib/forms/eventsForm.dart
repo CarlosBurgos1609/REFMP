@@ -224,29 +224,44 @@ class _AddEventFormState extends State<AddEventForm> {
               const SizedBox(height: 10),
               GestureDetector(
                 onTap: pickImage,
-                child: imageFile != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: LayoutBuilder(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: imageFile != null
+                      ? LayoutBuilder(
                           builder: (context, constraints) {
                             return FutureBuilder<Size>(
                               future: _getImageSize(imageFile!),
                               builder: (context, snapshot) {
                                 if (snapshot.hasData) {
                                   final imageSize = snapshot.data!;
+                                  final containerWidth = constraints.maxWidth;
+                                  final maxHeight =
+                                      500.0; // Maximum height limit
+                                  final imageAspectRatio =
+                                      imageSize.width / imageSize.height;
+                                  final containerAspectRatio =
+                                      containerWidth / maxHeight;
+
+                                  // Use BoxFit.cover if image is too large, else BoxFit.contain
+                                  final fit = (imageSize.height > maxHeight ||
+                                          imageSize.width > containerWidth ||
+                                          imageAspectRatio >
+                                              containerAspectRatio)
+                                      ? BoxFit.cover
+                                      : BoxFit.contain;
+
                                   return ConstrainedBox(
                                     constraints: BoxConstraints(
-                                      maxHeight:
-                                          500, // Increased for larger image
-                                      maxWidth: constraints.maxWidth,
+                                      maxHeight: maxHeight,
+                                      maxWidth: containerWidth,
                                     ),
                                     child: AspectRatio(
-                                      aspectRatio:
-                                          imageSize.width / imageSize.height,
+                                      aspectRatio: imageAspectRatio,
                                       child: Image.file(
                                         imageFile!,
-                                        fit: BoxFit
-                                            .contain, // Ensure full image is visible
+                                        fit: fit,
+                                        width:
+                                            containerWidth, // Match container width
                                       ),
                                     ),
                                   );
@@ -258,21 +273,21 @@ class _AddEventFormState extends State<AddEventForm> {
                               },
                             );
                           },
-                        ),
-                      )
-                    : Container(
-                        height: 200,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Seleccionar Imagen',
-                            style: TextStyle(color: Colors.blue),
+                        )
+                      : Container(
+                          height: 200,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Seleccionar Imagen',
+                              style: TextStyle(color: Colors.blue),
+                            ),
                           ),
                         ),
-                      ),
+                ),
               ),
               const SizedBox(height: 20),
               TextFormField(
