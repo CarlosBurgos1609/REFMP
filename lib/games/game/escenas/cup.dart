@@ -2,7 +2,7 @@
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
@@ -33,14 +33,15 @@ class _CupPageState extends State<CupPage> {
     super.initState();
     _checkConnectivityAndInitialize();
     fetchUserProfileImage();
+    ensureCurrentUserInUsersGames();
   }
 
   Future<void> _checkConnectivityAndInitialize() async {
     bool isOnline = await _checkConnectivity();
     setState(() {
       _isOnline = isOnline;
+      _cupFuture = fetchCupData(); // Initialize with fresh data
     });
-    _cupFuture = fetchCupData();
   }
 
   Future<bool> _checkConnectivity() async {
@@ -48,6 +49,41 @@ class _CupPageState extends State<CupPage> {
     bool isOnline = connectivityResult != ConnectivityResult.none;
     debugPrint('Connectivity status: ${isOnline ? 'Online' : 'Offline'}');
     return isOnline;
+  }
+
+  Future<void> ensureCurrentUserInUsersGames() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('No authenticated user found for users_games insertion');
+      return;
+    }
+
+    try {
+      if (_isOnline) {
+        final response = await supabase
+            .from('users_games')
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (response == null) {
+          final nickname = user.userMetadata?['full_name'] ?? 'user_${user.id}';
+          await supabase.from('users_games').insert({
+            'user_id': user.id,
+            'nickname': nickname,
+            'points_xp_totally': 0,
+            'points_xp_weekend': 0,
+            'coins': 0,
+          });
+          debugPrint(
+              'Inserted current user ${user.id} into users_games with nickname $nickname');
+        } else {
+          debugPrint('Current user ${user.id} already exists in users_games');
+        }
+      }
+    } catch (e) {
+      debugPrint(
+          'Error al asegurar registro del usuario actual en users_games: $e');
+    }
   }
 
   Future<void> fetchUserProfileImage() async {
@@ -59,15 +95,8 @@ class _CupPageState extends State<CupPage> {
       }
 
       final isOnline = await _checkConnectivity();
-      final box = Hive.box('offline_data');
-      final cacheKey = 'user_profile_image_${user.id}';
-
       if (!isOnline) {
-        final cached = box.get(cacheKey);
-        if (cached != null) {
-          setState(() => profileImageUrl = cached);
-        }
-        debugPrint('Offline: Using cached profile image: $cached');
+        debugPrint('Offline: No profile image available');
         return;
       }
 
@@ -88,7 +117,6 @@ class _CupPageState extends State<CupPage> {
             .maybeSingle();
         if (response != null && response['profile_image'] != null) {
           setState(() => profileImageUrl = response['profile_image']);
-          await box.put(cacheKey, response['profile_image']);
           debugPrint(
               'Fetched profile image from $table: ${response['profile_image']}');
           break;
@@ -100,55 +128,73 @@ class _CupPageState extends State<CupPage> {
   }
 
   Future<List<Map<String, dynamic>>> fetchCupData() async {
-    final box = Hive.box('offline_data');
-    final cacheKey = 'cup_data_${widget.instrumentName}';
-
     try {
       if (!_isOnline) {
-        final cached = box.get(cacheKey, defaultValue: []);
-        if (cached is List && cached.isNotEmpty) {
-          debugPrint('Returning cached data: $cached');
-          return List<Map<String, dynamic>>.from(
-              cached.map((item) => Map<String, dynamic>.from(item)));
-        }
-        debugPrint('No cached data available');
+        debugPrint('Offline: No data available');
         return [];
       }
 
-      // Fetch all users from users_games, no filtering by points
+      final currentUser = supabase.auth.currentUser;
+      debugPrint('Fetching cup data for user_id: ${currentUser?.id}');
+
+      // Fetch top 50 users from users_games with points_xp_weekend > 0
       final response = await supabase
           .from('users_games')
-          .select('nickname, points_xp_weekend, users.profile_image')
+          .select('user_id, nickname, points_xp_weekend')
+          .gt('points_xp_weekend', 0)
           .order('points_xp_weekend', ascending: false)
           .limit(50);
 
-      debugPrint('Supabase response: $response');
+      debugPrint(
+          'Supabase response: ${response.length} users fetched: $response');
 
-      final data = response
-          .map<Map<String, dynamic>>((item) => {
-                'nickname': item['nickname'] ?? 'Anónimo',
-                'points_xp_weekend': item['points_xp_weekend'] ?? 0,
-                'profile_image':
-                    item['profile_image'] ?? 'assets/images/refmmp.png',
-              })
-          .toList();
+      List<Map<String, dynamic>> data = [];
+      final tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents',
+        'directors'
+      ];
+
+      for (var item in response) {
+        String? profileImage;
+        final userId = item['user_id'];
+        for (String table in tables) {
+          final profileResponse = await supabase
+              .from(table)
+              .select('profile_image')
+              .eq('user_id', userId)
+              .maybeSingle();
+          if (profileResponse != null &&
+              profileResponse['profile_image'] != null) {
+            profileImage = profileResponse['profile_image'];
+            debugPrint(
+                'Found profile_image for user_id $userId in $table: $profileImage');
+            break;
+          }
+        }
+
+        data.add({
+          'user_id': item['user_id'],
+          'nickname': item['nickname'] ?? 'Anónimo',
+          'points_xp_weekend': item['points_xp_weekend'] ?? 0,
+          'profile_image': profileImage ?? 'assets/images/refmmp.png',
+        });
+      }
 
       if (data.isEmpty) {
-        debugPrint('No users found in users_games');
+        debugPrint('No users with points found in users_games');
       } else {
-        debugPrint('Fetched ${data.length} users: $data');
+        debugPrint('Processed ${data.length} users: $data');
       }
 
-      await box.put(cacheKey, data);
       return data;
-    } catch (e) {
-      debugPrint('Error al obtener datos de la copa: $e');
-      final cached = box.get(cacheKey, defaultValue: []);
-      if (cached is List && cached.isNotEmpty) {
-        debugPrint('Returning cached data due to error: $cached');
-        return List<Map<String, dynamic>>.from(
-            cached.map((item) => Map<String, dynamic>.from(item)));
-      }
+    } catch (e, stackTrace) {
+      debugPrint(
+          'Error al obtener datos de la copa: $e\nStack trace: $stackTrace');
       return [];
     }
   }
@@ -160,47 +206,89 @@ class _CupPageState extends State<CupPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LearningPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  LearningPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 1:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                MusicPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  MusicPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 2:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                CupPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  CupPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 3:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                ObjetsPage(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  ObjetsPage(instrumentName: widget.instrumentName)),
         );
         break;
       case 4:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                ProfilePageGame(instrumentName: widget.instrumentName),
-          ),
+              builder: (context) =>
+                  ProfilePageGame(instrumentName: widget.instrumentName)),
         );
         break;
+    }
+  }
+
+  bool _needsMarquee(String text, double maxWidth, TextStyle style) {
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+    )..layout();
+    return textPainter.size.width > maxWidth;
+  }
+
+  Widget _buildNicknameWidget(String nickname, bool isCurrentUser) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final textStyle = TextStyle(
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      color: themeProvider.isDarkMode ? Colors.white : Colors.black87,
+    );
+    const maxWidth = 125.0; // Aumentamos el maxWidth para dar más espacio
+
+    if (_needsMarquee(nickname, maxWidth, textStyle)) {
+      return SizedBox(
+        width: maxWidth,
+        height: 24,
+        child: Marquee(
+          text: nickname,
+          style: textStyle,
+          scrollAxis: Axis.horizontal,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          blankSpace: 20.0,
+          velocity: 60.0, // Aumentamos la velocidad
+          pauseAfterRound: const Duration(milliseconds: 1000),
+          startPadding: 10.0,
+          accelerationDuration: const Duration(milliseconds: 500),
+          accelerationCurve: Curves.easeInOut,
+          decelerationDuration: const Duration(milliseconds: 500),
+          decelerationCurve: Curves.easeInOut,
+        ),
+      );
+    } else {
+      return Text(
+        nickname,
+        style: textStyle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
     }
   }
 
@@ -213,11 +301,12 @@ class _CupPageState extends State<CupPage> {
       body: RefreshIndicator(
         color: Colors.blue,
         onRefresh: () async {
+          debugPrint('Refreshing data...');
           await _checkConnectivityAndInitialize();
-          final newData = await fetchCupData();
           setState(() {
-            _cupFuture = Future.value(newData);
+            _cupFuture = fetchCupData();
           });
+          debugPrint('Refresh completed, new _cupFuture assigned');
         },
         child: CustomScrollView(
           slivers: [
@@ -282,46 +371,52 @@ class _CupPageState extends State<CupPage> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Clasificación',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black,
-                            offset: Offset(2, 1),
-                            blurRadius: 8,
-                          ),
-                        ],
+                    const Center(
+                      child: Text(
+                        'Clasificación',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          // shadows: [
+                          //   Shadow(
+                          //     color: Colors.black,
+                          //     offset: Offset(1, 0),
+                          //     blurRadius: 8,
+                          //   ),
+                          // ],
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Divider(
-                      height: 40,
-                      thickness: 2,
-                      color: themeProvider.isDarkMode
-                          ? const Color.fromARGB(255, 34, 34, 34)
-                          : const Color.fromARGB(255, 236, 234, 234),
-                    ),
+                    const SizedBox(height: 1),
                     FutureBuilder<List<Map<String, dynamic>>>(
                       future: _cupFuture,
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
+                          debugPrint('FutureBuilder: Waiting for data...');
                           return const Center(
                               child: CircularProgressIndicator(
                                   color: Colors.blue));
                         }
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        if (snapshot.hasError) {
+                          debugPrint('FutureBuilder error: ${snapshot.error}');
                           return const Center(
-                              child: Text('No hay usuarios disponibles.'));
+                              child: Text('Error al cargar los datos.'));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          debugPrint('FutureBuilder: No data or empty data');
+                          return const Center(
+                              child: Text(
+                                  'No hay usuarios con puntos disponibles.'));
                         }
 
                         final cupList = snapshot.data!;
+                        debugPrint(
+                            'FutureBuilder: Rendering ${cupList.length} users');
 
                         return ListView.builder(
                           shrinkWrap: true,
@@ -329,16 +424,17 @@ class _CupPageState extends State<CupPage> {
                           itemCount: cupList.length,
                           itemBuilder: (context, index) {
                             final item = cupList[index];
-                            final String nickname = item['nickname'];
-                            final int points = item['points_xp_weekend'];
+                            final String nickname =
+                                item['nickname'] ?? 'Anónimo';
+                            final int points = item['points_xp_weekend'] ?? 0;
                             final String? profileImage = item['profile_image'];
-                            final bool isCurrentUser = user != null &&
-                                nickname.toLowerCase().contains(
-                                    (user.userMetadata?['full_name'] ?? '')
-                                        .toString()
-                                        .toLowerCase());
+                            final bool isCurrentUser =
+                                user != null && item['user_id'] == user.id;
                             final borderColor =
                                 isCurrentUser ? Colors.blue : Colors.grey;
+
+                            debugPrint(
+                                'Building item $index: nickname=$nickname, points=$points, user_id=${item['user_id']}');
 
                             return VisibilityDetector(
                               key: Key('user_$index'),
@@ -346,9 +442,11 @@ class _CupPageState extends State<CupPage> {
                                 // Optional: Handle visibility changes
                               },
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
                                 child: Container(
+                                  width: double
+                                      .infinity, // Ocupa el ancho completo
                                   decoration: BoxDecoration(
                                     border: Border.all(
                                         color: borderColor, width: 2),
@@ -363,13 +461,16 @@ class _CupPageState extends State<CupPage> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
                                     children: [
-                                      Text('${index + 1}',
-                                          style: TextStyle(
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                              color: index < 3
-                                                  ? Colors.blue
-                                                  : Colors.black87)),
+                                      Text(
+                                        '${index + 1}', // Continúa el contador (1, 2, 3, 4, ...)
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: index < 3
+                                              ? Colors.blue
+                                              : Colors.blue,
+                                        ),
+                                      ),
                                       const SizedBox(width: 5),
                                       if (index < 3)
                                         Icon(
@@ -384,15 +485,16 @@ class _CupPageState extends State<CupPage> {
                                       const SizedBox(width: 12),
                                       CircleAvatar(
                                         radius: 20,
-                                        backgroundImage: profileImage != null &&
+                                        backgroundColor: Colors.transparent,
+                                        backgroundImage: (profileImage !=
+                                                    null &&
                                                 Uri.tryParse(profileImage)
                                                         ?.isAbsolute ==
-                                                    true
+                                                    true)
                                             ? NetworkImage(profileImage)
-                                            : null,
-                                        child: profileImage == null
-                                            ? const Icon(Icons.person, size: 32)
-                                            : null,
+                                            : const AssetImage(
+                                                    'assets/images/refmmp.png')
+                                                as ImageProvider,
                                       ),
                                       const SizedBox(width: 16),
                                       Expanded(
@@ -401,31 +503,27 @@ class _CupPageState extends State<CupPage> {
                                               MainAxisAlignment.spaceBetween,
                                           children: [
                                             Flexible(
-                                              child: Text(
-                                                nickname,
-                                                style: const TextStyle(
-                                                    fontSize: 17,
-                                                    fontWeight:
-                                                        FontWeight.w600),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                              child: _buildNicknameWidget(
+                                                  nickname, isCurrentUser),
                                             ),
                                             Row(
                                               children: [
-                                                Text('$points ',
-                                                    style: TextStyle(
-                                                        color: Colors
-                                                            .blue.shade700,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 14)),
-                                                Text('XP',
-                                                    style: TextStyle(
-                                                        color: Colors
-                                                            .blue.shade700,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 16)),
+                                                Text(
+                                                  '$points ',
+                                                  style: TextStyle(
+                                                    color: Colors.blue.shade700,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'XP',
+                                                  style: TextStyle(
+                                                    color: Colors.blue.shade700,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
                                               ],
                                             ),
                                           ],
