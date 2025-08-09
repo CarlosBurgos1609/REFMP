@@ -355,10 +355,10 @@ class _CupPageState extends State<CupPage> {
                   ),
                 ),
                 background: Image.asset(
-                  'assets/images/cups.png',
-                  fit: BoxFit.cover,
+                  'assets/images/cupsfondo.png',
+                  fit: BoxFit.fill,
                   errorBuilder: (context, error, stackTrace) {
-                    debugPrint('Error loading cups.png: $error');
+                    debugPrint('Error loading cupsfondo.png: $error');
                     return Image.asset(
                       'assets/images/refmmp.png',
                       fit: BoxFit.cover,
