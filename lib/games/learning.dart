@@ -6,6 +6,7 @@ import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/games/game/escenas/subnivels.dart';
+import 'package:refmp/interfaces/home.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -188,128 +189,160 @@ class _LearningPageState extends State<LearningPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: SizedBox(
-          width: double.infinity,
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: "Buscar Niveles de ${widget.instrumentName}...",
-              hintStyle: const TextStyle(color: Colors.white, fontSize: 14),
-              border: InputBorder.none,
-              suffixIcon: const Icon(Icons.search, color: Colors.white),
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                LearningPage(instrumentName: widget.instrumentName),
+          ),
+        );
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.blue,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: SizedBox(
+            width: double.infinity,
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: "Buscar Niveles de ${widget.instrumentName}...",
+                hintStyle: const TextStyle(color: Colors.white, fontSize: 14),
+                border: InputBorder.none,
+                suffixIcon: const Icon(Icons.search, color: Colors.white),
+              ),
+              style: const TextStyle(color: Colors.white),
+              onChanged: (value) {
+                setState(() {
+                  searchQuery = value.toLowerCase();
+                });
+              },
             ),
-            style: const TextStyle(color: Colors.white),
-            onChanged: (value) {
-              setState(() {
-                searchQuery = value.toLowerCase();
-              });
+          ),
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_rounded,
+              color: Colors.white,
+              shadows: [
+                Shadow(
+                  color: Colors.black,
+                  offset: Offset(2, 1),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => HomePage(
+                    title: 'Inicio',
+                  ),
+                ),
+              );
             },
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+        floatingActionButton: FutureBuilder<bool>(
+          future: _canAddEvent(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(); // o un indicador de carga pequeño
+            }
+
+            if (snapshot.hasData && snapshot.data == true) {
+              return FloatingActionButton(
+                backgroundColor: Colors.blue,
+                onPressed: () {
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(builder: (context) => SongsFormPage()),
+                  // );
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              );
+            } else {
+              return const SizedBox(); // no mostrar nada si no tiene permiso
+            }
+          },
         ),
-      ),
-      floatingActionButton: FutureBuilder<bool>(
-        future: _canAddEvent(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SizedBox(); // o un indicador de carga pequeño
-          }
+        body: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _levelsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                  child: CircularProgressIndicator(color: Colors.blue));
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text("No hay niveles disponibles"));
+            }
 
-          if (snapshot.hasData && snapshot.data == true) {
-            return FloatingActionButton(
-              backgroundColor: Colors.blue,
-              onPressed: () {
-                // Navigator.push(
-                //   context,
-                //   MaterialPageRoute(builder: (context) => SongsFormPage()),
-                // );
-              },
-              child: const Icon(Icons.add, color: Colors.white),
-            );
-          } else {
-            return const SizedBox(); // no mostrar nada si no tiene permiso
-          }
-        },
-      ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _levelsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child: CircularProgressIndicator(color: Colors.blue));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No hay niveles disponibles"));
-          }
+            final levels = snapshot.data!
+                .where((level) =>
+                    level['name'].toLowerCase().contains(searchQuery) ||
+                    level['description'].toLowerCase().contains(searchQuery))
+                .toList();
 
-          final levels = snapshot.data!
-              .where((level) =>
-                  level['name'].toLowerCase().contains(searchQuery) ||
-                  level['description'].toLowerCase().contains(searchQuery))
-              .toList();
-
-          return RefreshIndicator(
-            onRefresh: _refreshLevels,
-            color: Colors.blue,
-            child: ListView.builder(
-              itemCount: levels.length,
-              itemBuilder: (context, index) {
-                final level = levels[index];
-                return Card(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: level['image'] != null &&
-                              level['image'].toString().isNotEmpty
-                          ? Image.network(
-                              level['image'],
-                              width: 60,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Icon(Icons.school, size: 60),
-                            )
-                          : const Icon(Icons.school, size: 60),
-                    ),
-                    title: Text(
-                      level['name'],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.blue),
-                    ),
-                    subtitle: Text(level['description']),
-                    trailing: Icon(Icons.arrow_forward_ios, color: Colors.blue),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SubnivelesPage(
-                            levelId: level['id'], // UUID del nivel
-                            levelTitle:
-                                level['name'], // Opcional: título para AppBar
+            return RefreshIndicator(
+              onRefresh: _refreshLevels,
+              color: Colors.blue,
+              child: ListView.builder(
+                itemCount: levels.length,
+                itemBuilder: (context, index) {
+                  final level = levels[index];
+                  return Card(
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: level['image'] != null &&
+                                level['image'].toString().isNotEmpty
+                            ? Image.network(
+                                level['image'],
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Icon(Icons.school, size: 60),
+                              )
+                            : const Icon(Icons.school, size: 60),
+                      ),
+                      title: Text(
+                        level['name'],
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.blue),
+                      ),
+                      subtitle: Text(level['description']),
+                      trailing:
+                          Icon(Icons.arrow_forward_ios, color: Colors.blue),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SubnivelesPage(
+                              levelId: level['id'], // UUID del nivel
+                              levelTitle:
+                                  level['name'], // Opcional: título para AppBar
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ),
-      bottomNavigationBar: CustomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        bottomNavigationBar: CustomNavigationBar(
+          selectedIndex: _selectedIndex,
+          onItemTapped: _onItemTapped,
+        ),
       ),
     );
   }
