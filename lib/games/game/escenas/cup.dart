@@ -1,7 +1,10 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
@@ -12,6 +15,18 @@ import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+
+class CustomCacheManager {
+  static const key = 'customCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 3),
+      maxNrOfCacheObjects: 200,
+      fileService: HttpFileService(),
+    ),
+  );
+}
 
 class CupPage extends StatefulWidget {
   final String instrumentName;
@@ -24,6 +39,7 @@ class CupPage extends StatefulWidget {
 class _CupPageState extends State<CupPage> {
   final supabase = Supabase.instance.client;
   Future<List<Map<String, dynamic>>>? _cupFuture;
+  Future<List<Map<String, dynamic>>>? _rewardsFuture;
   String? profileImageUrl;
   int _selectedIndex = 2;
   bool _isOnline = false;
@@ -40,7 +56,8 @@ class _CupPageState extends State<CupPage> {
     bool isOnline = await _checkConnectivity();
     setState(() {
       _isOnline = isOnline;
-      _cupFuture = fetchCupData(); // Initialize with fresh data
+      _cupFuture = fetchCupData();
+      _rewardsFuture = fetchRewardsData();
     });
   }
 
@@ -137,7 +154,6 @@ class _CupPageState extends State<CupPage> {
       final currentUser = supabase.auth.currentUser;
       debugPrint('Fetching cup data for user_id: ${currentUser?.id}');
 
-      // Fetch top 50 users from users_games with points_xp_weekend > 0
       final response = await supabase
           .from('users_games')
           .select('user_id, nickname, points_xp_weekend')
@@ -196,6 +212,124 @@ class _CupPageState extends State<CupPage> {
       debugPrint(
           'Error al obtener datos de la copa: $e\nStack trace: $stackTrace');
       return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRewardsData() async {
+    try {
+      if (!_isOnline) {
+        debugPrint('Offline: No rewards data available');
+        return [];
+      }
+
+      final now = DateTime.now();
+      final weekStart = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday - 1));
+      final weekEnd = weekStart.add(Duration(days: 6));
+
+      final response = await supabase
+          .from('rewards')
+          .select(
+              'position, object_id, coins_reward, objets(image_url, category, name)')
+          .eq('week_start', weekStart.toIso8601String().split('T')[0])
+          .eq('week_end', weekEnd.toIso8601String().split('T')[0])
+          .order('position', ascending: true);
+
+      debugPrint(
+          'Supabase rewards response: ${response.length} rewards fetched: $response');
+
+      List<Map<String, dynamic>> rewards = [];
+      for (var item in response) {
+        String imageUrl =
+            item['objets']?['image_url'] ?? 'assets/images/refmmp.png';
+        if (imageUrl.startsWith('http')) {
+          try {
+            final fileInfo =
+                await CustomCacheManager.instance.downloadFile(imageUrl);
+            imageUrl = fileInfo.file.path;
+          } catch (e) {
+            debugPrint(
+                'Error caching image for object ${item['objets']?['name']}: $e');
+            imageUrl = 'assets/images/refmmp.png';
+          }
+        }
+        rewards.add({
+          'position': item['position'],
+          'object_id': item['object_id'],
+          'coins_reward': item['coins_reward'] ?? 0,
+          'image_url': imageUrl,
+          'object_category': item['objets']?['category'],
+          'object_name': item['objets']?['name'] ?? 'Objeto desconocido',
+        });
+      }
+
+      final topRewards = rewards.where((r) => r['position'] <= 3).toList();
+      if (topRewards.length < 3) {
+        for (int i = 1; i <= 3; i++) {
+          if (!topRewards.any((r) => r['position'] == i)) {
+            rewards.add({
+              'position': i,
+              'object_id': null,
+              'coins_reward': 0,
+              'image_url': 'assets/images/refmmp.png',
+              'object_category': null,
+              'object_name': null,
+            });
+          }
+        }
+      }
+
+      if (!rewards.any((r) => r['position'] > 3)) {
+        rewards.add({
+          'position': 4,
+          'object_id': null,
+          'coins_reward': 100,
+          'image_url': 'assets/images/refmmp.png',
+          'object_category': null,
+          'object_name': null,
+        });
+      }
+
+      rewards.sort((a, b) => a['position'].compareTo(b['position']));
+      debugPrint('Processed rewards: $rewards');
+      return rewards;
+    } catch (e, stackTrace) {
+      debugPrint(
+          'Error al obtener datos de premios: $e\nStack trace: $stackTrace');
+      return [
+        {
+          'position': 1,
+          'object_id': null,
+          'coins_reward': 0,
+          'image_url': 'assets/images/refmmp.png',
+          'object_category': null,
+          'object_name': null
+        },
+        {
+          'position': 2,
+          'object_id': null,
+          'coins_reward': 0,
+          'image_url': 'assets/images/refmmp.png',
+          'object_category': null,
+          'object_name': null
+        },
+        {
+          'position': 3,
+          'object_id': null,
+          'coins_reward': 0,
+          'image_url': 'assets/images/refmmp.png',
+          'object_category': null,
+          'object_name': null
+        },
+        {
+          'position': 4,
+          'object_id': null,
+          'coins_reward': 100,
+          'image_url': 'assets/images/refmmp.png',
+          'object_category': null,
+          'object_name': null
+        },
+      ];
     }
   }
 
@@ -261,7 +395,7 @@ class _CupPageState extends State<CupPage> {
       fontWeight: FontWeight.w600,
       color: themeProvider.isDarkMode ? Colors.white : Colors.black87,
     );
-    const maxWidth = 125.0; // Aumentamos el maxWidth para dar más espacio
+    const maxWidth = 125.0;
 
     if (_needsMarquee(nickname, maxWidth, textStyle)) {
       return SizedBox(
@@ -273,7 +407,7 @@ class _CupPageState extends State<CupPage> {
           scrollAxis: Axis.horizontal,
           crossAxisAlignment: CrossAxisAlignment.center,
           blankSpace: 20.0,
-          velocity: 60.0, // Aumentamos la velocidad
+          velocity: 60.0,
           pauseAfterRound: const Duration(milliseconds: 1000),
           startPadding: 10.0,
           accelerationDuration: const Duration(milliseconds: 500),
@@ -305,13 +439,14 @@ class _CupPageState extends State<CupPage> {
           await _checkConnectivityAndInitialize();
           setState(() {
             _cupFuture = fetchCupData();
+            _rewardsFuture = fetchRewardsData();
           });
-          debugPrint('Refresh completed, new _cupFuture assigned');
+          debugPrint('Refresh completed, new futures assigned');
         },
         child: CustomScrollView(
           slivers: [
             SliverAppBar(
-              expandedHeight: 400.0,
+              expandedHeight: 350.0,
               floating: false,
               pinned: true,
               leading: IconButton(
@@ -375,40 +510,373 @@ class _CupPageState extends State<CupPage> {
                   children: [
                     const Center(
                       child: Text(
-                        'Clasificación',
+                        'Premios',
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue,
-                          // shadows: [
-                          //   Shadow(
-                          //     color: Colors.black,
-                          //     offset: Offset(1, 0),
-                          //     blurRadius: 8,
-                          //   ),
-                          // ],
                         ),
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 16),
                     FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _cupFuture,
+                      future: _rewardsFuture,
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
-                          debugPrint('FutureBuilder: Waiting for data...');
+                          debugPrint(
+                              'Rewards FutureBuilder: Waiting for data...');
                           return const Center(
                               child: CircularProgressIndicator(
                                   color: Colors.blue));
                         }
                         if (snapshot.hasError) {
-                          debugPrint('FutureBuilder error: ${snapshot.error}');
+                          debugPrint(
+                              'Rewards FutureBuilder error: ${snapshot.error}');
+                          return const Center(
+                              child: Text('Error al cargar los premios.'));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          debugPrint(
+                              'Rewards FutureBuilder: No data or empty data');
+                          return const Center(
+                              child: Text('No hay premios disponibles.'));
+                        }
+
+                        final rewardsList = snapshot.data!;
+                        debugPrint(
+                            'Rewards FutureBuilder: Rendering ${rewardsList.length} rewards');
+
+                        final topRewards = rewardsList
+                            .where((reward) => reward['position'] <= 3)
+                            .toList();
+                        final consolationReward = rewardsList.firstWhere(
+                          (reward) => reward['position'] > 3,
+                          orElse: () => {
+                            'position': 4,
+                            'object_id': null,
+                            'coins_reward': 100,
+                            'image_url': 'assets/images/refmmp.png',
+                            'object_category': null,
+                            'object_name': null
+                          },
+                        );
+
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: themeProvider.isDarkMode
+                                ? Colors.black54
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue, width: 2),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ...topRewards.map((reward) {
+                                final position = reward['position'];
+                                final imageUrl = reward['image_url'];
+                                final coins = reward['coins_reward'] ?? 0;
+                                final objectCategory =
+                                    reward['object_category'];
+                                final objectName = reward['object_name'];
+                                final objectId = reward['object_id'];
+                                String positionText;
+                                Color trophyColor;
+
+                                switch (position) {
+                                  case 1:
+                                    positionText = 'Primer Puesto';
+                                    trophyColor = Colors.amber;
+                                    break;
+                                  case 2:
+                                    positionText = 'Segundo Puesto';
+                                    trophyColor = Colors.grey;
+                                    break;
+                                  case 3:
+                                    positionText = 'Tercer Puesto';
+                                    trophyColor = const Color(0xFFCD7F32);
+                                    break;
+                                  default:
+                                    positionText = 'Puesto $position';
+                                    trophyColor = Colors.grey;
+                                }
+
+                                Widget imageWidget;
+                                if (objectId != null && imageUrl != null) {
+                                  if (imageUrl.startsWith('assets/')) {
+                                    imageWidget = Image.asset(
+                                      imageUrl,
+                                      fit: objectCategory == 'trompetas'
+                                          ? BoxFit.contain
+                                          : BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                    );
+                                  } else if (File(imageUrl).existsSync()) {
+                                    imageWidget = Image.file(
+                                      File(imageUrl),
+                                      fit: objectCategory == 'trompetas'
+                                          ? BoxFit.contain
+                                          : BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        debugPrint(
+                                            'Error loading local image: $error, path: $imageUrl');
+                                        return Image.asset(
+                                          'assets/images/refmmp.png',
+                                          fit: BoxFit.cover,
+                                          width: 40,
+                                          height: 40,
+                                        );
+                                      },
+                                    );
+                                  } else if (Uri.tryParse(imageUrl)
+                                          ?.isAbsolute ==
+                                      true) {
+                                    imageWidget = CachedNetworkImage(
+                                      imageUrl: imageUrl,
+                                      cacheManager: CustomCacheManager.instance,
+                                      fit: objectCategory == 'trompetas'
+                                          ? BoxFit.contain
+                                          : BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                      placeholder: (context, url) =>
+                                          const Center(
+                                        child: CircularProgressIndicator(
+                                            color: Colors.blue),
+                                      ),
+                                      errorWidget: (context, url, error) {
+                                        debugPrint(
+                                            'Error loading network image: $error, url: $url');
+                                        return Image.asset(
+                                          'assets/images/refmmp.png',
+                                          fit: BoxFit.cover,
+                                          width: 40,
+                                          height: 40,
+                                        );
+                                      },
+                                      memCacheWidth: 80,
+                                      memCacheHeight: 80,
+                                      fadeInDuration:
+                                          const Duration(milliseconds: 200),
+                                    );
+                                  } else {
+                                    imageWidget = Image.asset(
+                                      'assets/images/refmmp.png',
+                                      fit: BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                    );
+                                  }
+                                } else {
+                                  imageWidget = Image.asset(
+                                    'assets/images/refmmp.png',
+                                    fit: BoxFit.cover,
+                                    width: 40,
+                                    height: 40,
+                                  );
+                                }
+
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  child: GestureDetector(
+                                    onTap: objectId != null
+                                        ? () {
+                                            // TODO: Implementar diálogo con descripción del objeto
+                                          }
+                                        : null,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.emoji_events_rounded,
+                                          color: trophyColor,
+                                          size: 28,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            positionText,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            shape: objectCategory == 'avatares'
+                                                ? BoxShape.circle
+                                                : BoxShape.rectangle,
+                                            borderRadius:
+                                                objectCategory != 'avatares'
+                                                    ? BorderRadius.circular(8)
+                                                    : null,
+                                            border: Border.all(
+                                                color: Colors.blue, width: 1.5),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                objectCategory == 'avatares'
+                                                    ? BorderRadius.circular(20)
+                                                    : BorderRadius.circular(8),
+                                            child: objectId != null
+                                                ? imageWidget
+                                                : (coins > 0
+                                                    ? Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
+                                                        children: [
+                                                          Image.asset(
+                                                            'assets/images/coin.png',
+                                                            width: 24,
+                                                            height: 24,
+                                                            fit: BoxFit.contain,
+                                                            errorBuilder: (context,
+                                                                    error,
+                                                                    stackTrace) =>
+                                                                Image.asset(
+                                                              'assets/images/refmmp.png',
+                                                              width: 24,
+                                                              height: 24,
+                                                              fit: BoxFit.cover,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Flexible(
+                                                            child: Text(
+                                                              '$coins monedas',
+                                                              style: TextStyle(
+                                                                fontSize: 16,
+                                                                color: Colors
+                                                                    .blue
+                                                                    .shade700,
+                                                              ),
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      )
+                                                    : imageWidget),
+                                          ),
+                                        ),
+                                        if (objectName != null &&
+                                            objectId != null)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(left: 8),
+                                            child: Flexible(
+                                              child: Text(
+                                                objectName,
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.blue.shade700,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              const SizedBox(height: 8),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Puestos 4 al 50',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Image.asset(
+                                    'assets/images/coin.png',
+                                    width: 24,
+                                    height: 24,
+                                    fit: BoxFit.contain,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            Image.asset(
+                                      'assets/images/refmmp.png',
+                                      width: 24,
+                                      height: 24,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      '${consolationReward['coins_reward']} monedas',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.blue.shade700,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    const Center(
+                      child: Text(
+                        'Clasificación',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _cupFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          debugPrint('Cup FutureBuilder: Waiting for data...');
+                          return const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.blue));
+                        }
+                        if (snapshot.hasError) {
+                          debugPrint(
+                              'Cup FutureBuilder error: ${snapshot.error}');
                           return const Center(
                               child: Text('Error al cargar los datos.'));
                         }
                         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          debugPrint('FutureBuilder: No data or empty data');
+                          debugPrint(
+                              'Cup FutureBuilder: No data or empty data');
                           return const Center(
                               child: Text(
                                   'No hay usuarios con puntos disponibles.'));
@@ -416,7 +884,7 @@ class _CupPageState extends State<CupPage> {
 
                         final cupList = snapshot.data!;
                         debugPrint(
-                            'FutureBuilder: Rendering ${cupList.length} users');
+                            'Cup FutureBuilder: Rendering ${cupList.length} users');
 
                         return ListView.builder(
                           shrinkWrap: true,
@@ -445,8 +913,7 @@ class _CupPageState extends State<CupPage> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
                                 child: Container(
-                                  width: double
-                                      .infinity, // Ocupa el ancho completo
+                                  width: double.infinity,
                                   decoration: BoxDecoration(
                                     border: Border.all(
                                         color: borderColor, width: 2),
@@ -462,7 +929,7 @@ class _CupPageState extends State<CupPage> {
                                         CrossAxisAlignment.center,
                                     children: [
                                       Text(
-                                        '${index + 1}', // Continúa el contador (1, 2, 3, 4, ...)
+                                        '${index + 1}',
                                         style: TextStyle(
                                           fontSize: 24,
                                           fontWeight: FontWeight.bold,
