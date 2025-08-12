@@ -7,6 +7,7 @@ import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
 import 'package:refmp/games/game/escenas/subnivels.dart';
 import 'package:refmp/interfaces/home.dart';
+import 'package:refmp/routes/menu.dart';
 import 'package:refmp/routes/navigationBar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -191,11 +192,13 @@ class _LearningPageState extends State<LearningPage> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
+        Menu.currentIndexNotifier.value = 0;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LearningPage(instrumentName: widget.instrumentName),
+            builder: (context) => HomePage(
+              title: 'Inicio',
+            ),
           ),
         );
         return false;
@@ -234,6 +237,7 @@ class _LearningPageState extends State<LearningPage> {
               ],
             ),
             onPressed: () {
+              Menu.currentIndexNotifier.value = 0;
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
