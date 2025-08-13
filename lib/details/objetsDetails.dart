@@ -1793,7 +1793,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                           ? 0.55
                           : widget.title.toLowerCase() == 'fondos'
                               ? 0.8
-                              : 0.9,
+                              : 0.75, // Mantenido para 'trompetas' para dar más altura
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -1847,10 +1847,10 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                   SizedBox(
                                     height: category == 'fondos'
                                         ? 60
-                                        : 100, // Más pequeño para fondos
+                                        : 80, // Mantenido para trompetas
                                     width: category == 'fondos'
                                         ? 80
-                                        : 100, // Más pequeño para fondos
+                                        : 80, // Mantenido para trompetas
                                     child: _buildImageWidget(category,
                                         imagePath, isObtained, visibilityKey),
                                   ),
@@ -1860,7 +1860,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                     child: ConstrainedBox(
                                       constraints: BoxConstraints(
                                           maxHeight:
-                                              30), // Limita la altura del texto
+                                              30), // Aumentado para dos líneas
                                       child: Text(
                                         item['name'] ?? '',
                                         style: TextStyle(
@@ -1876,9 +1876,13 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                       ),
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  SizedBox(
+                                      height:
+                                          2), // Mantenido para ahorrar espacio
                                   Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    padding: const EdgeInsets.only(
+                                        bottom:
+                                            4.0), // Mantenido para ahorrar espacio
                                     child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
@@ -1887,13 +1891,15 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                           Icon(
                                             Icons.check_circle,
                                             color: Colors.green,
-                                            size: 16,
+                                            size:
+                                                12, // Mantenido para ahorrar espacio
                                           ),
                                           SizedBox(width: 4),
                                           Text(
                                             'Obtenido',
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize:
+                                                  10, // Mantenido para ahorrar espacio
                                               fontWeight: FontWeight.bold,
                                               color: Colors.green,
                                             ),
@@ -1901,8 +1907,10 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                         ] else ...[
                                           Image.asset(
                                             'assets/images/coin.png',
-                                            width: 16,
-                                            height: 16,
+                                            width:
+                                                12, // Mantenido para ahorrar espacio
+                                            height:
+                                                12, // Mantenido para ahorrar espacio
                                             fit: BoxFit.contain,
                                           ),
                                           SizedBox(width: 4),
@@ -1910,7 +1918,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                             numberFormat
                                                 .format(item['price'] ?? 0),
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize:
+                                                  10, // Mantenido para ahorrar espacio
                                               fontWeight: FontWeight.bold,
                                               color: Colors.blue[800],
                                             ),
@@ -1928,7 +1937,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                       childCount: filteredItems.length,
                     ),
                   ),
-                )
+                ),
               ],
             ),
           ),
@@ -1946,8 +1955,8 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
       imageWidget = Padding(
         padding: const EdgeInsets.all(8.0),
         child: Container(
-          width: double.infinity,
-          height: double.infinity,
+          width: 150, // Tamaño ajustado para trompetas
+          height: 150, // Tamaño ajustado para trompetas
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(8),
