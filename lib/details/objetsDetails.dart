@@ -1901,6 +1901,7 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
                                               fontSize:
                                                   10, // Mantenido para ahorrar espacio
                                               fontWeight: FontWeight.bold,
+
                                               color: Colors.green,
                                             ),
                                           ),
