@@ -2251,6 +2251,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ? const Color.fromARGB(255, 34, 34, 34)
                               : const Color.fromARGB(255, 236, 234, 234),
                         ),
+                        const SizedBox(height: 10),
                         Row(
                           children: [
                             Text(
