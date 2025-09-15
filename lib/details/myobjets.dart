@@ -9,8 +9,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/details/objetsDetails.dart';
-import 'package:refmp/games/game/escenas/MusicPage.dart';
-import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -337,6 +335,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     required List<Map<String, dynamic>> items,
     required String category,
     required int totalAvailable,
+    int? obtainedCount,
   }) {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
@@ -1665,62 +1664,6 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     });
   }
 
-  void _navigateToCategoryPage(int index) {
-    switch (index) {
-      case 1: // Canciones
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                MusicPage(instrumentName: widget.instrumentName),
-          ),
-        );
-        break;
-      case 2: // Objetos
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                ObjetsPage(instrumentName: widget.instrumentName),
-          ),
-        );
-        break;
-      case 3: // Avatares
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ObjetsDetailsPage(
-              title: 'Avatares',
-              instrumentName: widget.instrumentName,
-            ),
-          ),
-        );
-        break;
-      case 4: // Fondos
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ObjetsDetailsPage(
-              title: 'Fondos',
-              instrumentName: widget.instrumentName,
-            ),
-          ),
-        );
-        break;
-      case 5: // Trompetas
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ObjetsDetailsPage(
-              title: 'Trompetas',
-              instrumentName: widget.instrumentName,
-            ),
-          ),
-        );
-        break;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -2140,18 +2083,21 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                         items: userAvatars,
                         category: 'avatares',
                         totalAvailable: totalAvailableAvatars,
+                        obtainedCount: userAvatars.length,
                       ),
                       _buildCategorySection(
                         title: 'Fondos',
                         items: userWallpapers,
                         category: 'fondos',
                         totalAvailable: totalAvailableWallpapers,
+                        obtainedCount: userWallpapers.length,
                       ),
                       _buildCategorySection(
                         title: 'Trompetas',
                         items: userTrumpets,
                         category: 'trompetas',
                         totalAvailable: totalAvailableTrumpets,
+                        obtainedCount: userTrumpets.length,
                       ),
                     ],
                   ),
@@ -2163,6 +2109,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                     items: filteredItems,
                     category: 'avatares',
                     totalAvailable: totalAvailableAvatars,
+                    obtainedCount: userAvatars.length,
                   ),
                 ),
               if (_selectedIndex == 4) // Fondos
@@ -2172,6 +2119,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                     items: filteredItems,
                     category: 'fondos',
                     totalAvailable: totalAvailableWallpapers,
+                    obtainedCount: userWallpapers.length,
                   ),
                 ),
               if (_selectedIndex == 5) // Trompetas
@@ -2181,6 +2129,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                     items: filteredItems,
                     category: 'trompetas',
                     totalAvailable: totalAvailableTrumpets,
+                    obtainedCount: userTrumpets.length,
                   ),
                 ),
             ],
