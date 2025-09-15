@@ -319,6 +319,19 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     });
   }
 
+  // Nueva función para redirigir a ObjetsDetailsPage
+  void _navigateToDetails(String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ObjetsDetailsPage(
+          title: title,
+          instrumentName: widget.instrumentName,
+        ),
+      ),
+    );
+  }
+
   Widget _buildCategorySection({
     required String title,
     required List<Map<String, dynamic>> items,
@@ -326,6 +339,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     required int totalAvailable,
   }) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -350,6 +364,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           ],
         ),
         const SizedBox(height: 8),
+        // Eliminar la barra de progreso duplicada (texto y LinearProgressIndicator)
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 0),
           decoration: BoxDecoration(
@@ -532,7 +547,8 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TextButton(
-                onPressed: () => _navigateToCategoryPage(_selectedIndex),
+                onPressed: () => _navigateToDetails(
+                    title), // Cambiar para redirigir a ObjetsDetailsPage
                 child: Text(
                   'MÁS ${title.toUpperCase()} (${items.length}/$totalAvailable)',
                   style: const TextStyle(
@@ -1100,22 +1116,15 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
 
       // Obtener conteos totales
       final totalAvailableObjectsResponse =
-          await supabase.from('objets').select('id').count(CountOption.exact);
-      final totalAvailableAvatarsResponse = await supabase
-          .from('objets')
-          .select('id')
-          .eq('category', 'avatares')
-          .count(CountOption.exact);
-      final totalAvailableWallpapersResponse = await supabase
-          .from('objets')
-          .select('id')
-          .eq('category', 'fondos')
-          .count(CountOption.exact);
+          await supabase.from('objets').select('id');
+      final totalAvailableAvatarsResponse =
+          await supabase.from('objets').select('id').eq('category', 'avatares');
+      final totalAvailableWallpapersResponse =
+          await supabase.from('objets').select('id').eq('category', 'fondos');
       final totalAvailableTrumpetsResponse = await supabase
           .from('objets')
           .select('id')
-          .eq('category', 'trompetas')
-          .count(CountOption.exact);
+          .eq('category', 'trompetas');
 
       // Filtrar objetos por categoría
       final avatars = fetchedObjects
@@ -1138,10 +1147,10 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         totalAvatars = avatars.length;
         totalWallpapers = wallpapers.length;
         totalTrumpets = trumpets.length;
-        totalAvailableObjects = totalAvailableObjectsResponse.count;
-        totalAvailableAvatars = totalAvailableAvatarsResponse.count;
-        totalAvailableWallpapers = totalAvailableWallpapersResponse.count;
-        totalAvailableTrumpets = totalAvailableTrumpetsResponse.count;
+        totalAvailableObjects = totalAvailableObjectsResponse.length;
+        totalAvailableAvatars = totalAvailableAvatarsResponse.length;
+        totalAvailableWallpapers = totalAvailableWallpapersResponse.length;
+        totalAvailableTrumpets = totalAvailableTrumpetsResponse.length;
         debugPrint('Online mode: Loaded ${fetchedObjects.length} objects, '
             '${avatars.length} avatars, ${wallpapers.length} wallpapers, '
             '${trumpets.length} trumpets');
@@ -1157,13 +1166,13 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       await box.put(totalWallpapersCacheKey, wallpapers.length);
       await box.put(totalTrumpetsCacheKey, trumpets.length);
       await box.put(
-          totalAvailableObjectsKey, totalAvailableObjectsResponse.count);
+          totalAvailableObjectsKey, totalAvailableObjectsResponse.length);
       await box.put(
-          totalAvailableAvatarsKey, totalAvailableAvatarsResponse.count);
+          totalAvailableAvatarsKey, totalAvailableAvatarsResponse.length);
       await box.put(
-          totalAvailableWallpapersKey, totalAvailableWallpapersResponse.count);
+          totalAvailableWallpapersKey, totalAvailableWallpapersResponse.length);
       await box.put(
-          totalAvailableTrumpetsKey, totalAvailableTrumpetsResponse.count);
+          totalAvailableTrumpetsKey, totalAvailableTrumpetsResponse.length);
 
       updateFilteredItems();
     } catch (e, stackTrace) {
@@ -1718,18 +1727,29 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     final numberFormat = NumberFormat('#,##0', 'es_ES');
     final userId = supabase.auth.currentUser?.id;
     final box = Hive.box('offline_data');
-    final obtainedCount = filteredItems.length;
-    final totalCount = _selectedIndex == 0
-        ? totalAvailableAchievements
-        : _selectedIndex == 1
-            ? totalAvailableSongs
-            : _selectedIndex == 2
-                ? totalAvailableObjects
-                : _selectedIndex == 3
-                    ? totalAvailableAvatars
-                    : _selectedIndex == 4
-                        ? totalAvailableWallpapers
-                        : totalAvailableTrumpets;
+    // Modificar el cálculo de obtainedCount y totalCount para la barra de progreso general
+    int obtainedCount;
+    int totalCount;
+    if (_selectedIndex == 2) {
+      // Para "Objetos", sumar Avatares + Fondos + Trompetas
+      obtainedCount =
+          userAvatars.length + userWallpapers.length + userTrumpets.length;
+      totalCount = totalAvailableAvatars +
+          totalAvailableWallpapers +
+          totalAvailableTrumpets;
+    } else {
+      // Para otras pestañas, usar la lógica actual
+      obtainedCount = filteredItems.length;
+      totalCount = _selectedIndex == 0
+          ? totalAvailableAchievements
+          : _selectedIndex == 1
+              ? totalAvailableSongs
+              : _selectedIndex == 3
+                  ? totalAvailableAvatars
+                  : _selectedIndex == 4
+                      ? totalAvailableWallpapers
+                      : totalAvailableTrumpets;
+    }
     final progress = totalCount > 0 ? obtainedCount / totalCount : 0.0;
 
     return Scaffold(
