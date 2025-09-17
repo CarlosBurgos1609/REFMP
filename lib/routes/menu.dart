@@ -216,6 +216,13 @@ class Menu {
     return isDirector != null || isUser != null;
   }
 
+  static Future<bool>? _canSeeTeachersMenuFuture;
+
+  static Future<bool> _getCanSeeTeachersMenuFuture() {
+    _canSeeTeachersMenuFuture ??= _canSeeTeachersMenu();
+    return _canSeeTeachersMenuFuture!;
+  }
+
   static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: currentIndexNotifier,
@@ -382,7 +389,7 @@ class Menu {
               }),
               // Profesores solo si es director o user
               FutureBuilder<bool>(
-                future: Menu._canSeeTeachersMenu(),
+                future: Menu._getCanSeeTeachersMenuFuture(), // <-- Cambia aquí
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const SizedBox.shrink();
