@@ -223,6 +223,37 @@ class Menu {
     return _canSeeTeachersMenuFuture!;
   }
 
+  static Future<bool> _isStudentOrParent() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    final isStudent = await supabase
+        .from('students')
+        .select()
+        .eq('user_id', user.id)
+        .maybeSingle();
+    if (isStudent != null) return true;
+
+    final isParent = await supabase
+        .from('parents')
+        .select()
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return isParent != null;
+  }
+
+  static Future<bool>? _isStudentOrParentFuture;
+  static Future<bool> _getIsStudentOrParentFuture() {
+    _isStudentOrParentFuture ??= _isStudentOrParent();
+    return _isStudentOrParentFuture!;
+  }
+
+  static void clearRoleCache() {
+    _isStudentOrParentFuture = null;
+    _canSeeTeachersMenuFuture = null;
+  }
+
   static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: currentIndexNotifier,
@@ -359,58 +390,72 @@ class Menu {
                   },
                 );
               }),
-              const Divider(),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                child: Text(
-                  "Usuarios",
-                  style: TextStyle(
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              // User-related items
-              ...[9, 10].map((index) {
-                return ListTile(
-                  leading: Icon(Menu._getIcon(index),
-                      color: currentIndex == index ? Colors.blue : Colors.grey),
-                  title: Text(
-                    _titles[index]!,
-                    style: TextStyle(
-                      color: currentIndex == index ? Colors.blue : Colors.grey,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Menu._navigateToPage(context, index);
-                  },
-                );
-              }),
-              // Profesores solo si es director o user
+              // User-related items solo si NO es estudiante ni padre
               FutureBuilder<bool>(
-                future: Menu._getCanSeeTeachersMenuFuture(), // <-- Cambia aquí
+                future: Menu._getIsStudentOrParentFuture(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const SizedBox.shrink();
                   }
-                  if (snapshot.hasData && snapshot.data == true) {
-                    return ListTile(
-                      leading: Icon(Menu._getIcon(13),
-                          color:
-                              currentIndex == 13 ? Colors.blue : Colors.grey),
-                      title: Text(
-                        _titles[13]!,
-                        style: TextStyle(
-                          color: currentIndex == 13 ? Colors.blue : Colors.grey,
+                  if (snapshot.hasData && snapshot.data == false) {
+                    // Mostrar Estudiantes, Egresados y Profesores solo si NO es estudiante ni padre
+                    return Column(
+                      children: [
+                        ...[9, 10].map((index) {
+                          return ListTile(
+                            leading: Icon(Menu._getIcon(index),
+                                color: currentIndex == index
+                                    ? Colors.blue
+                                    : Colors.grey),
+                            title: Text(
+                              _titles[index]!,
+                              style: TextStyle(
+                                color: currentIndex == index
+                                    ? Colors.blue
+                                    : Colors.grey,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Menu._navigateToPage(context, index);
+                            },
+                          );
+                        }),
+                        // Profesores solo si también tiene permiso
+                        FutureBuilder<bool>(
+                          future: Menu._getCanSeeTeachersMenuFuture(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const SizedBox.shrink();
+                            }
+                            if (snapshot.hasData && snapshot.data == true) {
+                              return ListTile(
+                                leading: Icon(Menu._getIcon(13),
+                                    color: currentIndex == 13
+                                        ? Colors.blue
+                                        : Colors.grey),
+                                title: Text(
+                                  _titles[13]!,
+                                  style: TextStyle(
+                                    color: currentIndex == 13
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  Menu._navigateToPage(context, 13);
+                                },
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          },
                         ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Menu._navigateToPage(context, 13);
-                      },
+                      ],
                     );
                   }
+                  // Si es estudiante o padre, no muestra nada
                   return const SizedBox.shrink();
                 },
               ),
@@ -464,6 +509,279 @@ class Menu {
           ),
         );
       },
+    );
+  }
+}
+
+class RoleAwareDrawer extends StatefulWidget {
+  final int currentIndex;
+  const RoleAwareDrawer({super.key, required this.currentIndex});
+
+  @override
+  State<RoleAwareDrawer> createState() => _RoleAwareDrawerState();
+}
+
+class _RoleAwareDrawerState extends State<RoleAwareDrawer> {
+  bool? isStudentOrParent;
+  bool? canSeeTeachers;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoles();
+  }
+
+  Future<void> _loadRoles() async {
+    final isSP = await Menu._isStudentOrParent();
+    final canSeeT = await Menu._canSeeTeachersMenu();
+    if (mounted) {
+      setState(() {
+        isStudentOrParent = isSP;
+        canSeeTeachers = canSeeT;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isStudentOrParent == null || canSeeTeachers == null) {
+      // Loader solo mientras se consulta el rol
+      return const Drawer(
+        child: Center(child: CircularProgressIndicator(color: Colors.blue)),
+      );
+    }
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            padding: const EdgeInsets.all(0),
+            decoration: BoxDecoration(color: Colors.blue),
+            child: Container(
+              decoration: const BoxDecoration(
+                image: DecorationImage(
+                  fit: BoxFit.fill,
+                  image: AssetImage("assets/images/pasto.png"),
+                ),
+              ),
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: FutureBuilder(
+                  future: Menu._loadUserProfile(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      // return const Center(
+                      //     child: CircularProgressIndicator(
+                      //   color: Colors.blue,
+                      // ));
+                    }
+                    if (snapshot.hasError || snapshot.data == null) {
+                      return UserAccountsDrawerHeader(
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        accountName: Text(
+                          "Sin Conexion a internet",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        currentAccountPicture: GestureDetector(
+                          onTap: () {
+                            Menu.currentIndexNotifier.value = 1;
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const ProfilePage(title: "Perfil"),
+                              ),
+                            );
+                          },
+                          child: CircleAvatar(
+                            backgroundColor: Colors.blue,
+                            backgroundImage:
+                                const AssetImage("assets/images/refmmp.png"),
+                          ),
+                        ),
+                        accountEmail: null,
+                      );
+                    }
+
+                    final userProfile = snapshot.data as Map<String, dynamic>;
+
+                    return UserAccountsDrawerHeader(
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      accountName: Text(
+                        "${userProfile['first_name'] ?? 'Usuario'} ${userProfile['last_name'] ?? ''}",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      accountEmail: Text(
+                        userProfile['charge'] ?? "No tiene Cargo",
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      currentAccountPicture: GestureDetector(
+                        onTap: () {
+                          Menu.currentIndexNotifier.value = 1;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ProfilePage(title: "Perfil"),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          backgroundColor: Colors.blue,
+                          backgroundImage: userProfile['profile_image'] !=
+                                      null &&
+                                  userProfile['profile_image'].isNotEmpty
+                              ? NetworkImage(userProfile['profile_image'])
+                                  as ImageProvider
+                              : const AssetImage("assets/images/refmmp.png"),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          // Main menu items
+          ...[0, 1, 2, 4, 5, 12].map((index) {
+            return ListTile(
+              leading: Icon(Menu._getIcon(index),
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey),
+              title: Text(
+                Menu._titles[index]!,
+                style: TextStyle(
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, index);
+              },
+            );
+          }),
+          const Divider(),
+          if (isStudentOrParent == false) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              child: Text(
+                "Usuarios",
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            ...[9, 10].map((index) {
+              return ListTile(
+                leading: Icon(Menu._getIcon(index),
+                    color: widget.currentIndex == index
+                        ? Colors.blue
+                        : Colors.grey),
+                title: Text(
+                  Menu._titles[index]!,
+                  style: TextStyle(
+                    color: widget.currentIndex == index
+                        ? Colors.blue
+                        : Colors.grey,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Menu._navigateToPage(context, index);
+                },
+              );
+            }),
+            if (canSeeTeachers == true)
+              ListTile(
+                leading: Icon(Menu._getIcon(13),
+                    color:
+                        widget.currentIndex == 13 ? Colors.blue : Colors.grey),
+                title: Text(
+                  Menu._titles[13]!,
+                  style: TextStyle(
+                    color:
+                        widget.currentIndex == 13 ? Colors.blue : Colors.grey,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Menu._navigateToPage(context, 13);
+                },
+              ),
+          ],
+          // Notifications, contacts, settings, and info
+          ...[3, 6, 8, 11].map((index) {
+            return ListTile(
+              leading: Icon(Menu._getIcon(index),
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey),
+              title: Text(
+                Menu._titles[index]!,
+                style: TextStyle(
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, index);
+              },
+            );
+          }),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+            child: Text(
+              "Redes Sociales",
+              style: TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // Social media and website links
+          ...[14, 15, 16, 17, 19, 18].map((index) {
+            return ListTile(
+              leading: Icon(Menu._getIcon(index),
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey),
+              title: Text(
+                Menu._titles[index]!,
+                style: TextStyle(
+                  color:
+                      widget.currentIndex == index ? Colors.blue : Colors.grey,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, index);
+              },
+            );
+          }),
+        ],
+      ),
     );
   }
 }

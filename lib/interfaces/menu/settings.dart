@@ -39,6 +39,8 @@ class _SettingsPage extends State<SettingsPage> {
             ),
             TextButton(
               onPressed: () {
+                // Limpia el cache de roles antes de cerrar sesión
+                Menu.clearRoleCache();
                 Menu.currentIndexNotifier.value = 0;
                 Navigator.pushReplacement(
                   context,
