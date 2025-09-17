@@ -197,6 +197,25 @@ class Menu {
     return null;
   }
 
+  static Future<bool> _canSeeTeachersMenu() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    final isDirector = await supabase
+        .from('directors')
+        .select()
+        .eq('user_id', user.id)
+        .maybeSingle();
+    final isUser = await supabase
+        .from('users')
+        .select()
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    return isDirector != null || isUser != null;
+  }
+
   static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: currentIndexNotifier,
@@ -345,7 +364,7 @@ class Menu {
                 ),
               ),
               // User-related items
-              ...[9, 10, 13].map((index) {
+              ...[9, 10].map((index) {
                 return ListTile(
                   leading: Icon(Menu._getIcon(index),
                       color: currentIndex == index ? Colors.blue : Colors.grey),
@@ -361,6 +380,33 @@ class Menu {
                   },
                 );
               }),
+              // Profesores solo si es director o user
+              FutureBuilder<bool>(
+                future: Menu._canSeeTeachersMenu(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox.shrink();
+                  }
+                  if (snapshot.hasData && snapshot.data == true) {
+                    return ListTile(
+                      leading: Icon(Menu._getIcon(13),
+                          color:
+                              currentIndex == 13 ? Colors.blue : Colors.grey),
+                      title: Text(
+                        _titles[13]!,
+                        style: TextStyle(
+                          color: currentIndex == 13 ? Colors.blue : Colors.grey,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Menu._navigateToPage(context, 13);
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               const Divider(),
               // Notifications, contacts, settings, and info
               ...[3, 6, 8, 11].map((index) {
