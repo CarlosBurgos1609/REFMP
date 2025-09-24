@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:refmp/games/play.dart'; // Importar la página de play
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
 
 void showSongDialog(
   BuildContext context,
@@ -17,7 +16,6 @@ void showSongDialog(
 ) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
   final numberFormat = NumberFormat('#,##0', 'es_ES');
-  final supabase = Supabase.instance.client;
 
   showDialog(
     context: context,
