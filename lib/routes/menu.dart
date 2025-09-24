@@ -390,6 +390,7 @@ class Menu {
                   },
                 );
               }),
+
               // User-related items solo si NO es estudiante ni padre
               FutureBuilder<bool>(
                 future: Menu._getIsStudentOrParentFuture(),
@@ -398,39 +399,58 @@ class Menu {
                     return const SizedBox.shrink();
                   }
                   if (snapshot.hasData && snapshot.data == false) {
-                    // Mostrar Estudiantes, Egresados y Profesores solo si NO es estudiante ni padre
-                    return Column(
-                      children: [
-                        ...[9, 10].map((index) {
-                          return ListTile(
-                            leading: Icon(Menu._getIcon(index),
-                                color: currentIndex == index
-                                    ? Colors.blue
-                                    : Colors.grey),
-                            title: Text(
-                              _titles[index]!,
-                              style: TextStyle(
-                                color: currentIndex == index
-                                    ? Colors.blue
-                                    : Colors.grey,
+                    // Verificar si puede ver profesores para decidir si mostrar la sección
+                    return FutureBuilder<bool>(
+                      future: Menu._getCanSeeTeachersMenuFuture(),
+                      builder: (context, teachersSnapshot) {
+                        if (teachersSnapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const SizedBox.shrink();
+                        }
+
+                        final canSeeTeachers = teachersSnapshot.hasData &&
+                            teachersSnapshot.data == true;
+
+                        // Mostrar sección de usuarios si puede ver estudiantes, egresados o profesores
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Divider(),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 8),
+                              child: Text(
+                                "Usuarios",
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                            onTap: () {
-                              Navigator.pop(context);
-                              Menu._navigateToPage(context, index);
-                            },
-                          );
-                        }),
-                        // Profesores solo si también tiene permiso
-                        FutureBuilder<bool>(
-                          future: Menu._getCanSeeTeachersMenuFuture(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return const SizedBox.shrink();
-                            }
-                            if (snapshot.hasData && snapshot.data == true) {
+                            // Estudiantes y Egresados (siempre visibles si NO es estudiante ni padre)
+                            ...[9, 10].map((index) {
                               return ListTile(
+                                leading: Icon(Menu._getIcon(index),
+                                    color: currentIndex == index
+                                        ? Colors.blue
+                                        : Colors.grey),
+                                title: Text(
+                                  _titles[index]!,
+                                  style: TextStyle(
+                                    color: currentIndex == index
+                                        ? Colors.blue
+                                        : Colors.grey,
+                                  ),
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  Menu._navigateToPage(context, index);
+                                },
+                              );
+                            }),
+                            // Profesores solo si tiene permiso
+                            if (canSeeTeachers)
+                              ListTile(
                                 leading: Icon(Menu._getIcon(13),
                                     color: currentIndex == 13
                                         ? Colors.blue
@@ -447,18 +467,17 @@ class Menu {
                                   Navigator.pop(context);
                                   Menu._navigateToPage(context, 13);
                                 },
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ],
+                              ),
+                          ],
+                        );
+                      },
                     );
                   }
                   // Si es estudiante o padre, no muestra nada
                   return const SizedBox.shrink();
                 },
               ),
+
               const Divider(),
               // Notifications, contacts, settings, and info
               ...[3, 6, 8, 11].map((index) {
