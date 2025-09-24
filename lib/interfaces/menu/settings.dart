@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:refmp/interfaces/init.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.title});
@@ -13,6 +14,28 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPage extends State<SettingsPage> {
+  bool _notificationsEnabled = false;
+
+  Future<void> checkPermissionStatus() async {
+    final status = await Permission.notification.status;
+    setState(() {
+      _notificationsEnabled = status.isGranted;
+    });
+  }
+
+  Future<void> requestPermission(bool value) async {
+    if (value) {
+      final status = await Permission.notification.request();
+      setState(() {
+        _notificationsEnabled = status.isGranted;
+      });
+    } else {
+      setState(() {
+        _notificationsEnabled = false;
+      });
+    }
+  }
+
   void _logout(BuildContext context) {
     showDialog(
       context: context,
@@ -92,6 +115,12 @@ class _SettingsPage extends State<SettingsPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    checkPermissionStatus();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return WillPopScope(
@@ -153,9 +182,36 @@ class _SettingsPage extends State<SettingsPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              SizedBox(
-                height: 10,
+              const SizedBox(height: 10),
+              Divider(
+                height: 40,
+                thickness: 2,
+                color: themeProvider.isDarkMode
+                    ? const Color.fromARGB(255, 34, 34, 34)
+                    : const Color.fromARGB(255, 236, 234, 234),
               ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Permitir notificaciones",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: themeProvider.isDarkMode
+                          ? const Color.fromARGB(255, 255, 255, 255)
+                          : const Color.fromARGB(255, 33, 150, 243),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Switch(
+                    value: _notificationsEnabled,
+                    onChanged: requestPermission,
+                    activeColor: Colors.blue,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               Divider(
                 height: 40,
                 thickness: 2,
@@ -177,9 +233,7 @@ class _SettingsPage extends State<SettingsPage> {
                   _logout(context);
                 },
               ),
-              SizedBox(
-                height: 10,
-              ),
+              const SizedBox(height: 10),
               Divider(
                 height: 40,
                 thickness: 2,

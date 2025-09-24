@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/controllers/exit.dart';
 import 'package:refmp/interfaces/home.dart';
@@ -15,7 +14,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // For debugPrint
 
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key, required this.title});
@@ -27,7 +25,6 @@ class NotificationPage extends StatefulWidget {
 }
 
 class _NotificationPageState extends State<NotificationPage> {
-  bool _notificationsEnabled = false;
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
 
@@ -53,39 +50,10 @@ class _NotificationPageState extends State<NotificationPage> {
 
   Future<void> _initialize() async {
     try {
-      await checkPermissionStatus();
       await fetchNotificationHistory();
       _subscribeToNotifications();
     } catch (e, stackTrace) {
       debugPrint('Error in initialization: $e\n$stackTrace');
-    }
-  }
-
-  Future<void> checkPermissionStatus() async {
-    try {
-      final status = await Permission.notification.status;
-      setState(() {
-        _notificationsEnabled = status.isGranted;
-      });
-    } catch (e, stackTrace) {
-      debugPrint('Error checking permission status: $e\n$stackTrace');
-    }
-  }
-
-  Future<void> requestPermission(bool value) async {
-    try {
-      if (value) {
-        final status = await Permission.notification.request();
-        setState(() {
-          _notificationsEnabled = status.isGranted;
-        });
-      } else {
-        setState(() {
-          _notificationsEnabled = false;
-        });
-      }
-    } catch (e, stackTrace) {
-      debugPrint('Error requesting permission: $e\n$stackTrace');
     }
   }
 
@@ -340,38 +308,6 @@ class _NotificationPageState extends State<NotificationPage> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Permitir notificaciones",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: themeProvider.isDarkMode
-                          ? const Color.fromARGB(255, 255, 255, 255)
-                          : const Color.fromARGB(255, 33, 150, 243),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Switch(
-                    value: _notificationsEnabled,
-                    onChanged: requestPermission,
-                    activeColor: Colors.blue,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: fetchAndShowNotifications,
-                icon: const Icon(
-                  Icons.cloud_download,
-                  color: Colors.blue,
-                ),
-                label: const Text(
-                  "Verificar nuevas notificaciones",
-                  style: TextStyle(color: Colors.blue),
-                ),
-              ),
               const SizedBox(height: 20),
               Divider(
                 height: 40,
