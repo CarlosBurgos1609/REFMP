@@ -15,6 +15,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:refmp/dialogs/dialog_song.dart';
 
 class MusicPage extends StatefulWidget {
   final String instrumentName;
@@ -43,11 +44,13 @@ class _MusicPageState extends State<MusicPage> {
   Future<List<Map<String, dynamic>>>? _songsFuture;
 
   int _selectedIndex = 1; // 0: Aprende, 1: Canciones, 2: Torneo, 3: Recompensas
+  int totalCoins = 0;
 
   @override
   void initState() {
     super.initState();
     _initializeHiveAndFetch();
+    fetchUserCoins();
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() {
         isPlaying = false;
@@ -149,9 +152,11 @@ class _MusicPageState extends State<MusicPage> {
 
         int instrumentId = instrumentResponse['id'];
 
+        // Incluir la columna coins en la consulta
         final response = await supabase
             .from('songs')
-            .select('id, name, image, mp3_file, artist, difficulty, instrument')
+            .select(
+                'id, name, image, mp3_file, artist, difficulty, instrument, coins')
             .eq('instrument', instrumentId)
             .order('name', ascending: true);
 
@@ -359,6 +364,110 @@ class _MusicPageState extends State<MusicPage> {
       debugPrint('Loaded permission from cache: $cachedPermission');
       return cachedPermission;
     }
+  }
+
+  Future<void> fetchUserCoins() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final response = await supabase
+          .from('users_games')
+          .select('coins')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (response != null) {
+        setState(() {
+          totalCoins = response['coins'] ?? 0;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching user coins: $e');
+    }
+  }
+
+  Future<void> purchaseSong(Map<String, dynamic> song) async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('Usuario no autenticado');
+      }
+
+      final price = (song['coins'] ?? 0) as int;
+      final songId = song['id'];
+
+      // Verificar que el usuario no tenga ya la canción
+      final existingResponse = await supabase
+          .from('user_songs')
+          .select('user_id') // Cambiar de 'id' a 'user_id'
+          .eq('user_id', user.id)
+          .eq('song_id', songId.toString())
+          .maybeSingle();
+
+      if (existingResponse != null) {
+        throw Exception('Ya posees esta canción');
+      }
+
+      // Verificar monedas actuales
+      final userGameResponse = await supabase
+          .from('users_games')
+          .select('coins')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (userGameResponse == null) {
+        throw Exception('No se encontraron datos del usuario');
+      }
+
+      final currentCoins = userGameResponse['coins'] ?? 0;
+      if (currentCoins < price) {
+        throw Exception('Monedas insuficientes');
+      }
+
+      final newCoins = currentCoins - price;
+
+      // Realizar las transacciones de compra
+      // 1. Descontar monedas
+      await supabase
+          .from('users_games')
+          .update({'coins': newCoins}).eq('user_id', user.id);
+
+      // 2. Agregar la canción al usuario
+      await supabase.from('user_songs').insert({
+        'user_id': user.id,
+        'song_id': songId.toString(),
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      // Actualizar las monedas localmente
+      setState(() {
+        totalCoins = newCoins;
+      });
+
+      debugPrint(
+          'Song purchased successfully: ${song['name']}, new coins: $newCoins');
+    } catch (e) {
+      debugPrint('Error purchasing song: $e');
+
+      // Verificar si es un error específico de monedas
+      if (e.toString().contains('Monedas insuficientes')) {
+        throw Exception(
+            'No tienes suficientes monedas para comprar esta canción');
+      } else if (e.toString().contains('Ya posees esta canción')) {
+        throw Exception('Ya tienes esta canción en tu biblioteca');
+      } else {
+        throw Exception('Error al procesar la compra: ${e.toString()}');
+      }
+    }
+  }
+
+  Future<void> playSongFromDialog(Map<String, dynamic> song) async {
+    playSong(song);
+  }
+
+  Future<void> refreshCoins() async {
+    await fetchUserCoins();
   }
 
   Color getDifficultyColor(String difficulty) {
@@ -809,27 +918,77 @@ class _MusicPageState extends State<MusicPage> {
                                     ),
                                   ],
                                 ),
-                                trailing: ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            PlayPage(songName: song['name']),
+                                trailing: FutureBuilder<bool>(
+                                  future: _checkUserOwnsSong(song['id']),
+                                  builder: (context, snapshot) {
+                                    final isOwned = snapshot.data ?? false;
+                                    final price = song['coins'] ?? 0;
+
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.blue,
+                                          strokeWidth: 2,
+                                        ),
+                                      );
+                                    }
+
+                                    return ElevatedButton.icon(
+                                      onPressed: () {
+                                        showSongDialog(
+                                          context,
+                                          song,
+                                          totalCoins,
+                                          playSongFromDialog,
+                                          purchaseSong,
+                                          refreshCoins,
+                                        );
+                                      },
+                                      icon: Icon(
+                                        isOwned
+                                            ? Icons.music_note
+                                            : Icons.monetization_on,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        isOwned ? 'Tocar' : price.toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isOwned
+                                            ? Colors.blue
+                                            : Colors.amber,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        minimumSize: const Size(60, 32),
                                       ),
                                     );
                                   },
-                                  icon: const Icon(Icons.music_note,
-                                      color: Colors.white),
-                                  label: const Text(
-                                    'Tocar',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue,
-                                  ),
                                 ),
-                                onTap: () => playSong(song),
+                                onTap: () async {
+                                  // Verificar si el usuario posee la canción
+                                  final isOwned = await _checkUserOwnsSong(song['id']);
+                                  
+                                  if (isOwned) {
+                                    // Si posee la canción, ir directamente a PlayPage
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => PlayPage(songName: song['name']),
+                                      ),
+                                    );
+                                  } else {
+                                    // Si no posee la canción, reproducir solo 20 segundos
+                                    playSong(song);
+                                  }
+                                },
                               ),
                             )),
                       ],
@@ -882,5 +1041,24 @@ class _MusicPageState extends State<MusicPage> {
         onItemTapped: _onItemTapped,
       ),
     );
+  }
+
+  Future<bool> _checkUserOwnsSong(dynamic songId) async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return false;
+
+      final response = await supabase
+          .from('user_songs')
+          .select('user_id') // Cambiar de 'id' a 'user_id'
+          .eq('user_id', user.id)
+          .eq('song_id', songId.toString())
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      debugPrint('Error checking if user owns song: $e');
+      return false;
+    }
   }
 }
