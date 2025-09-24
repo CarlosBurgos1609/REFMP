@@ -593,6 +593,257 @@ class _CupPageState extends State<CupPage> {
     }
   }
 
+  // Agregar esta función para mostrar el diálogo de recompensas
+  void _showRewardDialog(BuildContext context, Map<String, dynamic> reward) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final objectName = reward['object_name'] ?? 'Premio';
+    final objectDescription = reward['object_description'];
+    final objectCategory = reward['object_category'];
+    final imageUrl = reward['image_url'];
+    final coins = reward['coins_reward'] ?? 0;
+    final hasObject = reward['has_object'] ?? false;
+    final hasCoins = reward['has_coins'] ?? false;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor:
+            themeProvider.isDarkMode ? Colors.grey[900] : Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Título del diálogo
+              Text(
+                objectName,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.isDarkMode ? Colors.white : Colors.blue,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              
+              // Imagen del objeto
+              if (hasObject) ...[
+                Container(
+                  width: objectCategory == 'fondos' ? double.infinity : 150,
+                  height: objectCategory == 'fondos' ? 200 : 150,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(
+                      objectCategory == 'avatares' 
+                          ? 75 
+                          : objectCategory == 'fondos'
+                              ? 12
+                              : 8
+                    ),
+                    border: Border.all(color: Colors.blue, width: 2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      objectCategory == 'avatares' 
+                          ? 75 
+                          : objectCategory == 'fondos'
+                              ? 12
+                              : 8
+                    ),
+                    child: _buildRewardImage(imageUrl, objectCategory),
+                  ),
+                ),
+              ] else if (hasCoins) ...[
+                // Solo monedas
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue, width: 2),
+                    color: Colors.amber.shade50,
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/images/coin.png',
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.monetization_on, 
+                                  size: 50, color: Colors.amber),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '$coins',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              
+              const SizedBox(height: 16),
+              
+              // Descripción
+              if (objectDescription != null && objectDescription.isNotEmpty) ...[
+                Text(
+                  objectDescription,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: themeProvider.isDarkMode
+                        ? Colors.grey[300]
+                        : Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+              ],
+              
+              // Información de monedas adicionales
+              if (hasObject && hasCoins) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.amber.shade50,
+                    border: Border.all(color: Colors.amber, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/images/coin.png',
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '+$coins monedas adicionales',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.amber.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              
+              // Botón cerrar
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Cerrar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Función auxiliar para construir la imagen según el tipo
+  Widget _buildRewardImage(String imageUrl, String? objectCategory) {
+    if (imageUrl.startsWith('assets/')) {
+      return Image.asset(
+        imageUrl,
+        fit: objectCategory == 'trompetas' 
+            ? BoxFit.contain 
+            : objectCategory == 'fondos'
+                ? BoxFit.cover
+                : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          );
+        },
+      );
+    } else if (File(imageUrl).existsSync()) {
+      return Image.file(
+        File(imageUrl),
+        fit: objectCategory == 'trompetas' 
+            ? BoxFit.contain 
+            : objectCategory == 'fondos'
+                ? BoxFit.cover
+                : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          );
+        },
+      );
+    } else if (Uri.tryParse(imageUrl)?.isAbsolute == true) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        cacheManager: CustomCacheManager.instance,
+        fit: objectCategory == 'trompetas' 
+            ? BoxFit.contain 
+            : objectCategory == 'fondos'
+                ? BoxFit.cover
+                : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (context, url) => const Center(
+          child: CircularProgressIndicator(color: Colors.blue),
+        ),
+        errorWidget: (context, url, error) {
+          return Image.asset(
+            'assets/images/refmmp.png',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          );
+        },
+      );
+    } else {
+      return Image.asset(
+        'assets/images/refmmp.png',
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -1018,115 +1269,8 @@ class _CupPageState extends State<CupPage> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 8),
                                 child: GestureDetector(
-                                  onTap: (hasObject &&
-                                              objectDescription != null) ||
-                                          hasCoins
-                                      ? () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: Text(
-                                                objectName,
-                                                style: const TextStyle(
-                                                  color: Colors.blue,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              content: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  if (hasObject) ...[
-                                                    Container(
-                                                      width: 80,
-                                                      height: 80,
-                                                      decoration: BoxDecoration(
-                                                        shape: objectCategory ==
-                                                                'avatares'
-                                                            ? BoxShape.circle
-                                                            : BoxShape
-                                                                .rectangle,
-                                                        borderRadius:
-                                                            objectCategory !=
-                                                                    'avatares'
-                                                                ? BorderRadius
-                                                                    .circular(
-                                                                        12)
-                                                                : null,
-                                                        border: Border.all(
-                                                            color: Colors.blue,
-                                                            width: 2),
-                                                      ),
-                                                      child: ClipRRect(
-                                                        borderRadius:
-                                                            objectCategory ==
-                                                                    'avatares'
-                                                                ? BorderRadius
-                                                                    .circular(
-                                                                        40)
-                                                                : BorderRadius
-                                                                    .circular(
-                                                                        12),
-                                                        child: imageWidget,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 16),
-                                                    if (objectDescription !=
-                                                        null) ...[
-                                                      Text(
-                                                        objectDescription,
-                                                        style: const TextStyle(
-                                                            fontSize: 14),
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                      ),
-                                                      const SizedBox(height: 8),
-                                                    ],
-                                                  ],
-                                                  if (hasCoins) ...[
-                                                    Row(
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .center,
-                                                      children: [
-                                                        Image.asset(
-                                                          'assets/images/coin.png',
-                                                          width: 20,
-                                                          height: 20,
-                                                          fit: BoxFit.contain,
-                                                        ),
-                                                        const SizedBox(
-                                                            width: 4),
-                                                        Text(
-                                                          hasObject
-                                                              ? '+$coins monedas adicionales'
-                                                              : '$coins monedas',
-                                                          style: TextStyle(
-                                                            fontSize: 14,
-                                                            color: Colors
-                                                                .amber.shade700,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(context),
-                                                  child: const Text(
-                                                    'Cerrar',
-                                                    style: TextStyle(
-                                                        color: Colors.blue),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }
+                                  onTap: (hasObject && objectDescription != null) || hasCoins
+                                      ? () => _showRewardDialog(context, reward)
                                       : null,
                                   child: Row(
                                     crossAxisAlignment:
