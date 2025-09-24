@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
+import 'package:refmp/dialogs/dialog_classification.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
@@ -629,30 +630,28 @@ class _CupPageState extends State<CupPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              
+
               // Imagen del objeto
               if (hasObject) ...[
                 Container(
                   width: objectCategory == 'fondos' ? double.infinity : 150,
                   height: objectCategory == 'fondos' ? 200 : 150,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(
-                      objectCategory == 'avatares' 
-                          ? 75 
-                          : objectCategory == 'fondos'
-                              ? 12
-                              : 8
-                    ),
+                    borderRadius:
+                        BorderRadius.circular(objectCategory == 'avatares'
+                            ? 75
+                            : objectCategory == 'fondos'
+                                ? 12
+                                : 8),
                     border: Border.all(color: Colors.blue, width: 2),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      objectCategory == 'avatares' 
-                          ? 75 
-                          : objectCategory == 'fondos'
-                              ? 12
-                              : 8
-                    ),
+                    borderRadius:
+                        BorderRadius.circular(objectCategory == 'avatares'
+                            ? 75
+                            : objectCategory == 'fondos'
+                                ? 12
+                                : 8),
                     child: _buildRewardImage(imageUrl, objectCategory),
                   ),
                 ),
@@ -676,7 +675,7 @@ class _CupPageState extends State<CupPage> {
                           height: 50,
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.monetization_on, 
+                              const Icon(Icons.monetization_on,
                                   size: 50, color: Colors.amber),
                         ),
                         const SizedBox(height: 8),
@@ -693,11 +692,12 @@ class _CupPageState extends State<CupPage> {
                   ),
                 ),
               ],
-              
+
               const SizedBox(height: 16),
-              
+
               // Descripción
-              if (objectDescription != null && objectDescription.isNotEmpty) ...[
+              if (objectDescription != null &&
+                  objectDescription.isNotEmpty) ...[
                 Text(
                   objectDescription,
                   style: TextStyle(
@@ -710,11 +710,12 @@ class _CupPageState extends State<CupPage> {
                 ),
                 const SizedBox(height: 16),
               ],
-              
+
               // Información de monedas adicionales
               if (hasObject && hasCoins) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     color: Colors.amber.shade50,
@@ -744,7 +745,7 @@ class _CupPageState extends State<CupPage> {
                 ),
                 const SizedBox(height: 16),
               ],
-              
+
               // Botón cerrar
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -776,8 +777,8 @@ class _CupPageState extends State<CupPage> {
     if (imageUrl.startsWith('assets/')) {
       return Image.asset(
         imageUrl,
-        fit: objectCategory == 'trompetas' 
-            ? BoxFit.contain 
+        fit: objectCategory == 'trompetas'
+            ? BoxFit.contain
             : objectCategory == 'fondos'
                 ? BoxFit.cover
                 : BoxFit.cover,
@@ -795,8 +796,8 @@ class _CupPageState extends State<CupPage> {
     } else if (File(imageUrl).existsSync()) {
       return Image.file(
         File(imageUrl),
-        fit: objectCategory == 'trompetas' 
-            ? BoxFit.contain 
+        fit: objectCategory == 'trompetas'
+            ? BoxFit.contain
             : objectCategory == 'fondos'
                 ? BoxFit.cover
                 : BoxFit.cover,
@@ -815,8 +816,8 @@ class _CupPageState extends State<CupPage> {
       return CachedNetworkImage(
         imageUrl: imageUrl,
         cacheManager: CustomCacheManager.instance,
-        fit: objectCategory == 'trompetas' 
-            ? BoxFit.contain 
+        fit: objectCategory == 'trompetas'
+            ? BoxFit.contain
             : objectCategory == 'fondos'
                 ? BoxFit.cover
                 : BoxFit.cover,
@@ -1269,7 +1270,9 @@ class _CupPageState extends State<CupPage> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 8),
                                 child: GestureDetector(
-                                  onTap: (hasObject && objectDescription != null) || hasCoins
+                                  onTap: (hasObject &&
+                                              objectDescription != null) ||
+                                          hasCoins
                                       ? () => _showRewardDialog(context, reward)
                                       : null,
                                   child: Row(
@@ -1371,91 +1374,111 @@ class _CupPageState extends State<CupPage> {
                               child: Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
-                                child: Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                        color: borderColor, width: 2),
-                                    borderRadius: BorderRadius.circular(12),
-                                    color: themeProvider.isDarkMode
-                                        ? Colors.black54
-                                        : Colors.white,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 10, horizontal: 12),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        '${index + 1}',
-                                        style: TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          color: index < 3
-                                              ? Colors.blue
-                                              : Colors.blue,
+                                child: GestureDetector(
+                                  onTap: _isOnline
+                                      ? () => showUserProfileDialog(
+                                          context, item, _isOnline)
+                                      : null,
+                                  child: Container(
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                          color: borderColor, width: 2),
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: themeProvider.isDarkMode
+                                          ? Colors.black54
+                                          : Colors.white,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10, horizontal: 12),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          '${index + 1}',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: index < 3
+                                                ? Colors.blue
+                                                : Colors.blue,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 5),
-                                      if (index < 3)
-                                        Icon(
-                                          Icons.emoji_events_rounded,
-                                          color: index == 0
-                                              ? Colors.amber
-                                              : index == 1
-                                                  ? Colors.grey
-                                                  : const Color(0xFFCD7F32),
-                                          size: 30,
+                                        const SizedBox(width: 5),
+                                        if (index < 3)
+                                          Icon(
+                                            Icons.emoji_events_rounded,
+                                            color: index == 0
+                                                ? Colors.amber
+                                                : index == 1
+                                                    ? Colors.grey
+                                                    : const Color(0xFFCD7F32),
+                                            size: 30,
+                                          ),
+                                        const SizedBox(width: 12),
+                                        CircleAvatar(
+                                          radius: 20,
+                                          backgroundColor: Colors.transparent,
+                                          backgroundImage: (profileImage !=
+                                                      null &&
+                                                  Uri.tryParse(profileImage)
+                                                          ?.isAbsolute ==
+                                                      true)
+                                              ? NetworkImage(profileImage)
+                                              : const AssetImage(
+                                                      'assets/images/refmmp.png')
+                                                  as ImageProvider,
                                         ),
-                                      const SizedBox(width: 12),
-                                      CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: Colors.transparent,
-                                        backgroundImage: (profileImage !=
-                                                    null &&
-                                                Uri.tryParse(profileImage)
-                                                        ?.isAbsolute ==
-                                                    true)
-                                            ? NetworkImage(profileImage)
-                                            : const AssetImage(
-                                                    'assets/images/refmmp.png')
-                                                as ImageProvider,
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Flexible(
-                                              child: _buildNicknameWidget(
-                                                  nickname, isCurrentUser),
-                                            ),
-                                            Row(
-                                              children: [
-                                                Text(
-                                                  '$points ',
-                                                  style: TextStyle(
-                                                    color: Colors.blue.shade700,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 14,
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Flexible(
+                                                child: _buildNicknameWidget(
+                                                    nickname, isCurrentUser),
+                                              ),
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    '$points ',
+                                                    style: TextStyle(
+                                                      color:
+                                                          Colors.blue.shade700,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 14,
+                                                    ),
                                                   ),
-                                                ),
-                                                Text(
-                                                  'XP',
-                                                  style: TextStyle(
-                                                    color: Colors.blue.shade700,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 16,
+                                                  Text(
+                                                    'XP',
+                                                    style: TextStyle(
+                                                      color:
+                                                          Colors.blue.shade700,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 16,
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+                                                ],
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                        // Indicador visual cuando está offline
+                                        if (!_isOnline)
+                                          const Padding(
+                                            padding: EdgeInsets.only(left: 8),
+                                            child: Icon(
+                                              Icons.wifi_off,
+                                              color: Colors.grey,
+                                              size: 16,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
