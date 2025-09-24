@@ -2512,13 +2512,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                       },
                                       child: GestureDetector(
                                         onTap: () {
-                                          debugPrint(
-                                              'Navigating to PlayPage for song: ${song['name']} (ID: ${song['id']})');
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
                                               builder: (context) => PlayPage(
-                                                  songName: song['name']),
+                                                songId: song['id'].toString(),
+                                                songName: song['name'] ??
+                                                    'Sin nombre',
+                                              ),
                                             ),
                                           );
                                         },

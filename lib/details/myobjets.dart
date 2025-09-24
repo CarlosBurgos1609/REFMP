@@ -426,8 +426,10 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    PlayPage(songName: item['name']),
+                                builder: (context) => PlayPage(
+                                  songId: item['id'].toString(),
+                                  songName: item['name'] ?? 'Sin nombre',
+                                ),
                               ),
                             );
                           } else {

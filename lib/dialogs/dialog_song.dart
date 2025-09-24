@@ -237,8 +237,10 @@ void showSongDialog(
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) =>
-                                      PlayPage(songName: song['name']),
+                                  builder: (context) => PlayPage(
+                                    songId: song['id'].toString(),
+                                    songName: song['name'] ?? 'Sin nombre',
+                                  ),
                                 ),
                               );
                             },

@@ -938,19 +938,31 @@ class _MusicPageState extends State<MusicPage> {
 
                                     return ElevatedButton.icon(
                                       onPressed: () {
-                                        showSongDialog(
-                                          context,
-                                          song,
-                                          totalCoins,
-                                          playSongFromDialog,
-                                          purchaseSong,
-                                          refreshCoins,
-                                        );
+                                        if (isOwned) {
+                                          // Si posee la canción, ir directamente a PlayPage
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => PlayPage(
+                                                songId: song['id'].toString(),
+                                                songName: song['name'] ?? 'Sin nombre',
+                                              ),
+                                            ),
+                                          );
+                                        } else {
+                                          // Si no posee la canción, mostrar diálogo de compra
+                                          showSongDialog(
+                                            context,
+                                            song,
+                                            totalCoins,
+                                            playSongFromDialog,
+                                            purchaseSong,
+                                            refreshCoins,
+                                          );
+                                        }
                                       },
                                       icon: Icon(
-                                        isOwned
-                                            ? Icons.music_note
-                                            : Icons.monetization_on,
+                                        isOwned ? Icons.music_note : Icons.monetization_on,
                                         color: Colors.white,
                                         size: 16,
                                       ),
@@ -962,11 +974,8 @@ class _MusicPageState extends State<MusicPage> {
                                         ),
                                       ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: isOwned
-                                            ? Colors.blue
-                                            : Colors.amber,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
+                                        backgroundColor: isOwned ? Colors.blue : Colors.amber,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                         minimumSize: const Size(60, 32),
                                       ),
                                     );
@@ -976,12 +985,18 @@ class _MusicPageState extends State<MusicPage> {
                                   // Verificar si el usuario posee la canción
                                   final isOwned = await _checkUserOwnsSong(song['id']);
                                   
+                                  debugPrint('Song ID: ${song['id']}, Type: ${song['id'].runtimeType}');
+                                  debugPrint('Song Name: ${song['name']}');
+                                  
                                   if (isOwned) {
                                     // Si posee la canción, ir directamente a PlayPage
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) => PlayPage(songName: song['name']),
+                                        builder: (context) => PlayPage(
+                                          songId: song['id'].toString(),
+                                          songName: song['name'] ?? 'Sin nombre',
+                                        ),
                                       ),
                                     );
                                   } else {

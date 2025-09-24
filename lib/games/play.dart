@@ -14,9 +14,14 @@ import 'package:hive_flutter/hive_flutter.dart';
 Timer? _timer;
 
 class PlayPage extends StatefulWidget {
-  final String songName;
+  final String songId; // ID de la canción
+  final String songName; // Nombre de la canción
 
-  const PlayPage({super.key, required this.songName});
+  const PlayPage({
+    super.key,
+    required this.songId,
+    required this.songName,
+  });
 
   @override
   _PlayPageState createState() => _PlayPageState();
@@ -118,71 +123,72 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  // Actualizar la función fetchSongDetails para corregir la consulta:
+
   Future<void> fetchSongDetails() async {
     final box = Hive.box('offline_data');
-    final cacheKey = 'song_${widget.songName}';
+    final cacheKey = 'song_${widget.songId}_${widget.songName}';
     final isOnline = await _checkConnectivity();
 
-    debugPrint('Fetching song: ${widget.songName}, Online: $isOnline');
+    debugPrint(
+        'Fetching song - ID: ${widget.songId}, Name: ${widget.songName}, Online: $isOnline');
 
     if (isOnline) {
       try {
-        final response = await supabase
+        // Determinar si el ID es numérico o UUID
+        bool isNumericId = RegExp(r'^\d+$').hasMatch(widget.songId);
+
+        PostgrestFilterBuilder query = supabase
             .from('songs')
             .select(
-                'id, name, image, mp3_file, artist, difficulty, instruments(name, image, id), songs_level(level(id, name, image, description))')
-            .eq('name', widget.songName)
-            .maybeSingle();
+                'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)'); // Removido songs_level
+
+        // Aplicar filtros según el tipo de ID
+        if (isNumericId) {
+          // ID numérico - buscar por ID como entero y nombre
+          query = query
+              .eq('id', int.parse(widget.songId))
+              .eq('name', widget.songName);
+        } else {
+          // UUID - buscar por ID como string y nombre
+          query = query
+              .eq('id', widget.songId)  // No parsear como int
+              .eq('name', widget.songName);
+        }
+
+        final response = await query.maybeSingle();
 
         debugPrint('Supabase response: $response');
 
         if (response != null) {
-          if (response['mp3_file'] != null && response['mp3_file'].isNotEmpty) {
-            try {
-              final localPath = await _downloadAndCacheMp3(
-                  response['mp3_file'], response['id'].toString());
-              response['local_mp3_path'] = localPath;
-            } catch (e) {
-              debugPrint('Error al descargar MP3: $e');
-            }
-          }
-
-          final user = supabase.auth.currentUser;
-          if (user != null) {
-            final favoriteResponse = await supabase
-                .from('songs_favorite')
-                .select('song_id')
-                .eq('user_id', user.id)
-                .eq('song_id', response['id'])
-                .maybeSingle();
-
-            response['is_favorite'] = favoriteResponse != null;
-          } else {
-            response['is_favorite'] = false;
-          }
-
-          setState(() {
-            song = response;
-            levels = response['songs_level'] != null
-                ? response['songs_level']
-                    .map((entry) => entry['level'])
-                    .where((level) => level != null)
-                    .toList()
-                : [];
-            isFavorite = response['is_favorite'] ?? false;
-            isLoading = false;
-          });
-
-          await box.put(cacheKey, response);
-          debugPrint('Song data saved to Hive with key: $cacheKey');
+          await _processSongResponse(response, box, cacheKey);
         } else {
-          setState(() {
-            song = null;
-            levels = [];
-            isFavorite = false;
-            isLoading = false;
-          });
-          debugPrint('No song found in Supabase');
+          // Si no se encuentra por ID y nombre exactos, intentar solo por ID
+          PostgrestFilterBuilder fallbackQuery = supabase
+              .from('songs')
+              .select(
+                  'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)'); // Removido songs_level
+
+          if (isNumericId) {
+            fallbackQuery = fallbackQuery.eq('id', int.parse(widget.songId));
+          } else {
+            fallbackQuery = fallbackQuery.eq('id', widget.songId); // No parsear como int
+          }
+
+          final fallbackResponse = await fallbackQuery.maybeSingle();
+
+          if (fallbackResponse != null) {
+            debugPrint('Found song by ID only: ${fallbackResponse['name']}');
+            await _processSongResponse(fallbackResponse, box, cacheKey);
+          } else {
+            setState(() {
+              song = null;
+              levels = [];
+              isFavorite = false;
+              isLoading = false;
+            });
+            debugPrint('No song found with ID: ${widget.songId}');
+          }
         }
       } catch (e) {
         debugPrint('Error fetching song from Supabase: $e');
@@ -193,17 +199,97 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  // Actualizar también _processSongResponse para manejar la ausencia de levels:
+  Future<void> _processSongResponse(Map<String, dynamic> response, Box box, String cacheKey) async {
+    // Verificar propiedad de la canción
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      final userSongResponse = await supabase
+          .from('user_songs')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .eq('song_id', response['id'].toString())
+          .maybeSingle();
+
+      final hasOwnership = userSongResponse != null;
+      response['has_ownership'] = hasOwnership;
+
+      // Si no posee la canción, mostrar mensaje y redirigir
+      if (!hasOwnership) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Debes comprar esta canción para acceder a ella completamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        });
+        return;
+      }
+
+      debugPrint('User owns this song: $hasOwnership');
+    } else {
+      response['has_ownership'] = false;
+    }
+
+    if (response['mp3_file'] != null && response['mp3_file'].isNotEmpty) {
+      try {
+        final localPath = await _downloadAndCacheMp3(
+            response['mp3_file'], response['id'].toString());
+        response['local_mp3_path'] = localPath;
+      } catch (e) {
+        debugPrint('Error al descargar MP3: $e');
+      }
+    }
+
+    // Verificar favoritos
+    final favoriteResponse = await supabase
+        .from('songs_favorite')
+        .select('song_id')
+        .eq('user_id', user?.id ?? '')
+        .eq('song_id', response['id'])
+        .maybeSingle();
+
+    response['is_favorite'] = favoriteResponse != null;
+
+    // Intentar obtener niveles por separado (opcional)
+    try {
+      final levelsResponse = await supabase
+          .from('levels') // Usar el nombre correcto de la tabla
+          .select('id, name, image, description')
+          .eq('song_id', response['id']); // Ajustar según tu estructura
+
+      response['levels'] = levelsResponse;
+      debugPrint('Found ${levelsResponse.length} levels for song');
+    } catch (e) {
+      debugPrint('No levels found or error fetching levels: $e');
+      response['levels'] = [];
+    }
+
+    setState(() {
+      song = response;
+      levels = response['levels'] ?? []; // Usar la nueva estructura
+      isFavorite = response['is_favorite'] ?? false;
+      isLoading = false;
+    });
+
+    await box.put(cacheKey, response);
+    debugPrint('Song data saved to Hive with key: $cacheKey');
+  }
+
+  // Actualizar _loadFromCache para manejar la nueva estructura:
   void _loadFromCache(Box box, String cacheKey) {
     final cachedSong = box.get(cacheKey);
     debugPrint('Cached song: $cachedSong');
     if (cachedSong != null) {
       setState(() {
         song = Map<String, dynamic>.from(cachedSong);
-        levels = cachedSong['songs_level'] != null
-            ? cachedSong['songs_level']
-                .map((entry) => Map<String, dynamic>.from(entry['level']))
-                .where((level) => level != null)
-                .toList()
+        levels = cachedSong['levels'] != null
+            ? List<Map<String, dynamic>>.from(
+                cachedSong['levels'].map((level) => Map<String, dynamic>.from(level))
+              )
             : [];
         isFavorite = cachedSong['is_favorite'] ?? false;
         isLoading = false;
@@ -237,9 +323,7 @@ class _PlayPageState extends State<PlayPage> {
       return;
     }
 
-    final box = Hive.box('offline_data');
     final pendingBox = Hive.box('pending_favorite_actions');
-    final cacheKey = 'song_${widget.songName}';
     final isOnline = await _checkConnectivity();
 
     // Update favorite state immediately
@@ -249,7 +333,6 @@ class _PlayPageState extends State<PlayPage> {
     });
 
     // Update cache with new favorite status
-    await box.put(cacheKey, song);
 
     if (isOnline) {
       try {
@@ -767,9 +850,44 @@ class _PlayPageState extends State<PlayPage> {
                               ),
                               const SizedBox(height: 20),
                               levels.isEmpty
-                                  ? const Center(
-                                      child: Text(
-                                          "No se encontraron niveles disponibles."))
+                                  ? Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(20.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: Colors.grey.shade300),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            size: 48,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            "¡Próximamente niveles disponibles!",
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.grey.shade700,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            "Los niveles para esta canción estarán disponibles pronto. Por ahora puedes disfrutar escuchándola.",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
+                                    )
                                   : Column(
                                       children: levels.map((level) {
                                         return Padding(
@@ -798,11 +916,15 @@ class _PlayPageState extends State<PlayPage> {
                                                         const CircularProgressIndicator(
                                                             color: Colors.blue),
                                                     errorWidget: (context, url,
-                                                            error) =>
-                                                        const Icon(
-                                                            Icons
-                                                                .image_not_supported,
-                                                            size: 80),
+                                                            error) => Container(
+                                                      height: 180,
+                                                      color: Colors.grey.shade200,
+                                                      child: const Icon(
+                                                        Icons.image_not_supported,
+                                                        size: 80,
+                                                        color: Colors.grey,
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
                                                 Padding(
@@ -812,7 +934,7 @@ class _PlayPageState extends State<PlayPage> {
                                                     children: [
                                                       Text(
                                                         level['name'] ??
-                                                            "Nombre desconocido",
+                                                            "Nivel sin nombre",
                                                         style: const TextStyle(
                                                           fontSize: 18,
                                                           fontWeight:
@@ -825,14 +947,13 @@ class _PlayPageState extends State<PlayPage> {
                                                       const SizedBox(height: 8),
                                                       Text(
                                                         level['description'] ??
-                                                            "Sin descripción.",
+                                                            "Sin descripción disponible.",
                                                         textAlign:
                                                             TextAlign.center,
                                                         style: const TextStyle(
                                                             fontSize: 15),
                                                       ),
-                                                      const SizedBox(
-                                                          height: 10),
+                                                      const SizedBox(height: 10),
                                                       ElevatedButton.icon(
                                                         style: ElevatedButton
                                                             .styleFrom(
