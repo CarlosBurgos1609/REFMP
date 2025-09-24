@@ -50,6 +50,55 @@ class _CupPageState extends State<CupPage> {
     _checkConnectivityAndInitialize();
     fetchUserProfileImage();
     ensureCurrentUserInUsersGames();
+    // Agregar debug de la base de datos
+    debugDatabaseData();
+  }
+
+  Future<void> debugDatabaseData() async {
+    try {
+      debugPrint('=== DEBUG DATABASE DATA ===');
+
+      // Debug users_games table
+      final usersGamesResponse = await supabase
+          .from('users_games')
+          .select('user_id, nickname, points_xp_weekend')
+          .order('points_xp_weekend', ascending: false)
+          .limit(10);
+
+      debugPrint('users_games table (top 10):');
+      for (var user in usersGamesResponse) {
+        debugPrint(
+            '  user_id: ${user['user_id']}, nickname: ${user['nickname']}, points_xp_weekend: ${user['points_xp_weekend']}');
+      }
+
+      // Debug rewards table
+      final rewardsResponse = await supabase
+          .from('rewards')
+          .select('position, object_id, coins_reward, week_start, week_end')
+          .order('position', ascending: true);
+
+      debugPrint('rewards table:');
+      for (var reward in rewardsResponse) {
+        debugPrint(
+            '  position: ${reward['position']}, object_id: ${reward['object_id']}, coins_reward: ${reward['coins_reward']}, week_start: ${reward['week_start']}, week_end: ${reward['week_end']}');
+      }
+
+      // Debug objets table
+      final objetsResponse = await supabase
+          .from('objets')
+          .select('id, name, category, image_url')
+          .limit(5);
+
+      debugPrint('objets table (first 5):');
+      for (var object in objetsResponse) {
+        debugPrint(
+            '  id: ${object['id']}, name: ${object['name']}, category: ${object['category']}, image_url: ${object['image_url']}');
+      }
+
+      debugPrint('=== END DEBUG DATABASE DATA ===');
+    } catch (e) {
+      debugPrint('Error in debugDatabaseData: $e');
+    }
   }
 
   Future<void> _checkConnectivityAndInitialize() async {
@@ -101,6 +150,44 @@ class _CupPageState extends State<CupPage> {
       debugPrint(
           'Error al asegurar registro del usuario actual en users_games: $e');
     }
+  }
+
+  List<Map<String, dynamic>> _getDefaultRewards() {
+    return [
+      {
+        'position': 1,
+        'object_id': null,
+        'coins_reward': 500,
+        'image_url': 'assets/images/coin.png',
+        'object_category': 'coins',
+        'object_name': '500 Monedas',
+        'object_description': 'Premio por defecto para el primer puesto',
+        'has_object': false,
+        'has_coins': true,
+      },
+      {
+        'position': 2,
+        'object_id': null,
+        'coins_reward': 300,
+        'image_url': 'assets/images/coin.png',
+        'object_category': 'coins',
+        'object_name': '300 Monedas',
+        'object_description': 'Premio por defecto para el segundo puesto',
+        'has_object': false,
+        'has_coins': true,
+      },
+      {
+        'position': 3,
+        'object_id': null,
+        'coins_reward': 200,
+        'image_url': 'assets/images/coin.png',
+        'object_category': 'coins',
+        'object_name': '200 Monedas',
+        'object_description': 'Premio por defecto para el tercer puesto',
+        'has_object': false,
+        'has_coins': true,
+      },
+    ];
   }
 
   Future<void> fetchUserProfileImage() async {
@@ -219,7 +306,7 @@ class _CupPageState extends State<CupPage> {
     try {
       if (!_isOnline) {
         debugPrint('Offline: No rewards data available');
-        return [];
+        return _getDefaultRewards();
       }
 
       final now = DateTime.now();
@@ -227,109 +314,189 @@ class _CupPageState extends State<CupPage> {
           .subtract(Duration(days: now.weekday - 1));
       final weekEnd = weekStart.add(Duration(days: 6));
 
-      final response = await supabase
+      // Formatear las fechas correctamente para Supabase
+      final weekStartStr =
+          '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
+      final weekEndStr =
+          '${weekEnd.year}-${weekEnd.month.toString().padLeft(2, '0')}-${weekEnd.day.toString().padLeft(2, '0')}';
+
+      debugPrint('Fetching rewards for week: $weekStartStr to $weekEndStr');
+
+      // Primera consulta: obtener todos los rewards para esta semana
+      final rewardsResponse = await supabase
           .from('rewards')
-          .select(
-              'position, object_id, coins_reward, objets(image_url, category, name)')
-          .eq('week_start', weekStart.toIso8601String().split('T')[0])
-          .eq('week_end', weekEnd.toIso8601String().split('T')[0])
+          .select('position, object_id, coins_reward, week_start, week_end')
+          .eq('week_start', weekStartStr)
+          .eq('week_end', weekEndStr)
           .order('position', ascending: true);
 
       debugPrint(
-          'Supabase rewards response: ${response.length} rewards fetched: $response');
+          'Supabase rewards response: ${rewardsResponse.length} rewards fetched');
+      debugPrint('Raw rewards response: $rewardsResponse');
+
+      // Si no hay rewards para esta semana específica, intentar obtener datos de cualquier semana activa
+      List<dynamic> finalRewardsResponse = rewardsResponse;
+      if (rewardsResponse.isEmpty) {
+        debugPrint(
+            'No rewards found for specific week, trying to get any active rewards');
+        finalRewardsResponse = await supabase
+            .from('rewards')
+            .select('position, object_id, coins_reward, week_start, week_end')
+            .order('position', ascending: true)
+            .limit(10);
+        debugPrint(
+            'Fallback rewards response: ${finalRewardsResponse.length} rewards found');
+      }
 
       List<Map<String, dynamic>> rewards = [];
-      for (var item in response) {
-        String imageUrl =
-            item['objets']?['image_url'] ?? 'assets/images/refmmp.png';
-        if (imageUrl.startsWith('http')) {
+
+      for (var item in finalRewardsResponse) {
+        String? imageUrl;
+        String objectName = 'Premio';
+        String? objectCategory;
+        String? objectDescription;
+        bool hasObject = false;
+        bool hasCoins = false;
+
+        final objectId = item['object_id'];
+        final coinsReward = item['coins_reward'];
+
+        debugPrint(
+            'Processing reward - Position: ${item['position']}, ObjectID: $objectId, Coins: $coinsReward');
+
+        // Verificar si hay objeto y obtener sus datos
+        if (objectId != null) {
           try {
-            final fileInfo =
-                await CustomCacheManager.instance.downloadFile(imageUrl);
-            imageUrl = fileInfo.file.path;
+            debugPrint('Fetching object data for object_id: $objectId');
+            final objectResponse = await supabase
+                .from('objets')
+                .select('id, name, image_url, category, description')
+                .eq('id', objectId)
+                .maybeSingle();
+
+            if (objectResponse != null) {
+              hasObject = true;
+              objectName = objectResponse['name'] ?? 'Objeto desconocido';
+              objectCategory = objectResponse['category'];
+              objectDescription = objectResponse['description'];
+              imageUrl = objectResponse['image_url'];
+
+              debugPrint(
+                  'Object data fetched: name=$objectName, category=$objectCategory, imageUrl=$imageUrl');
+
+              // Cachear imagen si es una URL
+              if (imageUrl != null && imageUrl.startsWith('http')) {
+                try {
+                  final fileInfo =
+                      await CustomCacheManager.instance.downloadFile(imageUrl);
+                  imageUrl = fileInfo.file.path;
+                  debugPrint('Cached image for ${objectName}: $imageUrl');
+                } catch (e) {
+                  debugPrint(
+                      'Error caching image for object ${objectName}: $e');
+                  imageUrl = 'assets/images/refmmp.png';
+                }
+              } else if (imageUrl == null || imageUrl.isEmpty) {
+                imageUrl = 'assets/images/refmmp.png';
+              }
+            } else {
+              debugPrint('No object found for object_id: $objectId');
+            }
           } catch (e) {
             debugPrint(
-                'Error caching image for object ${item['objets']?['name']}: $e');
-            imageUrl = 'assets/images/refmmp.png';
+                'Error fetching object data for object_id $objectId: $e');
           }
         }
+
+        // Verificar si hay monedas
+        if (coinsReward != null && coinsReward > 0) {
+          hasCoins = true;
+          debugPrint('Coins reward found: $coinsReward');
+        }
+
+        // Si no hay objeto pero sí monedas, usar imagen de moneda
+        if (!hasObject && hasCoins) {
+          imageUrl = 'assets/images/coin.png';
+          objectName = '$coinsReward Monedas';
+          objectCategory = 'coins';
+          debugPrint('Setting coins-only reward: $objectName');
+        }
+
+        // Si no hay ni objeto ni monedas
+        if (!hasObject && !hasCoins) {
+          imageUrl = 'assets/images/refmmp.png';
+          objectName = 'Sin premio asignado';
+          objectCategory = 'empty';
+          debugPrint('No reward assigned for position ${item['position']}');
+        }
+
         rewards.add({
           'position': item['position'],
-          'object_id': item['object_id'],
-          'coins_reward': item['coins_reward'] ?? 0,
-          'image_url': imageUrl,
-          'object_category': item['objets']?['category'],
-          'object_name': item['objets']?['name'] ?? 'Objeto desconocido',
+          'object_id': objectId,
+          'coins_reward': coinsReward ?? 0,
+          'image_url': imageUrl ?? 'assets/images/refmmp.png',
+          'object_category': objectCategory,
+          'object_name': objectName,
+          'object_description': objectDescription,
+          'has_object': hasObject,
+          'has_coins': hasCoins,
         });
+
+        debugPrint(
+            'Added reward for position ${item['position']}: object=$hasObject, coins=$hasCoins, name=$objectName');
       }
 
-      final topRewards = rewards.where((r) => r['position'] <= 3).toList();
-      if (topRewards.length < 3) {
-        for (int i = 1; i <= 3; i++) {
-          if (!topRewards.any((r) => r['position'] == i)) {
+      // Si no hay datos en la base de datos, agregar premios por defecto
+      if (rewards.isEmpty) {
+        debugPrint('No rewards found in database, using defaults');
+        rewards = _getDefaultRewards();
+      } else {
+        // Asegurar que tenemos al menos los primeros 3 puestos
+        for (int pos = 1; pos <= 3; pos++) {
+          if (!rewards.any((r) => r['position'] == pos)) {
             rewards.add({
-              'position': i,
+              'position': pos,
               'object_id': null,
-              'coins_reward': 0,
-              'image_url': 'assets/images/refmmp.png',
-              'object_category': null,
-              'object_name': null,
+              'coins_reward': _getDefaultCoins(pos),
+              'image_url': 'assets/images/coin.png',
+              'object_category': 'coins',
+              'object_name': '${_getDefaultCoins(pos)} Monedas',
+              'object_description': 'Premio por defecto para puesto $pos',
+              'has_object': false,
+              'has_coins': true,
             });
+            debugPrint('Added default reward for position $pos');
           }
         }
-      }
-
-      if (!rewards.any((r) => r['position'] > 3)) {
-        rewards.add({
-          'position': 4,
-          'object_id': null,
-          'coins_reward': 100,
-          'image_url': 'assets/images/refmmp.png',
-          'object_category': null,
-          'object_name': null,
-        });
       }
 
       rewards.sort((a, b) => a['position'].compareTo(b['position']));
-      debugPrint('Processed rewards: $rewards');
+      debugPrint('Final processed rewards: ${rewards.length} items');
+
+      // Debug final rewards
+      for (var reward in rewards) {
+        debugPrint(
+            'Final reward - Position: ${reward['position']}, Name: ${reward['object_name']}, HasObject: ${reward['has_object']}, HasCoins: ${reward['has_coins']}, Coins: ${reward['coins_reward']}');
+      }
+
       return rewards;
     } catch (e, stackTrace) {
       debugPrint(
           'Error al obtener datos de premios: $e\nStack trace: $stackTrace');
-      return [
-        {
-          'position': 1,
-          'object_id': null,
-          'coins_reward': 0,
-          'image_url': 'assets/images/refmmp.png',
-          'object_category': null,
-          'object_name': null
-        },
-        {
-          'position': 2,
-          'object_id': null,
-          'coins_reward': 0,
-          'image_url': 'assets/images/refmmp.png',
-          'object_category': null,
-          'object_name': null
-        },
-        {
-          'position': 3,
-          'object_id': null,
-          'coins_reward': 0,
-          'image_url': 'assets/images/refmmp.png',
-          'object_category': null,
-          'object_name': null
-        },
-        {
-          'position': 4,
-          'object_id': null,
-          'coins_reward': 100,
-          'image_url': 'assets/images/refmmp.png',
-          'object_category': null,
-          'object_name': null
-        },
-      ];
+      return _getDefaultRewards();
+    }
+  }
+
+  int _getDefaultCoins(int position) {
+    switch (position) {
+      case 1:
+        return 500;
+      case 2:
+        return 300;
+      case 3:
+        return 200;
+      default:
+        return 100;
     }
   }
 
@@ -548,21 +715,6 @@ class _CupPageState extends State<CupPage> {
                         debugPrint(
                             'Rewards FutureBuilder: Rendering ${rewardsList.length} rewards');
 
-                        final topRewards = rewardsList
-                            .where((reward) => reward['position'] <= 3)
-                            .toList();
-                        final consolationReward = rewardsList.firstWhere(
-                          (reward) => reward['position'] > 3,
-                          orElse: () => {
-                            'position': 4,
-                            'object_id': null,
-                            'coins_reward': 100,
-                            'image_url': 'assets/images/refmmp.png',
-                            'object_category': null,
-                            'object_name': null
-                          },
-                        );
-
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -574,273 +726,436 @@ class _CupPageState extends State<CupPage> {
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ...topRewards.map((reward) {
-                                final position = reward['position'];
-                                final imageUrl = reward['image_url'];
-                                final coins = reward['coins_reward'] ?? 0;
-                                final objectCategory =
-                                    reward['object_category'];
-                                final objectName = reward['object_name'];
-                                final objectId = reward['object_id'];
-                                String positionText;
-                                Color trophyColor;
+                            children: rewardsList.map((reward) {
+                              final position = reward['position'];
+                              final imageUrl = reward['image_url'];
+                              final coins = reward['coins_reward'] ?? 0;
+                              final objectCategory = reward['object_category'];
+                              final objectName = reward['object_name'];
 
-                                switch (position) {
-                                  case 1:
-                                    positionText = 'Primer Puesto';
-                                    trophyColor = Colors.amber;
-                                    break;
-                                  case 2:
-                                    positionText = 'Segundo Puesto';
-                                    trophyColor = Colors.grey;
-                                    break;
-                                  case 3:
-                                    positionText = 'Tercer Puesto';
-                                    trophyColor = const Color(0xFFCD7F32);
-                                    break;
-                                  default:
-                                    positionText = 'Puesto $position';
-                                    trophyColor = Colors.grey;
-                                }
+                              final hasObject = reward['has_object'] ?? false;
+                              final hasCoins = reward['has_coins'] ?? false;
+                              final objectDescription =
+                                  reward['object_description'];
 
-                                Widget imageWidget;
-                                if (objectId != null && imageUrl != null) {
-                                  if (imageUrl.startsWith('assets/')) {
-                                    imageWidget = Image.asset(
-                                      imageUrl,
-                                      fit: objectCategory == 'trompetas'
-                                          ? BoxFit.contain
-                                          : BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                    );
-                                  } else if (File(imageUrl).existsSync()) {
-                                    imageWidget = Image.file(
-                                      File(imageUrl),
-                                      fit: objectCategory == 'trompetas'
-                                          ? BoxFit.contain
-                                          : BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                        debugPrint(
-                                            'Error loading local image: $error, path: $imageUrl');
-                                        return Image.asset(
-                                          'assets/images/refmmp.png',
-                                          fit: BoxFit.cover,
-                                          width: 40,
-                                          height: 40,
-                                        );
-                                      },
-                                    );
-                                  } else if (Uri.tryParse(imageUrl)
-                                          ?.isAbsolute ==
-                                      true) {
-                                    imageWidget = CachedNetworkImage(
-                                      imageUrl: imageUrl,
-                                      cacheManager: CustomCacheManager.instance,
-                                      fit: objectCategory == 'trompetas'
-                                          ? BoxFit.contain
-                                          : BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                      placeholder: (context, url) =>
-                                          const Center(
-                                        child: CircularProgressIndicator(
-                                            color: Colors.blue),
-                                      ),
-                                      errorWidget: (context, url, error) {
-                                        debugPrint(
-                                            'Error loading network image: $error, url: $url');
-                                        return Image.asset(
-                                          'assets/images/refmmp.png',
-                                          fit: BoxFit.cover,
-                                          width: 40,
-                                          height: 40,
-                                        );
-                                      },
-                                      memCacheWidth: 80,
-                                      memCacheHeight: 80,
-                                      fadeInDuration:
-                                          const Duration(milliseconds: 200),
-                                    );
-                                  } else {
-                                    imageWidget = Image.asset(
+                              String positionText;
+                              Color trophyColor;
+
+                              switch (position) {
+                                case 1:
+                                  positionText = 'Primer Puesto';
+                                  trophyColor = Colors.amber;
+                                  break;
+                                case 2:
+                                  positionText = 'Segundo Puesto';
+                                  trophyColor = Colors.grey;
+                                  break;
+                                case 3:
+                                  positionText = 'Tercer Puesto';
+                                  trophyColor = const Color(0xFFCD7F32);
+                                  break;
+                                default:
+                                  positionText = position <= 50
+                                      ? 'Puestos ${position} al 50'
+                                      : 'Puesto $position';
+                                  trophyColor = Colors.grey;
+                              }
+
+                              Widget imageWidget;
+                              Widget rewardContent;
+
+                              // Construir widget de imagen
+                              if (imageUrl.startsWith('assets/')) {
+                                imageWidget = Image.asset(
+                                  imageUrl,
+                                  fit: objectCategory == 'trompetas'
+                                      ? BoxFit.contain
+                                      : BoxFit.cover,
+                                  width: 40,
+                                  height: 40,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Image.asset(
                                       'assets/images/refmmp.png',
                                       fit: BoxFit.cover,
                                       width: 40,
                                       height: 40,
                                     );
-                                  }
-                                } else {
-                                  imageWidget = Image.asset(
-                                    'assets/images/refmmp.png',
-                                    fit: BoxFit.cover,
-                                    width: 40,
-                                    height: 40,
-                                  );
-                                }
+                                  },
+                                );
+                              } else if (File(imageUrl).existsSync()) {
+                                imageWidget = Image.file(
+                                  File(imageUrl),
+                                  fit: objectCategory == 'trompetas'
+                                      ? BoxFit.contain
+                                      : BoxFit.cover,
+                                  width: 40,
+                                  height: 40,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Image.asset(
+                                      'assets/images/refmmp.png',
+                                      fit: BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                    );
+                                  },
+                                );
+                              } else if (Uri.tryParse(imageUrl)?.isAbsolute ==
+                                  true) {
+                                imageWidget = CachedNetworkImage(
+                                  imageUrl: imageUrl,
+                                  cacheManager: CustomCacheManager.instance,
+                                  fit: objectCategory == 'trompetas'
+                                      ? BoxFit.contain
+                                      : BoxFit.cover,
+                                  width: 40,
+                                  height: 40,
+                                  placeholder: (context, url) => const Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.blue),
+                                  ),
+                                  errorWidget: (context, url, error) {
+                                    return Image.asset(
+                                      'assets/images/refmmp.png',
+                                      fit: BoxFit.cover,
+                                      width: 40,
+                                      height: 40,
+                                    );
+                                  },
+                                );
+                              } else {
+                                imageWidget = Image.asset(
+                                  'assets/images/refmmp.png',
+                                  fit: BoxFit.cover,
+                                  width: 40,
+                                  height: 40,
+                                );
+                              }
 
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8),
-                                  child: GestureDetector(
-                                    onTap: objectId != null
-                                        ? () {
-                                            // TODO: Implementar diálogo con descripción del objeto
-                                          }
-                                        : null,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.emoji_events_rounded,
-                                          color: trophyColor,
-                                          size: 28,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            positionText,
-                                            style: const TextStyle(
-                                              fontSize: 18,
+                              // Construir contenido según el tipo de recompensa
+                              if (hasObject && hasCoins) {
+                                // Caso: Objeto + Monedas
+                                rewardContent = Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        shape: objectCategory == 'avatares'
+                                            ? BoxShape.circle
+                                            : BoxShape.rectangle,
+                                        borderRadius:
+                                            objectCategory != 'avatares'
+                                                ? BorderRadius.circular(8)
+                                                : null,
+                                        border: Border.all(
+                                            color: Colors.blue, width: 1.5),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            objectCategory == 'avatares'
+                                                ? BorderRadius.circular(20)
+                                                : BorderRadius.circular(8),
+                                        child: imageWidget,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            objectName,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: Colors.blue.shade700,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.blue,
                                             ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            shape: objectCategory == 'avatares'
-                                                ? BoxShape.circle
-                                                : BoxShape.rectangle,
-                                            borderRadius:
-                                                objectCategory != 'avatares'
-                                                    ? BorderRadius.circular(8)
-                                                    : null,
-                                            border: Border.all(
-                                                color: Colors.blue, width: 1.5),
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                objectCategory == 'avatares'
-                                                    ? BorderRadius.circular(20)
-                                                    : BorderRadius.circular(8),
-                                            child: objectId != null
-                                                ? imageWidget
-                                                : (coins > 0
-                                                    ? Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          Image.asset(
-                                                            'assets/images/coin.png',
-                                                            width: 24,
-                                                            height: 24,
-                                                            fit: BoxFit.contain,
-                                                            errorBuilder: (context,
-                                                                    error,
-                                                                    stackTrace) =>
-                                                                Image.asset(
-                                                              'assets/images/refmmp.png',
-                                                              width: 24,
-                                                              height: 24,
-                                                              fit: BoxFit.cover,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          Flexible(
-                                                            child: Text(
-                                                              '$coins monedas',
-                                                              style: TextStyle(
-                                                                fontSize: 16,
-                                                                color: Colors
-                                                                    .blue
-                                                                    .shade700,
-                                                              ),
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      )
-                                                    : imageWidget),
-                                          ),
-                                        ),
-                                        if (objectName != null &&
-                                            objectId != null)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(left: 8),
-                                            child: Flexible(
-                                              child: Text(
-                                                objectName,
+                                          Row(
+                                            children: [
+                                              Image.asset(
+                                                'assets/images/coin.png',
+                                                width: 16,
+                                                height: 16,
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (context, error,
+                                                        stackTrace) =>
+                                                    const Icon(
+                                                        Icons.monetization_on,
+                                                        size: 16,
+                                                        color: Colors.amber),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '+$coins monedas',
                                                 style: TextStyle(
                                                   fontSize: 14,
-                                                  color: Colors.blue.shade700,
+                                                  color: Colors.amber.shade700,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              } else if (hasObject && !hasCoins) {
+                                // Caso: Solo Objeto
+                                rewardContent = Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        shape: objectCategory == 'avatares'
+                                            ? BoxShape.circle
+                                            : BoxShape.rectangle,
+                                        borderRadius:
+                                            objectCategory != 'avatares'
+                                                ? BorderRadius.circular(8)
+                                                : null,
+                                        border: Border.all(
+                                            color: Colors.blue, width: 1.5),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            objectCategory == 'avatares'
+                                                ? BorderRadius.circular(20)
+                                                : BorderRadius.circular(8),
+                                        child: imageWidget,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        objectName,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              } else if (!hasObject && hasCoins) {
+                                // Caso: Solo Monedas
+                                rewardContent = Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: Colors.blue, width: 1.5),
+                                        color: Colors.amber.shade50,
+                                      ),
+                                      child: Center(
+                                        child: Image.asset(
+                                          'assets/images/coin.png',
+                                          width: 24,
+                                          height: 24,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (context, error,
+                                                  stackTrace) =>
+                                              const Icon(Icons.monetization_on,
+                                                  size: 24,
+                                                  color: Colors.amber),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        '$coins Monedas',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              } else {
+                                // Caso: Sin recompensa
+                                rewardContent = Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                            color: Colors.grey, width: 1.5),
+                                        color: Colors.grey.shade100,
+                                      ),
+                                      child: const Icon(Icons.help_outline,
+                                          color: Colors.grey),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Expanded(
+                                      child: Text(
+                                        'Sin premio asignado',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                child: GestureDetector(
+                                  onTap: (hasObject &&
+                                              objectDescription != null) ||
+                                          hasCoins
+                                      ? () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: Text(
+                                                objectName,
+                                                style: const TextStyle(
+                                                  color: Colors.blue,
                                                   fontWeight: FontWeight.bold,
                                                 ),
-                                                overflow: TextOverflow.ellipsis,
                                               ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (hasObject) ...[
+                                                    Container(
+                                                      width: 80,
+                                                      height: 80,
+                                                      decoration: BoxDecoration(
+                                                        shape: objectCategory ==
+                                                                'avatares'
+                                                            ? BoxShape.circle
+                                                            : BoxShape
+                                                                .rectangle,
+                                                        borderRadius:
+                                                            objectCategory !=
+                                                                    'avatares'
+                                                                ? BorderRadius
+                                                                    .circular(
+                                                                        12)
+                                                                : null,
+                                                        border: Border.all(
+                                                            color: Colors.blue,
+                                                            width: 2),
+                                                      ),
+                                                      child: ClipRRect(
+                                                        borderRadius:
+                                                            objectCategory ==
+                                                                    'avatares'
+                                                                ? BorderRadius
+                                                                    .circular(
+                                                                        40)
+                                                                : BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                        child: imageWidget,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 16),
+                                                    if (objectDescription !=
+                                                        null) ...[
+                                                      Text(
+                                                        objectDescription,
+                                                        style: const TextStyle(
+                                                            fontSize: 14),
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                    ],
+                                                  ],
+                                                  if (hasCoins) ...[
+                                                    Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Image.asset(
+                                                          'assets/images/coin.png',
+                                                          width: 20,
+                                                          height: 20,
+                                                          fit: BoxFit.contain,
+                                                        ),
+                                                        const SizedBox(
+                                                            width: 4),
+                                                        Text(
+                                                          hasObject
+                                                              ? '+$coins monedas adicionales'
+                                                              : '$coins monedas',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            color: Colors
+                                                                .amber.shade700,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
+                                                  child: const Text(
+                                                    'Cerrar',
+                                                    style: TextStyle(
+                                                        color: Colors.blue),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
+                                          );
+                                        }
+                                      : null,
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.emoji_events_rounded,
+                                        color: trophyColor,
+                                        size: 28,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                          positionText,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
                                           ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                              const SizedBox(height: 8),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Expanded(
-                                    child: Text(
-                                      'Puestos 4 al 50',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue,
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: rewardContent),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
-                                  Image.asset(
-                                    'assets/images/coin.png',
-                                    width: 24,
-                                    height: 24,
-                                    fit: BoxFit.contain,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            Image.asset(
-                                      'assets/images/refmmp.png',
-                                      width: 24,
-                                      height: 24,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      '${consolationReward['coins_reward']} monedas',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.blue.shade700,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              );
+                            }).toList(),
                           ),
                         );
                       },
