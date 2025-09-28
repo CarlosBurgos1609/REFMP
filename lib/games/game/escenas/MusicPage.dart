@@ -49,14 +49,15 @@ class _MusicPageState extends State<MusicPage> {
   @override
   void initState() {
     super.initState();
-    _initializeHiveAndFetch();
-    fetchUserCoins();
+    _initializeApp(); // Cambiar a una función que maneje todo secuencialmente
+
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() {
         isPlaying = false;
         currentSong = null;
       });
     });
+
     // Initialize letter keys for alphabetical scroll
     for (var letter in alphabet) {
       letterKeys[letter] = GlobalKey();
@@ -70,15 +71,49 @@ class _MusicPageState extends State<MusicPage> {
     super.dispose();
   }
 
+  // Crear una nueva función que maneje toda la inicialización secuencialmente:
+  Future<void> _initializeApp() async {
+    try {
+      // 1. Primero inicializar Hive y abrir todas las cajas
+      await _initializeHiveAndFetch();
+
+      // 2. Luego obtener monedas del usuario
+      await fetchUserCoins();
+
+      // 3. Finalmente sincronizar compras pendientes (solo si las cajas están abiertas)
+      await _syncPendingPurchases();
+    } catch (e) {
+      debugPrint('Error durante la inicialización: $e');
+    }
+  }
+
+  // Actualizar _initializeHiveAndFetch para asegurar que todas las cajas se abran correctamente:
   Future<void> _initializeHiveAndFetch() async {
     try {
+      // Abrir todas las cajas necesarias
       if (!Hive.isBoxOpen('offline_data')) {
         await Hive.openBox('offline_data');
+        debugPrint('offline_data box opened');
       }
-      debugPrint('Hive box offline_data opened successfully');
+
+      if (!Hive.isBoxOpen('pending_purchases')) {
+        await Hive.openBox('pending_purchases');
+        debugPrint('pending_purchases box opened');
+      }
+
+      if (!Hive.isBoxOpen('user_owned_songs')) {
+        await Hive.openBox('user_owned_songs');
+        debugPrint('user_owned_songs box opened');
+      }
+
+      debugPrint('All Hive boxes opened successfully');
+
+      // Establecer el future para las canciones
       setState(() {
         _songsFuture = fetchSongs();
       });
+
+      // Obtener imagen de perfil
       await fetchUserProfileImage();
     } catch (e) {
       debugPrint('Error initializing Hive: $e');
@@ -388,69 +423,120 @@ class _MusicPageState extends State<MusicPage> {
   }
 
   Future<void> purchaseSong(Map<String, dynamic> song) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw Exception('Usuario no autenticado');
+    }
+
+    final price = (song['coins'] ?? 0) as int;
+    final songId = song['id'].toString();
+    final isOnline = await _checkConnectivity();
+
+    // Verificar que el usuario no tenga ya la canción
+    final alreadyOwned = await _checkUserOwnsSong(songId);
+    if (alreadyOwned) {
+      throw Exception('Ya posees esta canción');
+    }
+
+    // Verificar monedas (siempre del estado local)
+    if (totalCoins < price) {
+      throw Exception('Monedas insuficientes');
+    }
+
+    final newCoins = totalCoins - price;
+
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) {
-        throw Exception('Usuario no autenticado');
+      if (isOnline) {
+        // Compra online normal
+        final userGameResponse = await supabase
+            .from('users_games')
+            .select('coins')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (userGameResponse == null) {
+          throw Exception('No se encontraron datos del usuario');
+        }
+
+        final serverCoins = userGameResponse['coins'] ?? 0;
+        if (serverCoins < price) {
+          setState(() {
+            totalCoins = serverCoins;
+          });
+          throw Exception('Monedas insuficientes');
+        }
+
+        // Realizar transacciones en servidor
+        await supabase
+            .from('users_games')
+            .update({'coins': newCoins}).eq('user_id', user.id);
+
+        await supabase.from('user_songs').insert({
+          'user_id': user.id,
+          'song_id': songId,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
+        // Actualizar caché local solo si la caja está abierta
+        if (Hive.isBoxOpen('user_owned_songs')) {
+          final ownedBox = Hive.box('user_owned_songs');
+          final cachedOwnedSongs =
+              ownedBox.get(user.id, defaultValue: <String>[]);
+          if (!cachedOwnedSongs.contains(songId)) {
+            cachedOwnedSongs.add(songId);
+            await ownedBox.put(user.id, cachedOwnedSongs);
+          }
+        }
+
+        debugPrint(
+            'Song purchased online: ${song['name']}, new coins: $newCoins');
+      } else {
+        // Compra offline - solo si las cajas están abiertas
+        if (Hive.isBoxOpen('pending_purchases') &&
+            Hive.isBoxOpen('user_owned_songs')) {
+          final pendingBox = Hive.box('pending_purchases');
+          final ownedBox = Hive.box('user_owned_songs');
+
+          // Agregar a compras pendientes
+          final pendingPurchases =
+              pendingBox.get('purchases', defaultValue: <String>[]);
+          if (!pendingPurchases.contains(songId)) {
+            pendingPurchases.add(songId);
+            await pendingBox.put('purchases', pendingPurchases);
+          }
+
+          // Agregar a canciones poseídas localmente
+          final cachedOwnedSongs =
+              ownedBox.get(user.id, defaultValue: <String>[]);
+          if (!cachedOwnedSongs.contains(songId)) {
+            cachedOwnedSongs.add(songId);
+            await ownedBox.put(user.id, cachedOwnedSongs);
+          }
+
+          debugPrint(
+              'Song purchased offline: ${song['name']}, will sync later');
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Canción comprada. Se sincronizará cuando tengas conexión.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          throw Exception(
+              'No se puede realizar la compra offline en este momento');
+        }
       }
 
-      final price = (song['coins'] ?? 0) as int;
-      final songId = song['id'];
-
-      // Verificar que el usuario no tenga ya la canción
-      final existingResponse = await supabase
-          .from('user_songs')
-          .select('user_id') // Cambiar de 'id' a 'user_id'
-          .eq('user_id', user.id)
-          .eq('song_id', songId.toString())
-          .maybeSingle();
-
-      if (existingResponse != null) {
-        throw Exception('Ya posees esta canción');
-      }
-
-      // Verificar monedas actuales
-      final userGameResponse = await supabase
-          .from('users_games')
-          .select('coins')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      if (userGameResponse == null) {
-        throw Exception('No se encontraron datos del usuario');
-      }
-
-      final currentCoins = userGameResponse['coins'] ?? 0;
-      if (currentCoins < price) {
-        throw Exception('Monedas insuficientes');
-      }
-
-      final newCoins = currentCoins - price;
-
-      // Realizar las transacciones de compra
-      // 1. Descontar monedas
-      await supabase
-          .from('users_games')
-          .update({'coins': newCoins}).eq('user_id', user.id);
-
-      // 2. Agregar la canción al usuario
-      await supabase.from('user_songs').insert({
-        'user_id': user.id,
-        'song_id': songId.toString(),
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
-      // Actualizar las monedas localmente
+      // Actualizar monedas localmente en ambos casos
       setState(() {
         totalCoins = newCoins;
       });
-
-      debugPrint(
-          'Song purchased successfully: ${song['name']}, new coins: $newCoins');
     } catch (e) {
       debugPrint('Error purchasing song: $e');
 
-      // Verificar si es un error específico de monedas
       if (e.toString().contains('Monedas insuficientes')) {
         throw Exception(
             'No tienes suficientes monedas para comprar esta canción');
@@ -468,6 +554,7 @@ class _MusicPageState extends State<MusicPage> {
 
   Future<void> refreshCoins() async {
     await fetchUserCoins();
+    await _syncPendingPurchases(); // Sincronizar compras pendientes
   }
 
   Color getDifficultyColor(String difficulty) {
@@ -945,7 +1032,8 @@ class _MusicPageState extends State<MusicPage> {
                                             MaterialPageRoute(
                                               builder: (context) => PlayPage(
                                                 songId: song['id'].toString(),
-                                                songName: song['name'] ?? 'Sin nombre',
+                                                songName: song['name'] ??
+                                                    'Sin nombre',
                                               ),
                                             ),
                                           );
@@ -962,7 +1050,9 @@ class _MusicPageState extends State<MusicPage> {
                                         }
                                       },
                                       icon: Icon(
-                                        isOwned ? Icons.music_note : Icons.monetization_on,
+                                        isOwned
+                                            ? Icons.music_note
+                                            : Icons.monetization_on,
                                         color: Colors.white,
                                         size: 16,
                                       ),
@@ -974,8 +1064,11 @@ class _MusicPageState extends State<MusicPage> {
                                         ),
                                       ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: isOwned ? Colors.blue : Colors.amber,
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        backgroundColor: isOwned
+                                            ? Colors.blue
+                                            : Colors.amber,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
                                         minimumSize: const Size(60, 32),
                                       ),
                                     );
@@ -983,11 +1076,14 @@ class _MusicPageState extends State<MusicPage> {
                                 ),
                                 onTap: () async {
                                   // Verificar si el usuario posee la canción
-                                  final isOwned = await _checkUserOwnsSong(song['id']);
-                                  
-                                  debugPrint('Song ID: ${song['id']}, Type: ${song['id'].runtimeType}');
+                                  final isOwned =
+                                      await _checkUserOwnsSong(song['id']);
+
+                                  debugPrint(
+                                      'Song ID: ${song['id']}, Type: ${song['id'].runtimeType}');
                                   debugPrint('Song Name: ${song['name']}');
-                                  
+                                  debugPrint('Is Owned: $isOwned');
+
                                   if (isOwned) {
                                     // Si posee la canción, ir directamente a PlayPage
                                     Navigator.push(
@@ -995,7 +1091,8 @@ class _MusicPageState extends State<MusicPage> {
                                       MaterialPageRoute(
                                         builder: (context) => PlayPage(
                                           songId: song['id'].toString(),
-                                          songName: song['name'] ?? 'Sin nombre',
+                                          songName:
+                                              song['name'] ?? 'Sin nombre',
                                         ),
                                       ),
                                     );
@@ -1059,21 +1156,173 @@ class _MusicPageState extends State<MusicPage> {
   }
 
   Future<bool> _checkUserOwnsSong(dynamic songId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      // Verificar que la caja esté abierta antes de usarla
+      if (!Hive.isBoxOpen('user_owned_songs')) {
+        debugPrint('user_owned_songs box not opened, checking only server');
+
+        // Si no está abierta la caja, verificar solo en el servidor
+        final isOnline = await _checkConnectivity();
+        if (isOnline) {
+          final response = await supabase
+              .from('user_songs')
+              .select('user_id')
+              .eq('user_id', user.id)
+              .eq('song_id', songId.toString())
+              .maybeSingle();
+          return response != null;
+        }
+        return false;
+      }
+
+      final ownedBox = Hive.box('user_owned_songs');
+      final isOnline = await _checkConnectivity();
+
+      // Primero revisar caché local
+      final cachedOwnedSongs = ownedBox.get(user.id, defaultValue: <String>[]);
+      final isOwnedLocally = cachedOwnedSongs.contains(songId.toString());
+
+      if (isOnline) {
+        try {
+          // Verificar en el servidor si está online
+          final response = await supabase
+              .from('user_songs')
+              .select('user_id')
+              .eq('user_id', user.id)
+              .eq('song_id', songId.toString())
+              .maybeSingle();
+
+          final isOwnedOnServer = response != null;
+
+          // Actualizar caché local con el resultado del servidor
+          if (isOwnedOnServer && !isOwnedLocally) {
+            cachedOwnedSongs.add(songId.toString());
+            await ownedBox.put(user.id, cachedOwnedSongs);
+          } else if (!isOwnedOnServer && isOwnedLocally) {
+            cachedOwnedSongs.remove(songId.toString());
+            await ownedBox.put(user.id, cachedOwnedSongs);
+          }
+
+          return isOwnedOnServer;
+        } catch (e) {
+          debugPrint('Error checking ownership online, using cache: $e');
+          return isOwnedLocally;
+        }
+      } else {
+        // Si está offline, usar solo caché local
+        debugPrint('Offline - checking ownership from cache: $isOwnedLocally');
+        return isOwnedLocally;
+      }
+    } catch (e) {
+      debugPrint('Error in _checkUserOwnsSong: $e');
+      return false;
+    }
+  }
+
+  // Función para sincronizar compras pendientes cuando vuelve la conexión
+  Future<void> _syncPendingPurchases() async {
+    try {
+      // Verificar que las cajas estén abiertas antes de usarlas
+      if (!Hive.isBoxOpen('pending_purchases') ||
+          !Hive.isBoxOpen('user_owned_songs')) {
+        debugPrint('Hive boxes not opened yet, skipping sync');
+        return;
+      }
+
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) {
+        debugPrint('No internet connection, skipping sync');
+        return;
+      }
+
+      final pendingBox = Hive.box('pending_purchases');
+      final ownedBox = Hive.box('user_owned_songs');
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        debugPrint('No user logged in, skipping sync');
+        return;
+      }
+
+      final pendingPurchases =
+          pendingBox.get('purchases', defaultValue: <String>[]);
+
+      if (pendingPurchases.isNotEmpty) {
+        debugPrint('Syncing ${pendingPurchases.length} pending purchases');
+
+        for (String songId in List<String>.from(pendingPurchases)) {
+          try {
+            // Verificar si ya existe la compra en el servidor
+            final existing = await supabase
+                .from('user_songs')
+                .select('user_id')
+                .eq('user_id', user.id)
+                .eq('song_id', songId)
+                .maybeSingle();
+
+            if (existing == null) {
+              // No existe, crear la entrada
+              await supabase.from('user_songs').insert({
+                'user_id': user.id,
+                'song_id': songId,
+                'created_at': DateTime.now().toIso8601String(),
+              });
+              debugPrint('Synced purchase for song: $songId');
+            }
+
+            // Mantener en caché local
+            final userOwnedSongs =
+                ownedBox.get(user.id, defaultValue: <String>[]);
+            if (!userOwnedSongs.contains(songId)) {
+              userOwnedSongs.add(songId);
+              await ownedBox.put(user.id, userOwnedSongs);
+            }
+          } catch (e) {
+            debugPrint('Error syncing purchase for song $songId: $e');
+            continue; // Continuar con la siguiente canción
+          }
+        }
+
+        // Limpiar compras pendientes después de sincronizar
+        await pendingBox.delete('purchases');
+        debugPrint('Pending purchases synced and cleared');
+      }
+
+      // Sincronizar canciones poseídas desde el servidor
+      await _syncOwnedSongsFromServer();
+    } catch (e) {
+      debugPrint('Error syncing pending purchases: $e');
+    }
+  }
+
+  // Función para sincronizar canciones poseídas desde el servidor
+  Future<void> _syncOwnedSongsFromServer() async {
     try {
       final user = supabase.auth.currentUser;
-      if (user == null) return false;
+      if (user == null) return;
+
+      // Verificar que la caja esté abierta
+      if (!Hive.isBoxOpen('user_owned_songs')) {
+        debugPrint('user_owned_songs box not opened, skipping server sync');
+        return;
+      }
+
+      final ownedBox = Hive.box('user_owned_songs');
 
       final response = await supabase
           .from('user_songs')
-          .select('user_id') // Cambiar de 'id' a 'user_id'
-          .eq('user_id', user.id)
-          .eq('song_id', songId.toString())
-          .maybeSingle();
+          .select('song_id')
+          .eq('user_id', user.id);
 
-      return response != null;
+      final ownedSongIds =
+          response.map((item) => item['song_id'].toString()).toList();
+      await ownedBox.put(user.id, ownedSongIds);
+
+      debugPrint('Synced ${ownedSongIds.length} owned songs from server');
     } catch (e) {
-      debugPrint('Error checking if user owns song: $e');
-      return false;
+      debugPrint('Error syncing owned songs from server: $e');
     }
   }
 }

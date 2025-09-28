@@ -14,8 +14,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 Timer? _timer;
 
 class PlayPage extends StatefulWidget {
-  final String songId; // ID de la canción
-  final String songName; // Nombre de la canción
+  final String songId;
+  final String songName;
 
   const PlayPage({
     super.key,
