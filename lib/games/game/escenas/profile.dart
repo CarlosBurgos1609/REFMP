@@ -64,11 +64,26 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   List<Map<String, dynamic>> userFavoriteSongs = [];
   int totalFavoriteSongs = 0;
 
+  bool _isDisposed = false; // Agregar esta variable para control adicional
+
+  @override
+  void dispose() {
+    _isDisposed = true; // Marcar como disposed
+    super.dispose();
+  }
+
+  // Función helper para verificar si es seguro actualizar el estado
+  bool _canUpdateState() {
+    return mounted && !_isDisposed;
+  }
+
   @override
   void initState() {
     super.initState();
     _initializeHive();
     _checkConnectivityStatus().then((isOnline) {
+      if (!_canUpdateState()) return; // Verificar antes de continuar
+
       _initializeUserData();
       fetchUserProfileImage();
       fetchWallpaper();
@@ -78,16 +93,26 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         fetchTotalAvailableObjects(),
         fetchUserFavoriteSongs(),
       ]).then((_) {
-        if (mounted) {
-          setState(() {}); // Asegura la actualización de la UI
+        if (_canUpdateState()) {
+          setState(
+              () {}); // Asegurar la actualización de la UI solo si es seguro
+        }
+      }).catchError((error) {
+        debugPrint('Error in initialization: $error');
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_canUpdateState()) {
+          _loadImageHeight();
         }
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadImageHeight();
-      });
+    }).catchError((error) {
+      debugPrint('Error checking connectivity: $error');
     });
 
     Connectivity().onConnectivityChanged.listen((result) async {
+      if (!_canUpdateState()) return;
+
       bool isOnline = result != ConnectivityResult.none;
       try {
         final result = await InternetAddress.lookup('google.com');
@@ -96,16 +121,20 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         debugPrint('Error en verificación de internet: $e');
         isOnline = false;
       }
-      setState(() {
-        _isOnline = isOnline;
-      });
-      if (isOnline) {
+
+      if (_canUpdateState()) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+      }
+
+      if (isOnline && _canUpdateState()) {
         await _syncPendingActions();
         await fetchUserObjects();
         await fetchUserAchievements();
         await fetchTotalAvailableObjects();
         await fetchUserFavoriteSongs();
-        if (mounted) {
+        if (_canUpdateState()) {
           setState(() {}); // Actualizar UI después de sincronizar
         }
       }
@@ -134,9 +163,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       debugPrint('Error en verificación de internet: $e');
       isOnline = false;
     }
-    setState(() {
-      _isOnline = isOnline;
-    });
+
+    if (_canUpdateState()) {
+      setState(() {
+        _isOnline = isOnline;
+      });
+    }
     return isOnline;
   }
 
@@ -175,21 +207,23 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
   Future<void> fetchTotalCoins() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null || !_canUpdateState()) return;
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_coins_$userId';
 
     try {
       if (!_isOnline) {
-        setState(() {
-          totalCoins = box.get(cacheKey, defaultValue: totalCoins);
-          nickname = box.get('user_nickname_$userId', defaultValue: nickname);
-          pointsXpTotally = box.get('points_xp_totally_$userId',
-              defaultValue: pointsXpTotally);
-          pointsXpWeekend = box.get('points_xp_weekend_$userId',
-              defaultValue: pointsXpWeekend);
-        });
+        if (_canUpdateState()) {
+          setState(() {
+            totalCoins = box.get(cacheKey, defaultValue: totalCoins);
+            nickname = box.get('user_nickname_$userId', defaultValue: nickname);
+            pointsXpTotally = box.get('points_xp_totally_$userId',
+                defaultValue: pointsXpTotally);
+            pointsXpWeekend = box.get('points_xp_weekend_$userId',
+                defaultValue: pointsXpWeekend);
+          });
+        }
         return;
       }
 
@@ -199,7 +233,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .eq('user_id', userId)
           .maybeSingle();
 
-      if (response != null) {
+      if (response != null && _canUpdateState()) {
         setState(() {
           totalCoins = response['coins'] as int? ?? totalCoins;
           nickname = response['nickname'] as String? ?? nickname;
@@ -215,14 +249,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       }
     } catch (e) {
       debugPrint('Error al obtener datos del usuario: $e');
-      setState(() {
-        totalCoins = box.get(cacheKey, defaultValue: totalCoins);
-        nickname = box.get('user_nickname_$userId', defaultValue: nickname);
-        pointsXpTotally =
-            box.get('points_xp_totally_$userId', defaultValue: pointsXpTotally);
-        pointsXpWeekend =
-            box.get('points_xp_weekend_$userId', defaultValue: pointsXpWeekend);
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          totalCoins = box.get(cacheKey, defaultValue: totalCoins);
+          nickname = box.get('user_nickname_$userId', defaultValue: nickname);
+          pointsXpTotally = box.get('points_xp_totally_$userId',
+              defaultValue: pointsXpTotally);
+          pointsXpWeekend = box.get('points_xp_weekend_$userId',
+              defaultValue: pointsXpWeekend);
+        });
+      }
     }
   }
 
@@ -288,7 +324,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
   Future<void> fetchUserProfileImage() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null || !_canUpdateState()) return;
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_profile_image_$userId';
@@ -306,9 +342,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             ? cachedProfileImage
             : profileImageProvider.profileImageUrl ??
                 'assets/images/refmmp.png';
-        setState(() {
-          profileImageUrl = profileImagePath;
-        });
+
+        if (_canUpdateState()) {
+          setState(() {
+            profileImageUrl = profileImagePath;
+          });
+        }
         profileImageProvider.updateProfileImage(profileImagePath,
             notify: true, isOnline: false);
         return;
@@ -326,6 +365,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       String? imageUrl;
       String? userTable;
       for (String table in tables) {
+        if (!_canUpdateState()) return; // Verificar en cada iteración
+
         final response = await supabase
             .from(table)
             .select('profile_image')
@@ -348,8 +389,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           break;
         }
       }
+
+      if (!_canUpdateState()) return;
+
       imageUrl ??=
           profileImageProvider.profileImageUrl ?? 'assets/images/refmmp.png';
+
       setState(() {
         profileImageUrl = imageUrl;
       });
@@ -361,20 +406,22 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       }
     } catch (e) {
       debugPrint('Error al obtener la imagen del perfil: $e');
-      final cachedProfileImage = box.get(cacheKey,
-          defaultValue: profileImageProvider.profileImageUrl ??
-              'assets/images/refmmp.png');
-      setState(() {
-        profileImageUrl = cachedProfileImage;
-      });
-      profileImageProvider.updateProfileImage(cachedProfileImage,
-          notify: true, isOnline: false);
+      if (_canUpdateState()) {
+        final cachedProfileImage = box.get(cacheKey,
+            defaultValue: profileImageProvider.profileImageUrl ??
+                'assets/images/refmmp.png');
+        setState(() {
+          profileImageUrl = cachedProfileImage;
+        });
+        profileImageProvider.updateProfileImage(cachedProfileImage,
+            notify: true, isOnline: false);
+      }
     }
   }
 
   Future<void> fetchWallpaper() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null || !_canUpdateState()) return;
 
     final box = Hive.box('offline_data');
     final cacheKey = 'user_wallpaper_$userId';
@@ -391,9 +438,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                 File(cachedWallpaper).existsSync())
             ? cachedWallpaper
             : profileImageProvider.wallpaperUrl ?? 'assets/images/refmmp.png';
-        setState(() {
-          wallpaperUrl = wallpaperPath;
-        });
+
+        if (_canUpdateState()) {
+          setState(() {
+            wallpaperUrl = wallpaperPath;
+          });
+        }
         profileImageProvider.updateWallpaper(wallpaperPath,
             notify: true, isOnline: false);
         await _loadImageHeight();
@@ -405,6 +455,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .select('wallpapers')
           .eq('user_id', userId)
           .maybeSingle();
+
+      if (!_canUpdateState()) return;
 
       String? imageUrl = response != null && response['wallpapers'] != null
           ? response['wallpapers']
@@ -422,61 +474,29 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               profileImageProvider.wallpaperUrl ?? 'assets/images/refmmp.png';
         }
       }
-      setState(() {
-        wallpaperUrl = imageUrl;
-      });
+
+      if (_canUpdateState()) {
+        setState(() {
+          wallpaperUrl = imageUrl;
+        });
+      }
       profileImageProvider.updateWallpaper(imageUrl!,
           notify: true, isOnline: true);
       await box.put(cacheKey, imageUrl);
       await _loadImageHeight();
     } catch (e) {
       debugPrint('Error al obtener el fondo de pantalla: $e');
-      final cachedWallpaper = box.get(cacheKey,
-          defaultValue:
-              profileImageProvider.wallpaperUrl ?? 'assets/images/refmmp.png');
-      setState(() {
-        wallpaperUrl = cachedWallpaper;
-      });
-      profileImageProvider.updateWallpaper(cachedWallpaper,
-          notify: true, isOnline: false);
-      await _loadImageHeight();
-    }
-  }
-
-  Future<void> _loadImageHeight() async {
-    final profileImageProvider =
-        Provider.of<ProfileImageProvider>(context, listen: false);
-    final wallpaperUrl = profileImageProvider.wallpaperUrl;
-
-    if (wallpaperUrl == null || wallpaperUrl.isEmpty) {
-      setState(() {
-        expandedHeight = 200.0;
-      });
-      return;
-    }
-
-    try {
-      late ImageProvider imageProvider;
-      if (wallpaperUrl.startsWith('assets/')) {
-        imageProvider = AssetImage(wallpaperUrl);
-      } else if (!wallpaperUrl.startsWith('http') &&
-          File(wallpaperUrl).existsSync()) {
-        imageProvider = FileImage(File(wallpaperUrl));
-      } else {
-        imageProvider = NetworkImage(wallpaperUrl);
+      if (_canUpdateState()) {
+        final cachedWallpaper = box.get(cacheKey,
+            defaultValue: profileImageProvider.wallpaperUrl ??
+                'assets/images/refmmp.png');
+        setState(() {
+          wallpaperUrl = cachedWallpaper;
+        });
+        profileImageProvider.updateWallpaper(cachedWallpaper,
+            notify: true, isOnline: false);
+        await _loadImageHeight();
       }
-
-      final image = await _loadImage(imageProvider);
-      final screenWidth = MediaQuery.of(context).size.width;
-      final aspectRatio = image.width / image.height;
-      setState(() {
-        expandedHeight = screenWidth / aspectRatio;
-      });
-    } catch (e) {
-      debugPrint('Error loading image height: $e');
-      setState(() {
-        expandedHeight = 200.0;
-      });
     }
   }
 
@@ -501,18 +521,65 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     return await completer.future;
   }
 
+  Future<void> _loadImageHeight() async {
+    if (!_canUpdateState()) return;
+
+    final profileImageProvider =
+        Provider.of<ProfileImageProvider>(context, listen: false);
+    final wallpaperUrl = profileImageProvider.wallpaperUrl;
+
+    if (wallpaperUrl == null || wallpaperUrl.isEmpty) {
+      if (_canUpdateState()) {
+        setState(() {
+          expandedHeight = 200.0;
+        });
+      }
+      return;
+    }
+
+    try {
+      late ImageProvider imageProvider;
+      if (wallpaperUrl.startsWith('assets/')) {
+        imageProvider = AssetImage(wallpaperUrl);
+      } else if (!wallpaperUrl.startsWith('http') &&
+          File(wallpaperUrl).existsSync()) {
+        imageProvider = FileImage(File(wallpaperUrl));
+      } else {
+        imageProvider = NetworkImage(wallpaperUrl);
+      }
+
+      final image = await _loadImage(imageProvider);
+      if (_canUpdateState()) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final aspectRatio = image.width / image.height;
+        setState(() {
+          expandedHeight = screenWidth / aspectRatio;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading image height: $e');
+      if (_canUpdateState()) {
+        setState(() {
+          expandedHeight = 200.0;
+        });
+      }
+    }
+  }
+
   Future<void> fetchTotalAvailableObjects() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null || !_canUpdateState()) return;
 
     final box = Hive.box('offline_data');
     final cacheKey = 'total_available_objects_$userId';
 
     try {
       if (!_isOnline) {
-        setState(() {
-          totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
-        });
+        if (_canUpdateState()) {
+          setState(() {
+            totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
+          });
+        }
         return;
       }
 
@@ -520,22 +587,26 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           await supabase.from('objets').select('id').count(CountOption.exact);
 
       final count = response.count;
-      setState(() {
-        totalAvailableObjects = count;
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          totalAvailableObjects = count;
+        });
+      }
       await box.put(cacheKey, count);
     } catch (e) {
       debugPrint('Error fetching total available objects: $e');
-      setState(() {
-        totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          totalAvailableObjects = box.get(cacheKey, defaultValue: 0);
+        });
+      }
     }
   }
 
   Future<void> fetchUserAchievements() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('Error: userId is null');
+    if (userId == null || !_canUpdateState()) {
+      debugPrint('Error: userId is null or widget disposed');
       return;
     }
 
@@ -548,17 +619,20 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     try {
       if (!_isOnline) {
         final cachedAchievements = box.get(cacheKey, defaultValue: []);
-        setState(() {
-          userAchievements = List<Map<String, dynamic>>.from(
-            cachedAchievements
-                .map((item) => Map<String, dynamic>.from(item as Map)),
-          ).take(3).toList();
-          totalAchievements =
-              box.get(countCacheKey, defaultValue: cachedAchievements.length);
-        });
+        if (_canUpdateState()) {
+          setState(() {
+            userAchievements = List<Map<String, dynamic>>.from(
+              cachedAchievements
+                  .map((item) => Map<String, dynamic>.from(item as Map)),
+            ).take(3).toList();
+            totalAchievements =
+                box.get(countCacheKey, defaultValue: cachedAchievements.length);
+          });
+        }
         debugPrint(
             'Offline: Loaded ${userAchievements.length} achievements from cache');
         for (var item in userAchievements) {
+          if (!_canUpdateState()) return;
           final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
           final objectCacheKey = 'achievement_image_${item['id']}';
           final localImagePath =
@@ -566,7 +640,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           item['local_image_path'] = localImagePath;
           _gifVisibility['achievement_${item['id']}'] = true;
         }
-        setState(() {});
+        if (_canUpdateState()) {
+          setState(() {});
+        }
         return;
       }
 
@@ -578,8 +654,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .order('created_at', ascending: false)
           .limit(3);
 
+      if (!_canUpdateState()) return;
+
       final List<Map<String, dynamic>> fetchedAchievements = [];
       for (var item in response) {
+        if (!_canUpdateState()) return;
         final achievement = item['achievements'] as Map<String, dynamic>;
         final imageUrl = achievement['image'] ?? 'assets/images/refmmp.png';
         final objectCacheKey = 'achievement_image_${item['id']}';
@@ -596,38 +675,44 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         _gifVisibility['achievement_${item['id']}'] = true;
       }
 
+      if (!_canUpdateState()) return;
+
       final countResponse = await supabase
           .from('users_achievements')
           .select('id')
           .eq('user_id', userId)
           .count(CountOption.exact);
 
-      setState(() {
-        userAchievements = fetchedAchievements;
-        totalAchievements = countResponse.count;
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          userAchievements = fetchedAchievements;
+          totalAchievements = countResponse.count;
+        });
+      }
       await box.put(cacheKey, fetchedAchievements);
       await box.put(countCacheKey, countResponse.count);
       debugPrint('Online: Fetched ${fetchedAchievements.length} achievements');
     } catch (e, stackTrace) {
       debugPrint(
           'Error fetching user achievements: $e\nStack trace: $stackTrace');
-      setState(() {
-        final cachedAchievements = box.get(cacheKey, defaultValue: []);
-        userAchievements = List<Map<String, dynamic>>.from(
-          cachedAchievements
-              .map((item) => Map<String, dynamic>.from(item as Map)),
-        ).take(3).toList();
-        totalAchievements =
-            box.get(countCacheKey, defaultValue: cachedAchievements.length);
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          final cachedAchievements = box.get(cacheKey, defaultValue: []);
+          userAchievements = List<Map<String, dynamic>>.from(
+            cachedAchievements
+                .map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
+          totalAchievements =
+              box.get(countCacheKey, defaultValue: cachedAchievements.length);
+        });
+      }
     }
   }
 
   Future<void> fetchUserObjects() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('Error: userId is null');
+    if (userId == null || !_canUpdateState()) {
+      debugPrint('Error: userId is null or widget disposed');
       return;
     }
 
@@ -640,15 +725,19 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     try {
       if (!_isOnline) {
         final cachedObjects = box.get(cacheKey, defaultValue: []);
-        setState(() {
-          userObjects = List<Map<String, dynamic>>.from(
-            cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
-          ).take(3).toList();
-          totalObjects =
-              box.get(countCacheKey, defaultValue: cachedObjects.length);
-        });
+        if (_canUpdateState()) {
+          setState(() {
+            userObjects = List<Map<String, dynamic>>.from(
+              cachedObjects
+                  .map((item) => Map<String, dynamic>.from(item as Map)),
+            ).take(3).toList();
+            totalObjects =
+                box.get(countCacheKey, defaultValue: cachedObjects.length);
+          });
+        }
         debugPrint('Offline: Loaded ${userObjects.length} objects from cache');
         for (var item in userObjects) {
+          if (!_canUpdateState()) return;
           final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
           final objectCacheKey = 'object_image_${item['id']}';
           final localImagePath =
@@ -656,7 +745,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           item['local_image_path'] = localImagePath;
           _gifVisibility['${item['id']}'] = true;
         }
-        setState(() {});
+        if (_canUpdateState()) {
+          setState(() {});
+        }
         return;
       }
 
@@ -668,8 +759,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .order('created_at', ascending: false, referencedTable: 'objets')
           .limit(3);
 
+      if (!_canUpdateState()) return;
+
       final List<Map<String, dynamic>> fetchedObjects = [];
       for (var item in response) {
+        if (!_canUpdateState()) return;
         final objet = item['objets'] as Map<String, dynamic>;
         fetchedObjects.add({
           'id': objet['id'],
@@ -683,21 +777,26 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         });
       }
 
+      if (!_canUpdateState()) return;
+
       final countResponse = await supabase
           .from('users_objets')
           .select('objet_id')
           .eq('user_id', userId)
           .count(CountOption.exact);
 
-      setState(() {
-        userObjects = fetchedObjects;
-        totalObjects = countResponse.count;
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          userObjects = fetchedObjects;
+          totalObjects = countResponse.count;
+        });
+      }
       await box.put(cacheKey, fetchedObjects);
       await box.put(countCacheKey, countResponse.count);
       debugPrint('Online: Fetched ${fetchedObjects.length} objects metadata');
 
       for (var item in fetchedObjects) {
+        if (!_canUpdateState()) return;
         final imageUrl = item['image_url'];
         final objectCacheKey = 'object_image_${item['id']}';
         final localImagePath =
@@ -705,25 +804,29 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         item['local_image_path'] = localImagePath;
         _gifVisibility['${item['id']}'] = true;
       }
-      setState(() {});
+      if (_canUpdateState()) {
+        setState(() {});
+      }
       debugPrint('Online: Loaded images for ${fetchedObjects.length} objects');
     } catch (e, stackTrace) {
       debugPrint('Error fetching user objects: $e\nStack trace: $stackTrace');
-      setState(() {
-        final cachedObjects = box.get(cacheKey, defaultValue: []);
-        userObjects = List<Map<String, dynamic>>.from(
-          cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
-        ).take(3).toList();
-        totalObjects =
-            box.get(countCacheKey, defaultValue: cachedObjects.length);
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          final cachedObjects = box.get(cacheKey, defaultValue: []);
+          userObjects = List<Map<String, dynamic>>.from(
+            cachedObjects.map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
+          totalObjects =
+              box.get(countCacheKey, defaultValue: cachedObjects.length);
+        });
+      }
     }
   }
 
   Future<void> fetchUserFavoriteSongs() async {
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) {
-      debugPrint('Error: userId is null');
+    if (userId == null || !_canUpdateState()) {
+      debugPrint('Error: userId is null or widget disposed');
       return;
     }
 
@@ -739,7 +842,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         final cachedCount = box.get(countCacheKey, defaultValue: 0);
         debugPrint(
             'Offline: Attempting to load $cachedCount favorite songs from cache');
-        if (cachedSongs.isNotEmpty) {
+        if (cachedSongs.isNotEmpty && _canUpdateState()) {
           setState(() {
             userFavoriteSongs = List<Map<String, dynamic>>.from(
               cachedSongs.map((item) => Map<String, dynamic>.from(item as Map)),
@@ -749,6 +852,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           debugPrint(
               'Offline: Loaded ${userFavoriteSongs.length} favorite songs from cache');
           for (var item in userFavoriteSongs) {
+            if (!_canUpdateState()) return;
             final imageUrl = item['image'] ?? 'assets/images/refmmp.png';
             final songCacheKey = 'song_image_${item['id']}';
             final localImagePath =
@@ -756,7 +860,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             item['local_image_path'] = localImagePath;
             _gifVisibility['song_${item['id']}'] = true;
           }
-          setState(() {});
+          if (_canUpdateState()) {
+            setState(() {});
+          }
         } else {
           debugPrint('Offline: No cached favorite songs found');
         }
@@ -770,10 +876,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
+      if (!_canUpdateState()) return;
+
       debugPrint('Online: Received response with ${response.length} songs');
 
       final List<Map<String, dynamic>> fetchedSongs = [];
       for (var item in response) {
+        if (!_canUpdateState()) return;
         final song = item['songs'] as Map<String, dynamic>;
         final imageUrl = song['image'] ?? 'assets/images/refmmp.png';
         final songCacheKey = 'song_image_${item['song_id']}';
@@ -789,6 +898,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         _gifVisibility['song_${item['song_id']}'] = true;
       }
 
+      if (!_canUpdateState()) return;
+
       final countResponse = await supabase
           .from('songs_favorite')
           .select('song_id')
@@ -797,26 +908,30 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
       debugPrint('Online: Total favorite songs count: ${countResponse.count}');
 
-      setState(() {
-        userFavoriteSongs = fetchedSongs.take(3).toList();
-        totalFavoriteSongs = countResponse.count;
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          userFavoriteSongs = fetchedSongs.take(3).toList();
+          totalFavoriteSongs = countResponse.count;
+        });
+      }
       await box.put(cacheKey, fetchedSongs);
       await box.put(countCacheKey, countResponse.count);
       debugPrint(
           'Online: Fetched and cached ${fetchedSongs.length} favorite songs');
     } catch (e, stackTrace) {
       debugPrint('Error fetching favorite songs: $e\nStack trace: $stackTrace');
-      final cachedSongs = box.get(cacheKey, defaultValue: []);
-      final cachedCount = box.get(countCacheKey, defaultValue: 0);
-      setState(() {
-        userFavoriteSongs = List<Map<String, dynamic>>.from(
-          cachedSongs.map((item) => Map<String, dynamic>.from(item as Map)),
-        ).take(3).toList();
-        totalFavoriteSongs = cachedCount;
-      });
-      debugPrint(
-          'Fallback: Loaded ${userFavoriteSongs.length} favorite songs from cache');
+      if (_canUpdateState()) {
+        final cachedSongs = box.get(cacheKey, defaultValue: []);
+        final cachedCount = box.get(countCacheKey, defaultValue: 0);
+        setState(() {
+          userFavoriteSongs = List<Map<String, dynamic>>.from(
+            cachedSongs.map((item) => Map<String, dynamic>.from(item as Map)),
+          ).take(3).toList();
+          totalFavoriteSongs = cachedCount;
+        });
+        debugPrint(
+            'Fallback: Loaded ${userFavoriteSongs.length} favorite songs from cache');
+      }
     }
   }
 
@@ -849,11 +964,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
         cachedObjects.add(item);
         await box.put('user_objects_$userId', cachedObjects);
-        setState(() {
-          totalCoins = newCoins;
-          userObjects.add(item);
-          totalObjects++;
-        });
+        if (_canUpdateState()) {
+          setState(() {
+            totalCoins = newCoins;
+            userObjects.add(item);
+            totalObjects++;
+          });
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(
@@ -873,11 +990,13 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       final cachedObjects = box.get('user_objects_$userId', defaultValue: []);
       cachedObjects.add(item);
       await box.put('user_objects_$userId', cachedObjects);
-      setState(() {
-        totalCoins = newCoins;
-        userObjects.add(item);
-        totalObjects++;
-      });
+      if (_canUpdateState()) {
+        setState(() {
+          totalCoins = newCoins;
+          userObjects.add(item);
+          totalObjects++;
+        });
+      }
       await fetchUserObjects();
     } catch (e) {
       debugPrint('Error al comprar objeto: $e');
@@ -919,9 +1038,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             'timestamp': DateTime.now().toIso8601String(),
           });
           await box.put('user_profile_image_$userId', localImagePath);
-          setState(() {
-            profileImageUrl = localImagePath;
-          });
+          if (_canUpdateState()) {
+            setState(() {
+              profileImageUrl = localImagePath;
+            });
+          }
           profileImageProvider.updateProfileImage(localImagePath,
               notify: true, isOnline: false, userTable: table);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -935,9 +1056,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               .update({'profile_image': imageUrl}).eq('user_id', userId);
           await box.put('user_profile_image_$userId', localImagePath);
           await box.put('user_table_$userId', table);
-          setState(() {
-            profileImageUrl = localImagePath;
-          });
+          if (_canUpdateState()) {
+            setState(() {
+              profileImageUrl = localImagePath;
+            });
+          }
           profileImageProvider.updateProfileImage(localImagePath,
               notify: true, isOnline: true, userTable: table);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -954,9 +1077,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             'timestamp': DateTime.now().toIso8601String(),
           });
           await box.put('user_wallpaper_$userId', localImagePath);
-          setState(() {
-            wallpaperUrl = localImagePath;
-          });
+          if (_canUpdateState()) {
+            setState(() {
+              wallpaperUrl = localImagePath;
+            });
+          }
           profileImageProvider.updateWallpaper(localImagePath,
               notify: true, isOnline: false);
           await _loadImageHeight();
@@ -970,9 +1095,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               .from('users_games')
               .update({'wallpapers': imageUrl}).eq('user_id', userId);
           await box.put('user_wallpaper_$userId', localImagePath);
-          setState(() {
-            wallpaperUrl = localImagePath;
-          });
+          if (_canUpdateState()) {
+            setState(() {
+              wallpaperUrl = localImagePath;
+            });
+          }
           profileImageProvider.updateWallpaper(localImagePath,
               notify: true, isOnline: true);
           await _loadImageHeight();
@@ -1034,9 +1161,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               }
               final box = Hive.box('offline_data');
               await box.put('user_coins_$userId', newCoins);
-              setState(() {
-                totalCoins = newCoins;
-              });
+              if (_canUpdateState()) {
+                setState(() {
+                  totalCoins = newCoins;
+                });
+              }
             }
           } else if (actionType == 'use_wallpaper') {
             final imageUrl = action['image_url'] as String?;
@@ -1050,9 +1179,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               }
               final box = Hive.box('offline_data');
               await box.put('user_wallpaper_$userId', localPath);
-              setState(() {
-                wallpaperUrl = localPath;
-              });
+              if (_canUpdateState()) {
+                setState(() {
+                  wallpaperUrl = localPath;
+                });
+              }
               final profileImageProvider =
                   Provider.of<ProfileImageProvider>(context, listen: false);
               profileImageProvider.updateWallpaper(localPath,
@@ -1073,9 +1204,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               final box = Hive.box('offline_data');
               await box.put('user_profile_image_$userId', localPath);
               await box.put('user_table_$userId', table);
-              setState(() {
-                profileImageUrl = localPath;
-              });
+              if (_canUpdateState()) {
+                setState(() {
+                  profileImageUrl = localPath;
+                });
+              }
               final profileImageProvider =
                   Provider.of<ProfileImageProvider>(context, listen: false);
               profileImageProvider.updateProfileImage(localPath,
@@ -1338,9 +1471,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               final box = Hive.box('offline_data');
                               await box.put(
                                   'user_nickname_$userId', newNickname);
-                              setState(() {
-                                nickname = newNickname;
-                              });
+                              if (_canUpdateState()) {
+                                setState(() {
+                                  nickname = newNickname;
+                                });
+                              }
 
                               showDialog(
                                 context: context,
@@ -2023,34 +2158,32 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Column(
-                                      children: [
-                                        Text(
-                                          'XP Total',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                    Column(children: [
+                                      Text(
+                                        'XP Total',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
                                         ),
-                                        Row(
-                                          children: [
-                                            Icon(Icons.bolt,
-                                                color: Colors.yellow, size: 20),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              numberFormat
-                                                  .format(pointsXpTotally),
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.bolt,
+                                              color: Colors.yellow, size: 20),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            numberFormat
+                                                .format(pointsXpTotally),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
                                             ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                                          ),
+                                        ],
+                                      ),
+                                    ]),
                                   ],
                                 ),
                               ),
