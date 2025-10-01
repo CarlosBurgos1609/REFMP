@@ -712,31 +712,58 @@ class _CupPageState extends State<CupPage> {
               // Información de monedas adicionales
               if (hasObject && hasCoins) ...[
                 Container(
+                  width: double
+                      .infinity, // Asegurar que use todo el ancho disponible
                   padding:
-                      const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     color: Colors.amber.shade50,
                     border: Border.all(color: Colors.amber, width: 1),
                   ),
-                  child: Row(
+                  child: Column(
+                    // Cambiar de Row a Column
                     mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.center, // Centrar el contenido
                     children: [
-                      Image.asset(
-                        'assets/images/coin.png',
-                        width: 20,
-                        height: 20,
-                        fit: BoxFit.contain,
+                      // Línea 1: Icono y texto "Bonus adicional"
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/images/coin.png',
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                              Icons.monetization_on,
+                              size: 24,
+                              color: Colors.amber,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Bonus adicional',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.amber.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(height: 4), // Espacio entre líneas
+                      // Línea 2: Símbolo + y cantidad de monedas
                       Text(
-                        '+$coins monedas adicionales',
+                        '+$coins monedas',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 18,
                           color: Colors.amber.shade700,
                           fontWeight: FontWeight.bold,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -1084,37 +1111,37 @@ class _CupPageState extends State<CupPage> {
                               // Construir contenido según el tipo de recompensa
                               if (hasObject && hasCoins) {
                                 // Caso: Objeto + Monedas
-                                rewardContent = Row(
+                                rewardContent = Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        shape: objectCategory == 'avatares'
-                                            ? BoxShape.circle
-                                            : BoxShape.rectangle,
-                                        borderRadius:
-                                            objectCategory != 'avatares'
-                                                ? BorderRadius.circular(8)
-                                                : null,
-                                        border: Border.all(
-                                            color: Colors.blue, width: 1.5),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius:
-                                            objectCategory == 'avatares'
-                                                ? BorderRadius.circular(20)
-                                                : BorderRadius.circular(8),
-                                        child: imageWidget,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
+                                    // Primera fila: Imagen y nombre del objeto
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            shape: objectCategory == 'avatares'
+                                                ? BoxShape.circle
+                                                : BoxShape.rectangle,
+                                            borderRadius:
+                                                objectCategory != 'avatares'
+                                                    ? BorderRadius.circular(8)
+                                                    : null,
+                                            border: Border.all(
+                                                color: Colors.blue, width: 1.5),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                objectCategory == 'avatares'
+                                                    ? BorderRadius.circular(20)
+                                                    : BorderRadius.circular(8),
+                                            child: imageWidget,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
                                             objectName,
                                             style: TextStyle(
                                               fontSize: 16,
@@ -1122,31 +1149,57 @@ class _CupPageState extends State<CupPage> {
                                               fontWeight: FontWeight.bold,
                                             ),
                                             overflow: TextOverflow.ellipsis,
+                                            maxLines:
+                                                2, // Permitir hasta 2 líneas para el nombre
                                           ),
-                                          Row(
-                                            children: [
-                                              Image.asset(
-                                                'assets/images/coin.png',
-                                                width: 16,
-                                                height: 16,
-                                                fit: BoxFit.contain,
-                                                errorBuilder: (context, error,
-                                                        stackTrace) =>
-                                                    const Icon(
-                                                        Icons.monetization_on,
-                                                        size: 16,
-                                                        color: Colors.amber),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                '+$coins monedas',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.amber.shade700,
-                                                  fontWeight: FontWeight.w600,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    // Segunda fila: Solo las monedas con padding para alinear
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 52),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize
+                                            .min, // Agregar esto para evitar overflow
+                                        children: [
+                                          Flexible(
+                                            // Cambiar a Flexible en lugar de usar directamente
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Image.asset(
+                                                  'assets/images/coin.png',
+                                                  width: 16,
+                                                  height: 16,
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (context, error,
+                                                          stackTrace) =>
+                                                      const Icon(
+                                                    Icons.monetization_on,
+                                                    size: 16,
+                                                    color: Colors.amber,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(width: 4),
+                                                Flexible(
+                                                  // Hacer el texto flexible
+                                                  child: Text(
+                                                    '+$coins monedas',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color:
+                                                          Colors.amber.shade700,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1154,7 +1207,7 @@ class _CupPageState extends State<CupPage> {
                                   ],
                                 );
                               } else if (hasObject && !hasCoins) {
-                                // Caso: Solo Objeto
+                                // Caso: Solo Objeto - mantener igual
                                 rewardContent = Row(
                                   children: [
                                     Container(
@@ -1189,12 +1242,13 @@ class _CupPageState extends State<CupPage> {
                                           fontWeight: FontWeight.bold,
                                         ),
                                         overflow: TextOverflow.ellipsis,
+                                        maxLines: 2,
                                       ),
                                     ),
                                   ],
                                 );
                               } else if (!hasObject && hasCoins) {
-                                // Caso: Solo Monedas
+                                // Caso: Solo Monedas - mejorar también
                                 rewardContent = Row(
                                   children: [
                                     Container(
@@ -1229,12 +1283,14 @@ class _CupPageState extends State<CupPage> {
                                           color: Colors.blue.shade700,
                                           fontWeight: FontWeight.bold,
                                         ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
                                       ),
                                     ),
                                   ],
                                 );
                               } else {
-                                // Caso: Sin recompensa
+                                // Caso: Sin recompensa - mantener igual
                                 rewardContent = Row(
                                   children: [
                                     Container(
@@ -1250,7 +1306,7 @@ class _CupPageState extends State<CupPage> {
                                           color: Colors.grey),
                                     ),
                                     const SizedBox(width: 12),
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
                                         'Sin premio asignado',
                                         style: TextStyle(
@@ -1258,6 +1314,8 @@ class _CupPageState extends State<CupPage> {
                                           color: Colors.grey,
                                           fontStyle: FontStyle.italic,
                                         ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
                                       ),
                                     ),
                                   ],
@@ -1273,30 +1331,48 @@ class _CupPageState extends State<CupPage> {
                                           hasCoins
                                       ? () => _showRewardDialog(context, reward)
                                       : null,
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.emoji_events_rounded,
-                                        color: trophyColor,
-                                        size: 28,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      SizedBox(
-                                        width: 120,
-                                        child: Text(
-                                          positionText,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blue,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: (hasObject &&
+                                                  objectDescription != null) ||
+                                              hasCoins
+                                          ? Colors.blue.withOpacity(0.05)
+                                          : Colors.transparent,
+                                    ),
+                                    child: IntrinsicHeight(
+                                      // Agregar esto para mejor control de altura
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(
+                                            Icons.emoji_events_rounded,
+                                            color: trophyColor,
+                                            size: 28,
                                           ),
-                                        ),
+                                          const SizedBox(width: 8),
+                                          SizedBox(
+                                            width: 120,
+                                            child: Text(
+                                              positionText,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.blue,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: rewardContent,
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(child: rewardContent),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               );
