@@ -26,8 +26,12 @@ class _QuestionPageState extends State<QuestionPage> {
   int correctAnswers = 0;
   int incorrectAnswers = 0;
   int totalExperience = 0;
+  int videoExperiencePoints = 0; // Puntos específicos para videos
+  int gameExperiencePoints = 0; // Puntos específicos para juegos
   bool answered = false;
   bool showSummary = false;
+  bool dialogShown =
+      false; // Nueva variable para evitar mostrar múltiples diálogos
   String? selectedOption;
   YoutubePlayerController? _youtubeController;
   String? videoUrl;
@@ -37,8 +41,17 @@ class _QuestionPageState extends State<QuestionPage> {
     super.initState();
     loadQuestions();
     if (widget.sublevelType == 'Video') {
-      loadVideoUrl(); // Nueva función
+      loadVideoUrl();
+    } else if (widget.sublevelType == 'Game') {
+      loadGameExperiencePoints();
     }
+  }
+
+  @override
+  void dispose() {
+    // Limpiar el controlador de YouTube cuando el widget se destruye
+    _youtubeController?.dispose();
+    super.dispose();
   }
 
   Future<void> loadQuestions() async {
@@ -85,12 +98,14 @@ class _QuestionPageState extends State<QuestionPage> {
     try {
       final response = await supabase
           .from('video')
-          .select('video_url')
+          .select('video_url, experience_points')
           .eq('sublevel_id', widget.sublevelId)
           .maybeSingle();
 
       if (response != null && response['video_url'] != null) {
         videoUrl = response['video_url'];
+        videoExperiencePoints =
+            response['experience_points'] ?? 0; // Obtener puntos del video
 
         final videoId = YoutubePlayer.convertUrlToId(videoUrl!);
         if (videoId != null) {
@@ -107,6 +122,25 @@ class _QuestionPageState extends State<QuestionPage> {
       if (mounted) setState(() {});
     } catch (e) {
       print('Error al cargar el video: $e');
+    }
+  }
+
+  Future<void> loadGameExperiencePoints() async {
+    final supabase = Supabase.instance.client;
+
+    try {
+      final response = await supabase
+          .from('game')
+          .select('experience_points')
+          .eq('sublevel_id', widget.sublevelId)
+          .maybeSingle();
+
+      if (response != null) {
+        gameExperiencePoints = response['experience_points'] ?? 0;
+        debugPrint('Puntos de experiencia del juego: $gameExperiencePoints');
+      }
+    } catch (e) {
+      debugPrint('Error al cargar puntos del juego: $e');
     }
   }
 
@@ -144,9 +178,22 @@ class _QuestionPageState extends State<QuestionPage> {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
-      if (user == null || totalExperience <= 0) return;
+      if (user == null) {
+        debugPrint('Error: Usuario no autenticado');
+        return;
+      }
 
-      // Verificar en qué tabla está el usuario
+      if (totalExperience <= 0) {
+        debugPrint('No hay puntos de experiencia para guardar');
+        return;
+      }
+
+      debugPrint('Iniciando guardado de puntos de experiencia...');
+      debugPrint('Usuario ID: ${user.id}');
+      debugPrint('Puntos a guardar: $totalExperience');
+
+      // 1. Actualizar puntos en tabla de perfil del usuario
+      bool profileUpdated = false;
       List<String> tables = [
         'users',
         'students',
@@ -157,28 +204,109 @@ class _QuestionPageState extends State<QuestionPage> {
       ];
 
       for (String table in tables) {
-        final userRecord = await supabase
-            .from(table)
-            .select('points_xp')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-        if (userRecord != null) {
-          final currentXP = userRecord['points_xp'] ?? 0;
-          final newXP = currentXP + totalExperience;
-
-          // Actualizar puntos de experiencia
-          await supabase
+        try {
+          final userRecord = await supabase
               .from(table)
-              .update({'points_xp': newXP}).eq('user_id', user.id);
+              .select('points_xp')
+              .eq('user_id', user.id)
+              .maybeSingle();
 
-          debugPrint(
-              'Puntos de experiencia actualizados: +$totalExperience (Total: $newXP)');
-          break;
+          if (userRecord != null) {
+            final currentXP = userRecord['points_xp'] ?? 0;
+            final newXP = currentXP + totalExperience;
+
+            // Actualizar puntos de experiencia en tabla de perfil
+            await supabase
+                .from(table)
+                .update({'points_xp': newXP}).eq('user_id', user.id);
+
+            debugPrint('✅ Perfil actualizado en tabla: $table');
+            debugPrint('   XP anterior: $currentXP → XP nuevo: $newXP');
+            profileUpdated = true;
+            break;
+          }
+        } catch (e) {
+          debugPrint('Error verificando tabla $table: $e');
+          continue;
         }
       }
+
+      if (!profileUpdated) {
+        debugPrint('⚠️ No se encontró perfil de usuario en ninguna tabla');
+      }
+
+      // 2. Actualizar puntos en users_games (total y semanal)
+      await _updateUserGamePoints();
+
+      debugPrint('✅ Guardado de puntos completado exitosamente');
     } catch (e) {
-      debugPrint('Error al guardar puntos de experiencia: $e');
+      debugPrint('❌ Error crítico al guardar puntos de experiencia: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  Future<void> _updateUserGamePoints() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null || totalExperience <= 0) return;
+
+      debugPrint('Actualizando puntos para usuario: ${user.id}');
+      debugPrint('Puntos a agregar: $totalExperience');
+
+      // Verificar si el usuario ya tiene registro en users_games
+      final existingRecord = await supabase
+          .from('users_games')
+          .select('points_xp_totally, points_xp_weekend, coins')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existingRecord != null) {
+        // Actualizar registro existente
+        final currentTotal = existingRecord['points_xp_totally'] ?? 0;
+        final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
+        final currentCoins = existingRecord['coins'] ?? 0;
+
+        final newTotal = currentTotal + totalExperience;
+        final newWeekend = currentWeekend + totalExperience;
+        final newCoins =
+            currentCoins + (totalExperience ~/ 10); // 1 moneda cada 10 XP
+
+        final updateResult = await supabase.from('users_games').update({
+          'points_xp_totally': newTotal,
+          'points_xp_weekend': newWeekend,
+          'coins': newCoins,
+        }).eq('user_id', user.id);
+
+        debugPrint('Resultado de actualización: $updateResult');
+        debugPrint('Puntos actualizados en users_games:');
+        debugPrint('  - XP agregados: +$totalExperience');
+        debugPrint('  - Total XP: $newTotal');
+        debugPrint('  - XP semanal: $newWeekend');
+        debugPrint('  - Monedas: $newCoins (+${totalExperience ~/ 10})');
+      } else {
+        // Crear nuevo registro si no existe
+        final newCoins = totalExperience ~/ 10;
+
+        final insertResult = await supabase.from('users_games').insert({
+          'user_id': user.id,
+          'nickname': 'Usuario', // Valor por defecto
+          'points_xp_totally': totalExperience,
+          'points_xp_weekend': totalExperience,
+          'coins': newCoins,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
+        debugPrint('Resultado de inserción: $insertResult');
+        debugPrint('Nuevo registro creado en users_games:');
+        debugPrint('  - XP total: $totalExperience');
+        debugPrint('  - XP semanal: $totalExperience');
+        debugPrint('  - Monedas: $newCoins');
+      }
+    } catch (e) {
+      debugPrint('Error al actualizar users_games: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -215,6 +343,30 @@ class _QuestionPageState extends State<QuestionPage> {
               _buildCheckItem('✅ Viste todo el video completo'),
               _buildCheckItem('✅ Entendiste el contenido'),
               _buildCheckItem('✅ Estás listo para continuar'),
+              if (videoExperiencePoints > 0) ...[
+                SizedBox(height: 16),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.stars, color: Colors.green, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        '¡Ganarás $videoExperiencePoints puntos XP!',
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -234,7 +386,13 @@ class _QuestionPageState extends State<QuestionPage> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
+                // Guardar puntos de experiencia del video si los tiene
+                if (videoExperiencePoints > 0) {
+                  totalExperience = videoExperiencePoints;
+                  await _saveExperiencePoints();
+                }
+
                 Navigator.of(context).pop(); // Cerrar diálogo
                 Navigator.pop(
                     context, true); // Marcar como completado y regresar
@@ -245,6 +403,213 @@ class _QuestionPageState extends State<QuestionPage> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _showCongratulationsDialog() {
+    // Verificar que el widget aún esté montado antes de mostrar el diálogo
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // No se puede cerrar tocando fuera
+      builder: (BuildContext context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.white,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.8,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Icono de éxito
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    size: 50,
+                    color: Colors.green[600],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Título de felicitaciones
+                Text(
+                  '¡Felicitaciones!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[700],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+
+                // Subtítulo
+                Text(
+                  'Has completado el quiz exitosamente',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+
+                // Resultados
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Respuestas correctas:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          Text(
+                            '$correctAnswers',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Respuestas incorrectas:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          Text(
+                            '$incorrectAnswers',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (totalExperience > 0) ...[
+                        SizedBox(height: 12),
+                        Divider(color: Colors.grey[300]),
+                        SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.stars, color: Colors.amber, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              '¡Ganaste $totalExperience puntos XP!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Botones
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                        ),
+                        onPressed: () async {
+                          // Guardar puntos y regresar
+                          if (correctAnswers > 0) {
+                            await _saveExperiencePoints();
+                          }
+                          if (mounted) {
+                            Navigator.of(context).pop(); // Cerrar diálogo
+                            Navigator.pop(context, correctAnswers > 0);
+                          }
+                        },
+                        child: Text(
+                          'Atrás',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[600],
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          elevation: 2,
+                        ),
+                        onPressed: () async {
+                          // Guardar puntos y continuar
+                          if (correctAnswers > 0) {
+                            await _saveExperiencePoints();
+                          }
+                          if (mounted) {
+                            Navigator.of(context).pop(); // Cerrar diálogo
+                            Navigator.pop(context, correctAnswers > 0);
+                          }
+                        },
+                        child: Text(
+                          'Continuar',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -272,6 +637,17 @@ class _QuestionPageState extends State<QuestionPage> {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     if (showSummary) {
+      // Mostrar diálogo de felicitaciones solo una vez
+      if (!dialogShown) {
+        dialogShown = true;
+        // Usar Future.microtask en lugar de addPostFrameCallback para evitar problemas de contexto
+        Future.microtask(() {
+          if (mounted) {
+            _showCongratulationsDialog();
+          }
+        });
+      }
+
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -293,61 +669,7 @@ class _QuestionPageState extends State<QuestionPage> {
           ),
           centerTitle: true,
         ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('¡Has finalizado!',
-                  style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue)),
-              SizedBox(height: 16),
-              Text(
-                'Correctas: $correctAnswers',
-                style: TextStyle(
-                  color: Colors.green.shade300,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                'Incorrectas: $incorrectAnswers',
-                style: TextStyle(
-                  color: Colors.red.shade900.withOpacity(0.6),
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                'Puntos de Experiencia ganados: $totalExperience',
-                style: TextStyle(
-                  color: Colors.blue.shade300,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  // Guardar puntos de experiencia si completó exitosamente
-                  if (correctAnswers > 0) {
-                    await _saveExperiencePoints();
-                  }
-                  // Retornar true si completó al menos una pregunta correctamente
-                  // o si es un video (automáticamente completado)
-                  Navigator.pop(context,
-                      correctAnswers > 0 || widget.sublevelType == 'Video');
-                },
-                child: Text(
-                  'Volver',
-                  style: TextStyle(color: Colors.blue),
-                ),
-              ),
-            ],
-          ),
-        ),
+        body: Container(), // Pantalla vacía porque se mostrará el diálogo
       );
     }
     if (widget.sublevelType == 'Video' && _youtubeController != null) {
@@ -506,6 +828,33 @@ class _QuestionPageState extends State<QuestionPage> {
                       ],
                     ),
                     const SizedBox(height: 40),
+                    if (gameExperiencePoints > 0) ...[
+                      Container(
+                        margin: EdgeInsets.symmetric(horizontal: 40),
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.green[200]!),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.stars, color: Colors.green, size: 24),
+                            SizedBox(width: 8),
+                            Text(
+                              '¡Completa y gana $gameExperiencePoints puntos XP!',
+                              style: TextStyle(
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
@@ -515,7 +864,13 @@ class _QuestionPageState extends State<QuestionPage> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      onPressed: () {
+                      onPressed: () async {
+                        // Guardar puntos de experiencia del juego si los tiene
+                        if (gameExperiencePoints > 0) {
+                          totalExperience = gameExperiencePoints;
+                          await _saveExperiencePoints();
+                        }
+
                         // Marcar juego como completado
                         Navigator.pop(context, true);
                       },
