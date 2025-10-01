@@ -59,7 +59,7 @@ class _QuestionPageState extends State<QuestionPage> {
             .eq('sublevel_id', widget.sublevelId);
 
         questions = List<Map<String, dynamic>>.from(response);
-      } else
+      }
 
       // Detiene la ejecución si el widget ya no está montado
       if (!mounted) return;
@@ -139,6 +139,134 @@ class _QuestionPageState extends State<QuestionPage> {
     }
   }
 
+  Future<void> _saveExperiencePoints() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null || totalExperience <= 0) return;
+
+      // Verificar en qué tabla está el usuario
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        final userRecord = await supabase
+            .from(table)
+            .select('points_xp')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (userRecord != null) {
+          final currentXP = userRecord['points_xp'] ?? 0;
+          final newXP = currentXP + totalExperience;
+
+          // Actualizar puntos de experiencia
+          await supabase
+              .from(table)
+              .update({'points_xp': newXP}).eq('user_id', user.id);
+
+          debugPrint(
+              'Puntos de experiencia actualizados: +$totalExperience (Total: $newXP)');
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al guardar puntos de experiencia: $e');
+    }
+  }
+
+  void _showCompletionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              SizedBox(width: 10),
+              Text(
+                '¿Completaste el video?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Antes de marcar como completado, asegúrate de que:',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 12),
+              _buildCheckItem('✅ Viste todo el video completo'),
+              _buildCheckItem('✅ Entendiste el contenido'),
+              _buildCheckItem('✅ Estás listo para continuar'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar diálogo
+                Navigator.pop(
+                    context, true); // Marcar como completado y regresar
+              },
+              child: Text(
+                'Sí, completado',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCheckItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -186,7 +314,15 @@ class _QuestionPageState extends State<QuestionPage> {
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              // Guardar puntos de experiencia si completó exitosamente
+              if (correctAnswers > 0) {
+                await _saveExperiencePoints();
+              }
+              // Retornar true si completó al menos una pregunta correctamente
+              Navigator.pop(context,
+                  correctAnswers > 0 || widget.sublevelType == 'Video');
+            },
           ),
           centerTitle: true,
         ),
@@ -227,7 +363,16 @@ class _QuestionPageState extends State<QuestionPage> {
               ),
               SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () async {
+                  // Guardar puntos de experiencia si completó exitosamente
+                  if (correctAnswers > 0) {
+                    await _saveExperiencePoints();
+                  }
+                  // Retornar true si completó al menos una pregunta correctamente
+                  // o si es un video (automáticamente completado)
+                  Navigator.pop(context,
+                      correctAnswers > 0 || widget.sublevelType == 'Video');
+                },
                 child: Text(
                   'Volver',
                   style: TextStyle(color: Colors.blue),
@@ -247,7 +392,8 @@ class _QuestionPageState extends State<QuestionPage> {
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(
+                context, false), // No completado si sale sin marcar
           ),
           centerTitle: true,
         ),
@@ -256,15 +402,87 @@ class _QuestionPageState extends State<QuestionPage> {
           builder: (context, player) => Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 player,
                 const SizedBox(height: 20),
-                const Text(
-                  'Observa el video y aprende sobre este Nivel.',
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.play_circle_filled,
+                          size: 48,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          '¡Observa el video completo!',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Aprende sobre este tema y cuando termines, marca como completado para continuar.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+                Container(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 40, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 3,
+                    ),
+                    onPressed: () {
+                      // Mostrar diálogo de confirmación
+                      _showCompletionDialog();
+                    },
+                    icon: const Icon(
+                      Icons.check_circle,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    label: const Text(
+                      'Marcar como Completado',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '💡 Tip: Asegúrate de haber visto todo el video antes de marcarlo como completado',
                   style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold),
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -292,7 +510,8 @@ class _QuestionPageState extends State<QuestionPage> {
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_ios_rounded,
                       color: Colors.blue),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(
+                      context, false), // No completado si sale sin terminar
                 ),
               ),
               body: Center(
@@ -319,6 +538,29 @@ class _QuestionPageState extends State<QuestionPage> {
                             width: 70, height: 70),
                       ],
                     ),
+                    const SizedBox(height: 40),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 40, vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () {
+                        // Marcar juego como completado
+                        Navigator.pop(context, true);
+                      },
+                      child: const Text(
+                        'Completar Juego',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -338,7 +580,8 @@ class _QuestionPageState extends State<QuestionPage> {
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(
+                context, false), // No completado si sale durante carga
           ),
           centerTitle: true,
         ),
@@ -369,7 +612,8 @@ class _QuestionPageState extends State<QuestionPage> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(
+              context, false), // No completado si sale durante quiz
         ),
         centerTitle: true,
       ),
