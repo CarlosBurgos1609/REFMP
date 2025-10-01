@@ -15,3 +15,17 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+>[!IMPORTANT]
+>
+>```sql
+>DO $$
+>DECLARE
+>  r RECORD;
+>BEGIN
+>  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN ('storage.objects', 'auth.users')  -- >Excluye tablas de sistema si es necesario
+>  LOOP
+>    PERFORM setup_rls_policies_for_table(r.tablename);
+>  END LOOP;
+>END $$;
+>
+>```

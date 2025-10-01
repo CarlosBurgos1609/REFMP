@@ -211,11 +211,12 @@ class _LearningPageState extends State<LearningPage> {
               .count();
 
           if (totalSublevels.count > 0) {
-            // Obtener subniveles completados por el usuario
+            // Obtener subniveles completados por el usuario para este nivel específico
             final completedSublevels = await supabase
                 .from('users_sublevels')
                 .select('sublevel_id')
                 .eq('user_id', user.id)
+                .eq('level_id', levelId)
                 .eq('completed', true)
                 .count();
 

@@ -270,39 +270,6 @@ class _QuestionPageState extends State<QuestionPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    if (widget.sublevelType == 'Video' && _youtubeController != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            widget.sublevelTitle,
-            style: TextStyle(
-                color: Colors.blue, fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-            onPressed: () => Navigator.pop(context),
-          ),
-          centerTitle: true,
-        ),
-        body: YoutubePlayerBuilder(
-          player: YoutubePlayer(controller: _youtubeController!),
-          builder: (context, player) => Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                player,
-                const SizedBox(height: 20),
-                Text(
-                  'Observa el video y aprende sobre este subnivel.',
-                  style: const TextStyle(fontSize: 18, color: Colors.blue),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
 
     if (showSummary) {
       return Scaffold(
