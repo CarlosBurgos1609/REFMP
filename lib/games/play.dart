@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:refmp/details/instrumentsDetails.dart';
 import 'package:refmp/games/learning.dart';
+import 'package:refmp/games/scens_game/begginer_game.dart';
+import 'package:refmp/games/scens_game/medium_game.dart';
+import 'package:refmp/games/scens_game/dificult_game.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -491,6 +494,203 @@ class _PlayPageState extends State<PlayPage> {
       default:
         return Colors.grey;
     }
+  }
+
+  // Función para navegar a la página de juego según el nivel
+  void _navigateToGame(Map<String, dynamic> level) {
+    // ignore: unnecessary_null_comparison
+    if (level == null || level.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: Nivel no válido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final levelName = level['name']?.toString().toLowerCase() ?? '';
+    final songName = song!['name'] ?? '';
+    final songId = song!['id']?.toString() ?? '';
+
+    debugPrint(
+        'Navegando con nivel: $levelName, songName: $songName, songId: $songId');
+
+    if (levelName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: Nombre de nivel no disponible'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    Widget targetPage;
+
+    // Mapear nombres de nivel a páginas específicas con múltiples variaciones
+    if (_isBeginnerLevel(levelName)) {
+      targetPage = BegginnerGamePage(
+        songName: songName,
+        songId: songId,
+      );
+      debugPrint('Navegando a BegginnerGamePage');
+    } else if (_isMediumLevel(levelName)) {
+      targetPage = MediumGamePage(
+        songName: songName,
+        songId: songId,
+      );
+      debugPrint('Navegando a MediumGamePage');
+    } else if (_isDifficultLevel(levelName)) {
+      targetPage = DificultGamePage(
+        songName: songName,
+        songId: songId,
+      );
+      debugPrint('Navegando a DificultGamePage');
+    } else {
+      // Si no coincide con ningún patrón conocido, mostrar opciones disponibles
+      debugPrint('Nivel no reconocido: $levelName');
+      _showLevelNotRecognizedDialog(levelName, songName, songId);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => targetPage),
+    );
+  }
+
+  // Funciones auxiliares para determinar el tipo de nivel
+  bool _isBeginnerLevel(String levelName) {
+    final beginnerKeywords = [
+      'principiante',
+      'beginner',
+      'básico',
+      'basico',
+      'fácil',
+      'facil',
+      'nivel 1',
+      'level 1',
+      'inicio',
+      'start',
+      'elemental'
+    ];
+    return beginnerKeywords.any((keyword) => levelName.contains(keyword));
+  }
+
+  bool _isMediumLevel(String levelName) {
+    final mediumKeywords = [
+      'intermedio',
+      'intermediate',
+      'medio',
+      'medium',
+      'nivel 2',
+      'level 2',
+      'moderado',
+      'moderate'
+    ];
+    return mediumKeywords.any((keyword) => levelName.contains(keyword));
+  }
+
+  bool _isDifficultLevel(String levelName) {
+    final difficultKeywords = [
+      'avanzado',
+      'advanced',
+      'difícil',
+      'dificil',
+      'experto',
+      'expert',
+      'nivel 3',
+      'level 3',
+      'maestro',
+      'master',
+      'superior'
+    ];
+    return difficultKeywords.any((keyword) => levelName.contains(keyword));
+  }
+
+  // Diálogo para nivel no reconocido
+  void _showLevelNotRecognizedDialog(
+      String levelName, String songName, String songId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Nivel no reconocido'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                  'El nivel "$levelName" no se pudo categorizar automáticamente.'),
+              const SizedBox(height: 16),
+              const Text('¿A qué tipo de juego te gustaría ir?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BegginnerGamePage(
+                      songName: songName,
+                      songId: songId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Principiante'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MediumGamePage(
+                      songName: songName,
+                      songId: songId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Intermedio'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DificultGamePage(
+                      songName: songName,
+                      songId: songId,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Avanzado'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LearningPage(
+                      instrumentName:
+                          song!['instruments']?['name'] ?? 'Unknown',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Aprendizaje'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -1028,20 +1228,9 @@ class _PlayPageState extends State<PlayPage> {
                                                         onPressed: () {
                                                           debugPrint(
                                                               'Navegando a nivel: ${level['name']} con ID: ${level['id']}');
-                                                          // Navegar al nivel específico
-                                                          Navigator.push(
-                                                            context,
-                                                            MaterialPageRoute(
-                                                              builder: (context) =>
-                                                                  LearningPage(
-                                                                instrumentName:
-                                                                    song!['instruments']
-                                                                            ?[
-                                                                            'name'] ??
-                                                                        'Unknown',
-                                                              ),
-                                                            ),
-                                                          );
+                                                          // Navegar al nivel específico según el tipo de nivel
+                                                          _navigateToGame(
+                                                              level);
                                                         },
                                                         icon: const Icon(
                                                             Icons
