@@ -124,6 +124,8 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  // Actualizar la función fetchSongDetails para corregir la consulta:
+
   Future<void> fetchSongDetails() async {
     final box = Hive.box('offline_data');
     final cacheKey = 'song_${widget.songId}_${widget.songName}';
@@ -138,15 +140,19 @@ class _PlayPageState extends State<PlayPage> {
         bool isNumericId = RegExp(r'^\d+$').hasMatch(widget.songId);
 
         PostgrestFilterBuilder query = supabase.from('songs').select(
-            'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)');
+            'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)'); // Removido songs_level
 
         // Aplicar filtros según el tipo de ID
         if (isNumericId) {
+          // ID numérico - buscar por ID como entero y nombre
           query = query
               .eq('id', int.parse(widget.songId))
               .eq('name', widget.songName);
         } else {
-          query = query.eq('id', widget.songId).eq('name', widget.songName);
+          // UUID - buscar por ID como string y nombre
+          query = query
+              .eq('id', widget.songId) // No parsear como int
+              .eq('name', widget.songName);
         }
 
         final response = await query.maybeSingle();
@@ -158,12 +164,13 @@ class _PlayPageState extends State<PlayPage> {
         } else {
           // Si no se encuentra por ID y nombre exactos, intentar solo por ID
           PostgrestFilterBuilder fallbackQuery = supabase.from('songs').select(
-              'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)');
+              'id, name, image, mp3_file, artist, difficulty, instrument, instruments(name, image, id)'); // Removido songs_level
 
           if (isNumericId) {
             fallbackQuery = fallbackQuery.eq('id', int.parse(widget.songId));
           } else {
-            fallbackQuery = fallbackQuery.eq('id', widget.songId);
+            fallbackQuery =
+                fallbackQuery.eq('id', widget.songId); // No parsear como int
           }
 
           final fallbackResponse = await fallbackQuery.maybeSingle();
@@ -190,6 +197,7 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  // Actualizar también _processSongResponse para manejar la ausencia de levels:
   Future<void> _processSongResponse(
       Map<String, dynamic> response, Box box, String cacheKey) async {
     // Verificar propiedad de la canción
@@ -247,6 +255,7 @@ class _PlayPageState extends State<PlayPage> {
 
     // Intentar obtener niveles por separado usando la tabla song_levels
     try {
+      // Asegurar que el song_id sea una string UUID válida
       String songIdStr = response['id'].toString();
       debugPrint(
           'Fetching levels for song ID: $songIdStr (type: ${response['id'].runtimeType})');
@@ -294,7 +303,8 @@ class _PlayPageState extends State<PlayPage> {
 
     setState(() {
       song = response;
-      levels = List<Map<String, dynamic>>.from(response['levels'] ?? []);
+      levels = List<Map<String, dynamic>>.from(
+          response['levels'] ?? []); // Asegurar el tipo correcto
       isFavorite = response['is_favorite'] ?? false;
       isLoading = false;
     });
@@ -302,51 +312,25 @@ class _PlayPageState extends State<PlayPage> {
     debugPrint('Updated state - levels count: ${levels.length}');
     debugPrint('Levels data: $levels');
 
-    // Guardar datos completos en caché, incluyendo los niveles
     await box.put(cacheKey, response);
-
-    // Guardar niveles por separado para acceso offline específico
-    if (response['levels'] != null && response['levels'].isNotEmpty) {
-      final levelsKey = 'levels_${response['id']}';
-      await box.put(levelsKey, response['levels']);
-      debugPrint('Levels saved to offline cache with key: $levelsKey');
-    }
-
     debugPrint('Song data saved to Hive with key: $cacheKey');
   }
 
+  // Actualizar _loadFromCache para manejar la nueva estructura:
   void _loadFromCache(Box box, String cacheKey) {
     final cachedSong = box.get(cacheKey);
     debugPrint('Cached song: $cachedSong');
     if (cachedSong != null) {
-      // Cargar datos básicos de la canción
-      Map<String, dynamic> songData = Map<String, dynamic>.from(cachedSong);
-
-      // Intentar cargar niveles desde caché específico de niveles
-      final levelsKey = 'levels_${songData['id']}';
-      final cachedLevels = box.get(levelsKey);
-
-      if (cachedLevels != null) {
-        songData['levels'] = cachedLevels;
-        debugPrint('Loaded ${cachedLevels.length} levels from offline cache');
-      } else if (songData['levels'] != null) {
-        debugPrint('Using levels from main song cache');
-      } else {
-        songData['levels'] = [];
-        debugPrint('No levels found in cache');
-      }
-
       setState(() {
-        song = songData;
-        levels = songData['levels'] != null
-            ? List<Map<String, dynamic>>.from(songData['levels']
+        song = Map<String, dynamic>.from(cachedSong);
+        levels = cachedSong['levels'] != null
+            ? List<Map<String, dynamic>>.from(cachedSong['levels']
                 .map((level) => Map<String, dynamic>.from(level)))
             : [];
-        isFavorite = songData['is_favorite'] ?? false;
+        isFavorite = cachedSong['is_favorite'] ?? false;
         isLoading = false;
       });
-      debugPrint(
-          'Loaded song from cache: ${song!['name']} with ${levels.length} levels');
+      debugPrint('Loaded song from cache: ${song!['name']}');
     } else {
       setState(() {
         song = null;
@@ -378,10 +362,13 @@ class _PlayPageState extends State<PlayPage> {
     final pendingBox = Hive.box('pending_favorite_actions');
     final isOnline = await _checkConnectivity();
 
+    // Update favorite state immediately
     setState(() {
       isFavorite = !isFavorite;
       song!['is_favorite'] = isFavorite;
     });
+
+    // Update cache with new favorite status
 
     if (isOnline) {
       try {
@@ -401,30 +388,49 @@ class _PlayPageState extends State<PlayPage> {
         }
       } catch (e) {
         debugPrint('Error toggling favorite online: $e');
+        // Queue the action if online attempt fails
         await pendingBox.add({
           'user_id': user.id,
           'song_id': song!['id'],
           'action': isFavorite ? 'add' : 'remove',
           'timestamp': DateTime.now().toIso8601String(),
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Acción guardada para sincronizar cuando estés en línea')),
+        );
       }
     } else {
+      // Queue the action when offline
       await pendingBox.add({
         'user_id': user.id,
         'song_id': song!['id'],
         'action': isFavorite ? 'add' : 'remove',
         'timestamp': DateTime.now().toIso8601String(),
       });
+      debugPrint('Favorite action queued offline');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('Acción guardada para sincronizar cuando estés en línea')),
+      );
     }
   }
 
   Future<void> _syncPendingFavorites() async {
     final pendingBox = Hive.box('pending_favorite_actions');
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      debugPrint('No user logged in for syncing favorites');
+      return;
+    }
 
     final pendingActions = pendingBox.values.toList();
-    if (pendingActions.isEmpty) return;
+    if (pendingActions.isEmpty) {
+      debugPrint('No pending favorite actions to sync');
+      return;
+    }
 
     try {
       for (var action in pendingActions) {
@@ -432,7 +438,10 @@ class _PlayPageState extends State<PlayPage> {
         final songId = action['song_id'];
         final actionType = action['action'];
 
-        if (userId != user.id) continue;
+        if (userId != user.id) {
+          debugPrint('Skipping action for different user: $userId');
+          continue;
+        }
 
         try {
           if (actionType == 'add') {
@@ -440,20 +449,24 @@ class _PlayPageState extends State<PlayPage> {
               'user_id': userId,
               'song_id': songId,
             });
+            debugPrint('Synced add favorite for song: $songId');
           } else if (actionType == 'remove') {
             await supabase
                 .from('songs_favorite')
                 .delete()
                 .eq('user_id', userId)
                 .eq('song_id', songId);
+            debugPrint('Synced remove favorite for song: $songId');
           }
         } catch (e) {
           debugPrint('Error syncing favorite action for song $songId: $e');
-          continue;
+          continue; // Continue with next action
         }
 
+        // Remove the processed action
         final index = pendingBox.values.toList().indexOf(action);
         await pendingBox.deleteAt(index);
+        debugPrint('Removed synced action from pending_favorite_actions');
       }
     } catch (e) {
       debugPrint('Error processing pending favorite actions: $e');
@@ -462,15 +475,18 @@ class _PlayPageState extends State<PlayPage> {
 
   Color getDifficultyColor(String difficulty) {
     final normalizedDifficulty = difficulty.trim().toLowerCase();
+    debugPrint('Normalized difficulty: $normalizedDifficulty');
     switch (normalizedDifficulty) {
       case 'fácil':
       case 'facil':
+      case 'Fácil':
         return Colors.green.withOpacity(0.9);
       case 'medio':
-      case 'media':
+      case 'Media':
         return const Color.fromARGB(255, 230, 214, 70);
       case 'difícil':
       case 'dificil':
+      case 'Difícil':
         return Colors.red;
       default:
         return Colors.grey;
@@ -612,12 +628,21 @@ class _PlayPageState extends State<PlayPage> {
                                         color: Colors.blue.withOpacity(0.7),
                                         borderRadius:
                                             BorderRadius.circular(12.0),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            spreadRadius: 2,
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
                                       ),
                                       child: Text(
                                         song!['artist'] ?? 'Desconocido',
                                         style: const TextStyle(
-                                          color: Colors.white,
                                           fontSize: 16,
+                                          color: Colors.white,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         textAlign: TextAlign.center,
@@ -643,12 +668,21 @@ class _PlayPageState extends State<PlayPage> {
                                                 'Desconocida'),
                                         borderRadius:
                                             BorderRadius.circular(12.0),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.2),
+                                            spreadRadius: 2,
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
                                       ),
                                       child: Text(
                                         song!['difficulty'] ?? 'Desconocida',
                                         style: const TextStyle(
-                                          color: Colors.white,
                                           fontSize: 16,
+                                          color: Colors.white,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         textAlign: TextAlign.center,
@@ -668,70 +702,74 @@ class _PlayPageState extends State<PlayPage> {
                                       width: double.infinity,
                                       child: GestureDetector(
                                         onTap: () {
-                                          if (song!['instruments'] != null) {
+                                          final instrumentId =
+                                              song!['instruments']?['id'] ?? 0;
+                                          if (instrumentId != 0) {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
                                                 builder: (context) =>
                                                     InstrumentDetailPage(
-                                                  instrumentId: int.parse(
-                                                      song!['instruments']['id']
-                                                          .toString()),
-                                                ),
+                                                        instrumentId:
+                                                            instrumentId),
                                               ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                  content: Text(
+                                                      "ID de instrumento no válido")),
                                             );
                                           }
                                         },
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 12),
+                                              horizontal: 12.0, vertical: 8.0),
                                           decoration: BoxDecoration(
-                                            color: Colors.blue.withOpacity(0.7),
+                                            color: Colors.blue.shade300,
                                             borderRadius:
-                                                BorderRadius.circular(12.0),
+                                                BorderRadius.circular(20.0),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withOpacity(0.2),
+                                                spreadRadius: 2,
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
                                           child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
-                                              ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                                child: CachedNetworkImage(
-                                                  imageUrl: song!['instruments']
-                                                          ?['image'] ??
-                                                      '',
-                                                  width: 40,
-                                                  height: 40,
-                                                  fit: BoxFit.cover,
-                                                  placeholder: (context, url) =>
-                                                      const Icon(
-                                                          Icons.music_note,
-                                                          size: 40,
-                                                          color: Colors.white),
-                                                  errorWidget: (context, url,
-                                                          error) =>
-                                                      const Icon(
-                                                          Icons.music_note,
-                                                          size: 40,
-                                                          color: Colors.white),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  song!['instruments']
-                                                          ?['name'] ??
-                                                      'Instrumento desconocido',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
+                                              if (song!['instruments']?['image']
+                                                      ?.isNotEmpty ??
+                                                  false)
+                                                CircleAvatar(
+                                                  backgroundImage:
+                                                      CachedNetworkImageProvider(
+                                                    song!['instruments']
+                                                            ['image'] ??
+                                                        '',
+                                                    cacheManager:
+                                                        CustomCacheManager
+                                                            .instance,
                                                   ),
+                                                  radius: 14,
+                                                  backgroundColor: Colors.white,
                                                 ),
-                                              ),
-                                              const Icon(
-                                                Icons.arrow_forward_ios,
-                                                color: Colors.white,
-                                                size: 16,
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                song!['instruments']?['name'] ??
+                                                    'Desconocido',
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                textAlign: TextAlign.center,
                                               ),
                                             ],
                                           ),
@@ -777,7 +815,7 @@ class _PlayPageState extends State<PlayPage> {
                                           .showSnackBar(
                                         const SnackBar(
                                             content: Text(
-                                                "No hay archivo de audio disponible")),
+                                                "No hay archivo de audio disponible.")),
                                       );
                                       return;
                                     }
@@ -802,6 +840,18 @@ class _PlayPageState extends State<PlayPage> {
                                           throw Exception(
                                               'No audio source available');
                                         }
+
+                                        _timer?.cancel();
+                                        _timer =
+                                            Timer(const Duration(seconds: 30),
+                                                () async {
+                                          await _audioPlayer.pause();
+                                          setState(() {
+                                            isPlaying = false;
+                                          });
+                                          debugPrint(
+                                              'Audio paused after 30 seconds');
+                                        });
                                       } catch (e) {
                                         debugPrint('Error playing audio: $e');
                                         ScaffoldMessenger.of(context)
@@ -881,215 +931,133 @@ class _PlayPageState extends State<PlayPage> {
                                       itemCount: levels.length,
                                       itemBuilder: (context, index) {
                                         final level = levels[index];
-                                        return Container(
-                                          margin:
-                                              const EdgeInsets.only(bottom: 16),
+
+                                        return Padding(
+                                          padding: const EdgeInsets.all(10.0),
                                           child: Card(
-                                            elevation: 6,
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
                                                   BorderRadius.circular(16),
                                             ),
-                                            child: Container(
-                                              height: 140,
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                  colors: [
-                                                    Colors.blue[50]!,
-                                                    Colors.white,
-                                                  ],
+                                            elevation: 4,
+                                            child: Column(
+                                              children: [
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      const BorderRadius
+                                                          .vertical(
+                                                          top: Radius.circular(
+                                                              16)),
+                                                  child: level['image']
+                                                              ?.isNotEmpty ??
+                                                          false
+                                                      ? CachedNetworkImage(
+                                                          imageUrl:
+                                                              level['image'],
+                                                          cacheManager:
+                                                              CustomCacheManager
+                                                                  .instance,
+                                                          fit: BoxFit.cover,
+                                                          width:
+                                                              double.infinity,
+                                                          height: 180,
+                                                          placeholder: (context,
+                                                                  url) =>
+                                                              const Center(
+                                                                  child: CircularProgressIndicator(
+                                                                      color: Colors
+                                                                          .blue)),
+                                                          errorWidget: (context,
+                                                                  url, error) =>
+                                                              const Icon(
+                                                                  Icons
+                                                                      .image_not_supported,
+                                                                  size: 80),
+                                                        )
+                                                      : const Icon(
+                                                          Icons
+                                                              .image_not_supported,
+                                                          size: 80),
                                                 ),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  // Imagen del nivel (lado izquierdo)
-                                                  SizedBox(
-                                                    width: 120,
-                                                    height: double.infinity,
-                                                    child: ClipRRect(
-                                                      borderRadius:
-                                                          const BorderRadius
-                                                              .only(
-                                                        topLeft:
-                                                            Radius.circular(16),
-                                                        bottomLeft:
-                                                            Radius.circular(16),
+                                                Padding(
+                                                  padding: const EdgeInsets.all(
+                                                      12.0),
+                                                  child: Column(
+                                                    children: [
+                                                      Text(
+                                                        level['name'] ??
+                                                            "Nivel ${index + 1}",
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.blue),
                                                       ),
-                                                      child: CachedNetworkImage(
-                                                        imageUrl:
-                                                            level['image'] ??
-                                                                '',
-                                                        fit: BoxFit.cover,
-                                                        placeholder:
-                                                            (context, url) =>
-                                                                Container(
-                                                          color:
-                                                              Colors.grey[200],
-                                                          child: const Center(
-                                                            child:
-                                                                CircularProgressIndicator(
-                                                              color:
-                                                                  Colors.blue,
-                                                              strokeWidth: 2,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        errorWidget: (context,
-                                                                url, error) =>
-                                                            Container(
-                                                          color:
-                                                              Colors.grey[200],
-                                                          child: const Column(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .center,
-                                                            children: [
-                                                              Icon(
-                                                                Icons.school,
-                                                                color:
-                                                                    Colors.grey,
-                                                                size: 30,
-                                                              ),
-                                                              Text(
-                                                                'Sin imagen',
-                                                                style:
-                                                                    TextStyle(
-                                                                  fontSize: 10,
-                                                                  color: Colors
-                                                                      .grey,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
+                                                      const SizedBox(height: 8),
+                                                      Text(
+                                                        level['description'] ??
+                                                            "Practica y aprende con este nivel musical. Desarrolla tus habilidades paso a paso.",
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                            fontSize: 15),
                                                       ),
-                                                    ),
-                                                  ),
-                                                  // Contenido del nivel (lado derecho)
-                                                  Expanded(
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              16),
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .spaceBetween,
-                                                        children: [
-                                                          // Nombre del nivel
-                                                          Text(
-                                                            level['name'] ??
-                                                                'Nivel sin nombre',
-                                                            style:
-                                                                const TextStyle(
-                                                              fontSize: 18,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              color:
-                                                                  Colors.blue,
-                                                            ),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
+                                                      const SizedBox(
+                                                          height: 10),
+                                                      ElevatedButton.icon(
+                                                        style: ElevatedButton
+                                                            .styleFrom(
+                                                          backgroundColor:
+                                                              Colors.blue,
+                                                          shape:
+                                                              RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10),
                                                           ),
-                                                          const SizedBox(
-                                                              height: 8),
-                                                          // Descripción del nivel
-                                                          Expanded(
-                                                            child: Text(
-                                                              level['description'] ??
-                                                                  'Sin descripción disponible',
-                                                              style: TextStyle(
-                                                                fontSize: 14,
-                                                                color: Colors
-                                                                    .grey[700],
-                                                                height: 1.3,
-                                                              ),
-                                                              maxLines: 2,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 12),
-                                                          // Botón "Ir"
-                                                          Align(
-                                                            alignment: Alignment
-                                                                .centerRight,
-                                                            child:
-                                                                ElevatedButton
-                                                                    .icon(
-                                                              onPressed: () {
-                                                                Navigator.push(
-                                                                  context,
-                                                                  MaterialPageRoute(
-                                                                    builder:
-                                                                        (context) =>
-                                                                            LearningPage(
-                                                                      instrumentName: song!['instruments']
-                                                                              ?[
-                                                                              'name'] ??
-                                                                          'Unknown',
-                                                                    ),
-                                                                  ),
-                                                                );
-                                                              },
-                                                              icon: const Icon(
-                                                                Icons
-                                                                    .arrow_forward,
-                                                                color: Colors
-                                                                    .white,
-                                                                size: 18,
-                                                              ),
-                                                              label: const Text(
-                                                                'Ir',
-                                                                style:
-                                                                    TextStyle(
-                                                                  color: Colors
-                                                                      .white,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                ),
-                                                              ),
-                                                              style:
-                                                                  ElevatedButton
-                                                                      .styleFrom(
-                                                                backgroundColor:
-                                                                    Colors.blue,
-                                                                shape:
-                                                                    RoundedRectangleBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              20),
-                                                                ),
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .symmetric(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
                                                                   horizontal:
                                                                       20,
-                                                                  vertical: 8,
-                                                                ),
+                                                                  vertical: 12),
+                                                        ),
+                                                        onPressed: () {
+                                                          debugPrint(
+                                                              'Navegando a nivel: ${level['name']} con ID: ${level['id']}');
+                                                          // Navegar al nivel específico
+                                                          Navigator.push(
+                                                            context,
+                                                            MaterialPageRoute(
+                                                              builder: (context) =>
+                                                                  LearningPage(
+                                                                instrumentName:
+                                                                    song!['instruments']
+                                                                            ?[
+                                                                            'name'] ??
+                                                                        'Unknown',
                                                               ),
                                                             ),
-                                                          ),
-                                                        ],
+                                                          );
+                                                        },
+                                                        icon: const Icon(
+                                                            Icons
+                                                                .school_rounded,
+                                                            color:
+                                                                Colors.white),
+                                                        label: const Text(
+                                                            "Comenzar Nivel",
+                                                            style: TextStyle(
+                                                                color: Colors
+                                                                    .white)),
                                                       ),
-                                                    ),
+                                                    ],
                                                   ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         );
