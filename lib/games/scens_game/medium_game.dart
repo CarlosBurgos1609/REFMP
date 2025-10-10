@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 
 class MediumGamePage extends StatefulWidget {
   final String songName;
@@ -20,6 +21,11 @@ class _MediumGamePageState extends State<MediumGamePage> {
   bool showLogo = true;
   Timer? logoTimer;
 
+  // Estado de los pistones para prevenir pantallazos
+  Set<int> pressedPistons = <int>{};
+  Timer? screenshotPreventionTimer;
+  bool _isScreenshotBlocked = false;
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +36,7 @@ class _MediumGamePageState extends State<MediumGamePage> {
   @override
   void dispose() {
     logoTimer?.cancel();
+    screenshotPreventionTimer?.cancel();
     // Restaurar orientación y barra de estado al salir
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -65,11 +72,111 @@ class _MediumGamePageState extends State<MediumGamePage> {
     });
   }
 
+  void _checkScreenshotPrevention() {
+    if (pressedPistons.length == 3) {
+      // Los 3 pistones están presionados, prevenir pantallazos
+      _enableScreenshotPrevention();
+    } else {
+      // No todos los pistones están presionados, permitir pantallazos
+      _disableScreenshotPrevention();
+    }
+  }
+
+  void _enableScreenshotPrevention() {
+    screenshotPreventionTimer?.cancel();
+    screenshotPreventionTimer = Timer(const Duration(milliseconds: 200), () {
+      if (mounted && pressedPistons.length == 3) {
+        _isScreenshotBlocked = true;
+
+        // Estrategia múltiple para prevenir pantallazos
+        SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.immersiveSticky,
+          overlays: [],
+        );
+
+        // Forzar re-render de la pantalla con contenido seguro
+        setState(() {});
+
+        // Ocultar contenido de la aplicación del recents/overview
+        SystemChrome.setApplicationSwitcherDescription(
+          const ApplicationSwitcherDescription(
+            label: 'REFMP - Juego Seguro',
+            primaryColor: 0xFF000000,
+          ),
+        );
+
+        debugPrint('Screenshot prevention ENABLED - All 3 pistons pressed');
+      }
+    });
+  }
+
+  void _disableScreenshotPrevention() {
+    screenshotPreventionTimer?.cancel();
+    if (mounted) {
+      _isScreenshotBlocked = false;
+
+      // Restaurar modo normal
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.immersiveSticky,
+      );
+
+      // Restaurar descripción normal de la app
+      SystemChrome.setApplicationSwitcherDescription(
+        const ApplicationSwitcherDescription(
+          label: 'REFMP',
+          primaryColor: 0xFFF59E0B,
+        ),
+      );
+
+      debugPrint('Screenshot prevention DISABLED - Not all pistons pressed');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: showLogo ? _buildLogoScreen() : _buildGameScreen(),
+      body: Stack(
+        children: [
+          showLogo ? _buildLogoScreen() : _buildGameScreen(),
+          // Overlay de protección cuando los 3 pistones están presionados
+          if (_isScreenshotBlocked)
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.black,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.security,
+                      color: Colors.orange,
+                      size: 80,
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      'MODO SEGURO ACTIVADO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Contenido protegido',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -392,6 +499,10 @@ class _MediumGamePageState extends State<MediumGamePage> {
     // Feedback háptico
     HapticFeedback.lightImpact();
 
+    // Agregar pistón al conjunto de pistones presionados
+    pressedPistons.add(pistonNumber);
+    _checkScreenshotPrevention();
+
     // Aquí puedes agregar la lógica del juego
     debugPrint('Pistón $pistonNumber presionado');
 
@@ -399,6 +510,10 @@ class _MediumGamePageState extends State<MediumGamePage> {
   }
 
   void _onPistonReleased(int pistonNumber) {
+    // Remover pistón del conjunto de pistones presionados
+    pressedPistons.remove(pistonNumber);
+    _checkScreenshotPrevention();
+
     debugPrint('Pistón $pistonNumber liberado');
 
     // TODO: Implementar lógica del juego
