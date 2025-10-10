@@ -2645,6 +2645,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                       },
                                       child: GestureDetector(
                                         onTap: () {
+                                          debugPrint(
+                                              'Profile.dart navigating to PlayPage');
+                                          debugPrint(
+                                              'Profile Image URL: $profileImageUrl');
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
@@ -2652,6 +2656,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                                 songId: song['id'].toString(),
                                                 songName: song['name'] ??
                                                     'Sin nombre',
+                                                profileImageUrl:
+                                                    profileImageUrl,
                                               ),
                                             ),
                                           );

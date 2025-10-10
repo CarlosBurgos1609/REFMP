@@ -2,22 +2,28 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MediumGamePage extends StatefulWidget {
   final String songName;
   final String? songId;
+  final String? songImageUrl;
+  final String? profileImageUrl;
 
   const MediumGamePage({
     super.key,
     required this.songName,
     this.songId,
+    this.songImageUrl,
+    this.profileImageUrl,
   });
 
   @override
   State<MediumGamePage> createState() => _MediumGamePageState();
 }
 
-class _MediumGamePageState extends State<MediumGamePage> {
+class _MediumGamePageState extends State<MediumGamePage>
+    with TickerProviderStateMixin {
   bool showLogo = true;
   Timer? logoTimer;
 
@@ -26,17 +32,22 @@ class _MediumGamePageState extends State<MediumGamePage> {
   Timer? screenshotPreventionTimer;
   bool _isScreenshotBlocked = false;
 
+  // Controlador de animación para la rotación de la imagen de la canción
+  late AnimationController _rotationController;
+
   @override
   void initState() {
     super.initState();
     _setupScreen();
     _startLogoTimer();
+    _initializeAnimations();
   }
 
   @override
   void dispose() {
     logoTimer?.cancel();
     screenshotPreventionTimer?.cancel();
+    _rotationController.dispose();
     // Restaurar orientación y barra de estado al salir
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -70,6 +81,14 @@ class _MediumGamePageState extends State<MediumGamePage> {
         });
       }
     });
+  }
+
+  void _initializeAnimations() {
+    // Controlador para la rotación continua de la imagen de la canción
+    _rotationController = AnimationController(
+      duration: const Duration(seconds: 8),
+      vsync: this,
+    )..repeat(); // Repetir infinitamente
   }
 
   void _checkScreenshotPrevention() {
@@ -329,7 +348,131 @@ class _MediumGamePageState extends State<MediumGamePage> {
           ),
         ),
 
-        const SizedBox(width: 20),
+        const SizedBox(width: 15),
+
+        // Imagen de perfil (circular y transparente) - VERSION SIMPLE
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withOpacity(0.5),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(27),
+            child: widget.profileImageUrl != null &&
+                    widget.profileImageUrl!.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: widget.profileImageUrl!,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 35,
+                    ),
+                    errorWidget: (context, url, error) => const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 35,
+                    ),
+                  )
+                : const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 35,
+                  ),
+          ),
+        ),
+
+        const SizedBox(width: 15),
+
+        // Imagen de la canción (circular con rotación) - VERSION SIMPLE
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withOpacity(0.5),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(27),
+            child: AnimatedBuilder(
+              animation: _rotationController,
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _rotationController.value * 2.0 * 3.141592653589793,
+                  child: Stack(
+                    children: [
+                      // Imagen de fondo de la canción o color sólido
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.orange,
+                          borderRadius: BorderRadius.circular(27),
+                        ),
+                        child: widget.songImageUrl != null &&
+                                widget.songImageUrl!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: widget.songImageUrl!,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  color: Colors.orange,
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  color: Colors.orange,
+                                ),
+                              )
+                            : Container(
+                                color: Colors.orange,
+                              ),
+                      ),
+                      // Nota musical blanca en el centro
+                      Center(
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.music_note,
+                            color: Colors.orange,
+                            size: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 15),
 
         // Título de la canción
         Expanded(

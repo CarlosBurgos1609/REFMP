@@ -423,12 +423,15 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                           if (category == 'achievements') {
                             showAchievementDialog(context, item);
                           } else if (category == 'songs') {
+                            debugPrint('MyObjects.dart navigating to PlayPage');
+                            debugPrint('Profile Image URL: $profileImageUrl');
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => PlayPage(
                                   songId: item['id'].toString(),
                                   songName: item['name'] ?? 'Sin nombre',
+                                  profileImageUrl: profileImageUrl,
                                 ),
                               ),
                             );

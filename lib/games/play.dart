@@ -20,11 +20,13 @@ Timer? _timer;
 class PlayPage extends StatefulWidget {
   final String songId;
   final String songName;
+  final String? profileImageUrl;
 
   const PlayPage({
     super.key,
     required this.songId,
     required this.songName,
+    this.profileImageUrl,
   });
 
   @override
@@ -44,6 +46,10 @@ class _PlayPageState extends State<PlayPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('PlayPage initialized with:');
+    debugPrint('- Song ID: ${widget.songId}');
+    debugPrint('- Song Name: ${widget.songName}');
+    debugPrint('- Profile Image URL: ${widget.profileImageUrl}');
     _initializeHiveAndFetch();
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() {
@@ -513,8 +519,20 @@ class _PlayPageState extends State<PlayPage> {
     final songName = song!['name'] ?? '';
     final songId = song!['id']?.toString() ?? '';
 
+    // Obtener las URLs de las imágenes
+    final songImageUrl = song!['image'] ?? '';
+    // Priorizar la imagen de perfil recibida, luego imagen del instrumento como fallback
+    final profileImageUrl = widget.profileImageUrl?.isNotEmpty == true
+        ? widget.profileImageUrl!
+        : (song!['instruments']?['image'] ?? '');
+
     debugPrint(
         'Navegando con nivel: $levelName, songName: $songName, songId: $songId');
+    debugPrint('Song Image URL: $songImageUrl');
+    debugPrint('Profile Image URL: $profileImageUrl');
+    debugPrint('Profile Image from widget: ${widget.profileImageUrl}');
+    debugPrint('Profile Image is empty?: ${widget.profileImageUrl?.isEmpty}');
+    debugPrint('Instrument Image: ${song!['instruments']?['image']}');
 
     if (levelName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -533,18 +551,24 @@ class _PlayPageState extends State<PlayPage> {
       targetPage = BegginnerGamePage(
         songName: songName,
         songId: songId,
+        songImageUrl: songImageUrl,
+        profileImageUrl: profileImageUrl,
       );
       debugPrint('Navegando a BegginnerGamePage');
     } else if (_isMediumLevel(levelName)) {
       targetPage = MediumGamePage(
         songName: songName,
         songId: songId,
+        songImageUrl: songImageUrl,
+        profileImageUrl: profileImageUrl,
       );
       debugPrint('Navegando a MediumGamePage');
     } else if (_isDifficultLevel(levelName)) {
       targetPage = DificultGamePage(
         songName: songName,
         songId: songId,
+        songImageUrl: songImageUrl,
+        profileImageUrl: profileImageUrl,
       );
       debugPrint('Navegando a DificultGamePage');
     } else {

@@ -12,8 +12,9 @@ void showSongDialog(
   int totalCoins,
   Future<void> Function(Map<String, dynamic>) playSong,
   Future<void> Function(Map<String, dynamic>) purchaseSong,
-  Future<void> Function() refreshCoins,
-) {
+  Future<void> Function() refreshCoins, {
+  String? profileImageUrl,
+}) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
   final numberFormat = NumberFormat('#,##0', 'es_ES');
 
@@ -240,6 +241,7 @@ void showSongDialog(
                                   builder: (context) => PlayPage(
                                     songId: song['id'].toString(),
                                     songName: song['name'] ?? 'Sin nombre',
+                                    profileImageUrl: profileImageUrl,
                                   ),
                                 ),
                               );
