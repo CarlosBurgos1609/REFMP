@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
@@ -321,6 +322,62 @@ class _MediumGamePageState extends State<MediumGamePage>
     );
   }
 
+  // Método helper para construir la imagen de perfil con soporte para archivos locales y URLs
+  Widget _buildProfileImage(String imageUrl) {
+    // Verificar si es un archivo local
+    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      final file = File(
+          imageUrl.startsWith('file://') ? imageUrl.substring(7) : imageUrl);
+
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(
+              Icons.person,
+              color: Colors.white,
+              size: 35,
+            );
+          },
+        );
+      } else {
+        return const Icon(
+          Icons.person,
+          color: Colors.white,
+          size: 35,
+        );
+      }
+    }
+    // Es una URL de red
+    else if (imageUrl.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => const Icon(
+          Icons.person,
+          color: Colors.white,
+          size: 35,
+        ),
+        errorWidget: (context, url, error) {
+          return const Icon(
+            Icons.person,
+            color: Colors.white,
+            size: 35,
+          );
+        },
+      );
+    }
+    // Fallback para otros casos
+    else {
+      return const Icon(
+        Icons.person,
+        color: Colors.white,
+        size: 35,
+      );
+    }
+  }
+
   Widget _buildHeader() {
     return Row(
       children: [
@@ -370,20 +427,7 @@ class _MediumGamePageState extends State<MediumGamePage>
             borderRadius: BorderRadius.circular(27),
             child: widget.profileImageUrl != null &&
                     widget.profileImageUrl!.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: widget.profileImageUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => const Icon(
-                      Icons.person,
-                      color: Colors.white,
-                      size: 35,
-                    ),
-                    errorWidget: (context, url, error) => const Icon(
-                      Icons.person,
-                      color: Colors.white,
-                      size: 35,
-                    ),
-                  )
+                ? _buildProfileImage(widget.profileImageUrl!)
                 : const Icon(
                     Icons.person,
                     color: Colors.white,

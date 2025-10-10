@@ -1027,10 +1027,6 @@ class _MusicPageState extends State<MusicPage> {
                                       onPressed: () {
                                         if (isOwned) {
                                           // Si posee la canción, ir directamente a PlayPage
-                                          debugPrint(
-                                              'MusicPage.dart navigating to PlayPage');
-                                          debugPrint(
-                                              'Profile Image URL: $profileImageUrl');
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
@@ -1093,10 +1089,6 @@ class _MusicPageState extends State<MusicPage> {
 
                                   if (isOwned) {
                                     // Si posee la canción, ir directamente a PlayPage
-                                    debugPrint(
-                                        'MusicPage.dart (onTap) navigating to PlayPage');
-                                    debugPrint(
-                                        'Profile Image URL: $profileImageUrl');
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(

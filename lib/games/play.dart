@@ -43,13 +43,25 @@ class _PlayPageState extends State<PlayPage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
 
+  // Función helper para obtener la mejor imagen de perfil disponible
+  String _getBestProfileImageUrl() {
+    // 1. Priorizar la imagen pasada desde la página anterior
+    if (widget.profileImageUrl?.isNotEmpty == true) {
+      return widget.profileImageUrl!;
+    }
+
+    // 2. Fallback a imagen del instrumento si está disponible
+    if (song != null && song!['instruments']?['image']?.isNotEmpty == true) {
+      return song!['instruments']['image'];
+    }
+
+    // 3. Último fallback - imagen por defecto
+    return '';
+  }
+
   @override
   void initState() {
     super.initState();
-    debugPrint('PlayPage initialized with:');
-    debugPrint('- Song ID: ${widget.songId}');
-    debugPrint('- Song Name: ${widget.songName}');
-    debugPrint('- Profile Image URL: ${widget.profileImageUrl}');
     _initializeHiveAndFetch();
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() {
@@ -521,18 +533,8 @@ class _PlayPageState extends State<PlayPage> {
 
     // Obtener las URLs de las imágenes
     final songImageUrl = song!['image'] ?? '';
-    // Priorizar la imagen de perfil recibida, luego imagen del instrumento como fallback
-    final profileImageUrl = widget.profileImageUrl?.isNotEmpty == true
-        ? widget.profileImageUrl!
-        : (song!['instruments']?['image'] ?? '');
-
-    debugPrint(
-        'Navegando con nivel: $levelName, songName: $songName, songId: $songId');
-    debugPrint('Song Image URL: $songImageUrl');
-    debugPrint('Profile Image URL: $profileImageUrl');
-    debugPrint('Profile Image from widget: ${widget.profileImageUrl}');
-    debugPrint('Profile Image is empty?: ${widget.profileImageUrl?.isEmpty}');
-    debugPrint('Instrument Image: ${song!['instruments']?['image']}');
+    // Usar la función helper para obtener la mejor imagen de perfil
+    final profileImageUrl = _getBestProfileImageUrl();
 
     if (levelName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
