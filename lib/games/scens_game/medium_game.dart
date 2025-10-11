@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
@@ -36,12 +37,21 @@ class _MediumGamePageState extends State<MediumGamePage>
   // Controlador de animación para la rotación de la imagen de la canción
   late AnimationController _rotationController;
 
+  // Variables para el sistema de puntuación y rendimiento
+  int totalCoins = 150; // Monedas del jugador
+  int currentScore = 0; // Puntuación actual
+  int totalNotes = 0; // Total de notas tocadas
+  int correctNotes = 0; // Notas correctas
+  double get accuracy => totalNotes == 0 ? 1.0 : correctNotes / totalNotes;
+
   @override
   void initState() {
     super.initState();
     _setupScreen();
     _startLogoTimer();
     _initializeAnimations();
+    // Simular juego para demostración
+    _simulateGameplay();
   }
 
   @override
@@ -308,6 +318,13 @@ class _MediumGamePageState extends State<MediumGamePage>
             child: _buildHeader(),
           ),
 
+          // Barra de progreso vertical (al lado derecho cerca de la cámara)
+          Positioned(
+            top: 100, // Debajo del header
+            right: 30, // Al lado derecho, cerca de la cámara del dispositivo
+            child: _buildVerticalProgressBar(),
+          ),
+
           // Controles de pistones en la parte inferior centrados
           Positioned(
             bottom: 20,
@@ -376,6 +393,138 @@ class _MediumGamePageState extends State<MediumGamePage>
         size: 35,
       );
     }
+  }
+
+  // Método para construir la barra de progreso vertical del rendimiento
+  Widget _buildVerticalProgressBar() {
+    return Container(
+      width: 40,
+      height: 200,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange.withOpacity(0.5), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          children: [
+            // Indicador de rendimiento
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.red.withOpacity(0.8),
+                      Colors.orange.withOpacity(0.6),
+                      Colors.yellow.withOpacity(0.4),
+                      Colors.green.withOpacity(0.2),
+                    ],
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // Fondo de la barra
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(15),
+                        color: Colors.grey.withOpacity(0.3),
+                      ),
+                    ),
+                    // Progreso actual
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        height: 190 * accuracy, // Altura basada en la precisión
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              // Color dinámico basado en rendimiento
+                              if (accuracy >= 0.8) ...[
+                                Colors.green,
+                                Colors.green.shade400,
+                              ] else if (accuracy >= 0.6) ...[
+                                Colors.yellow.shade600,
+                                Colors.yellow.shade400,
+                              ] else if (accuracy >= 0.4) ...[
+                                Colors.orange.shade600,
+                                Colors.orange.shade400,
+                              ] else ...[
+                                Colors.red.shade600,
+                                Colors.red.shade400,
+                              ]
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Marcadores de nivel
+                    ...List.generate(5, (index) {
+                      double position = (index + 1) * 0.2;
+                      return Positioned(
+                        bottom: 190 * position - 1,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          height: 2,
+                          color: Colors.white.withOpacity(0.4),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Porcentaje de precisión
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '${(accuracy * 100).toInt()}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            // Icono de estado
+            Icon(
+              accuracy >= 0.8
+                  ? Icons.star
+                  : accuracy >= 0.6
+                      ? Icons.thumb_up
+                      : accuracy >= 0.4
+                          ? Icons.warning
+                          : Icons.error,
+              color: accuracy >= 0.8
+                  ? Colors.green
+                  : accuracy >= 0.6
+                      ? Colors.yellow
+                      : accuracy >= 0.4
+                          ? Colors.orange
+                          : Colors.red,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildHeader() {
@@ -540,6 +689,75 @@ class _MediumGamePageState extends State<MediumGamePage>
             ),
           ),
         ),
+
+        const SizedBox(width: 12),
+
+        // Monedas del jugador
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.amber.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.amber.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.amber.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Imagen de la moneda
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.5),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    'assets/images/coin.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.monetization_on,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Cantidad de monedas
+              Text(
+                totalCoins.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -585,11 +803,12 @@ class _MediumGamePageState extends State<MediumGamePage>
   }
 
   Widget _buildPistonControls() {
-    // Simular las distancias reales de una trompeta
+    // Simular las distancias reales de una trompeta (ajustado para estar más cerca)
     // En una trompeta real, los pistones están separados por aproximadamente 22mm
     // Tamaño del pistón: aproximadamente 18mm de diámetro
     const double pistonSize = 70.0; // Tamaño del botón en pixels
-    const double realPistonSeparation = 22.0; // mm en trompeta real
+    const double realPistonSeparation =
+        16.0; // Reducido de 22.0 para estar más cerca
     const double realPistonDiameter = 18.0; // mm en trompeta real
 
     // Calcular la separación proporcional en pixels
@@ -704,5 +923,25 @@ class _MediumGamePageState extends State<MediumGamePage>
     debugPrint('Pistón $pistonNumber liberado');
 
     // TODO: Implementar lógica del juego
+  }
+
+  // Método para simular el juego y actualizar estadísticas
+  void _simulateGameplay() {
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (mounted && totalNotes < 50) {
+        // Simular hasta 50 notas
+        setState(() {
+          totalNotes++;
+          // Simulación de probabilidad de acierto (~75% en nivel medio)
+          if (Random().nextDouble() < 0.75) {
+            correctNotes++;
+            currentScore += 15; // Puntos por nota correcta en nivel medio
+            totalCoins += 3; // Monedas por acierto en nivel medio
+          }
+        });
+      } else {
+        timer.cancel();
+      }
+    });
   }
 }
