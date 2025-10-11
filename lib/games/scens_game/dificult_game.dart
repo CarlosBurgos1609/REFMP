@@ -944,12 +944,12 @@ class _DificultGamePageState extends State<DificultGamePage>
   }
 
   // Método para resetear el progreso del juego
-  void _resetGameProgress() {
-    setState(() {
-      totalNotes = 0;
-      correctNotes = 0;
-      currentScore = 0;
-      // No resetear totalCoins ya que es persistente
-    });
-  }
+  // void _resetGameProgress() {
+  //   setState(() {
+  //     totalNotes = 0;
+  //     correctNotes = 0;
+  //     currentScore = 0;
+  //     // No resetear totalCoins ya que es persistente
+  //   });
+  // }
 }
