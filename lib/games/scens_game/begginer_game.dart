@@ -29,7 +29,10 @@ class BegginnerGamePage extends StatefulWidget {
 class _BegginnerGamePageState extends State<BegginnerGamePage>
     with TickerProviderStateMixin {
   bool showLogo = true;
+  bool showCountdown = false;
+  int countdownNumber = 3;
   Timer? logoTimer;
+  Timer? countdownTimer;
 
   // Estado de los pistones (sin prevención de capturas por pistones)
   Set<int> pressedPistons = <int>{};
@@ -83,6 +86,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   @override
   void dispose() {
     logoTimer?.cancel();
+    countdownTimer?.cancel();
     _rotationController.dispose();
     // Restaurar configuración normal al salir
     _restoreNormalMode();
@@ -133,7 +137,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       if (mounted) {
         setState(() {
           showLogo = false;
+          showCountdown = true;
         });
+        _startCountdown();
+      }
+    });
+  }
+
+  void _startCountdown() {
+    countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          countdownNumber--;
+        });
+
+        if (countdownNumber <= 0) {
+          timer.cancel();
+          setState(() {
+            showCountdown = false;
+          });
+          // Aquí se iniciaría la música
+          debugPrint('¡Comenzar música!');
+        }
       }
     });
   }
@@ -150,7 +175,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: showLogo ? _buildLogoScreen() : _buildGameScreen(),
+      body: showLogo
+          ? _buildLogoScreen()
+          : showCountdown
+              ? _buildCountdownScreen()
+              : _buildGameScreen(),
     );
   }
 
@@ -226,6 +255,67 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 color: Colors.white70,
                 fontSize: 18,
                 fontWeight: FontWeight.w300,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountdownScreen() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF1E3A8A), // Azul oscuro
+            Color(0xFF3B82F6), // Azul medio
+            Color(0xFF60A5FA), // Azul claro
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Prepárate...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            const SizedBox(height: 40),
+            // Número de cuenta regresiva
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 500),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return ScaleTransition(
+                  scale: animation,
+                  child: child,
+                );
+              },
+              child: Text(
+                countdownNumber > 0 ? '$countdownNumber' : '¡Comienza!',
+                key: ValueKey<String>(
+                    countdownNumber > 0 ? '$countdownNumber' : 'start'),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 120,
+                  fontWeight: FontWeight.bold,
+                  shadows: [
+                    Shadow(
+                      color: Colors.blue.withOpacity(0.8),
+                      blurRadius: 20,
+                      offset: const Offset(0, 0),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

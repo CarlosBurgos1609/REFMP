@@ -30,7 +30,10 @@ class MediumGamePage extends StatefulWidget {
 class _MediumGamePageState extends State<MediumGamePage>
     with TickerProviderStateMixin {
   bool showLogo = true;
+  bool showCountdown = false;
+  int countdownNumber = 3;
   Timer? logoTimer;
+  Timer? countdownTimer;
 
   // Estado de los pistones (sin prevención de capturas por pistones)
   Set<int> pressedPistons = <int>{};
@@ -85,6 +88,7 @@ class _MediumGamePageState extends State<MediumGamePage>
   @override
   void dispose() {
     logoTimer?.cancel();
+    countdownTimer?.cancel();
     _rotationController.dispose();
     // Restaurar orientación y barra de estado al salir
     SystemChrome.setPreferredOrientations([
@@ -131,7 +135,28 @@ class _MediumGamePageState extends State<MediumGamePage>
       if (mounted) {
         setState(() {
           showLogo = false;
+          showCountdown = true;
         });
+        _startCountdown();
+      }
+    });
+  }
+
+  void _startCountdown() {
+    countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          countdownNumber--;
+        });
+
+        if (countdownNumber <= 0) {
+          timer.cancel();
+          setState(() {
+            showCountdown = false;
+          });
+          // Aquí se iniciaría la música
+          debugPrint('¡Comenzar música!');
+        }
       }
     });
   }
@@ -146,9 +171,48 @@ class _MediumGamePageState extends State<MediumGamePage>
 
   @override
   Widget build(BuildContext context) {
+    if (showLogo) {
+      return _buildLogoScreen();
+    } else if (showCountdown) {
+      return _buildCountdownScreen();
+    } else {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: _buildGameScreen(),
+      );
+    }
+  }
+
+  Widget _buildCountdownScreen() {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: showLogo ? _buildLogoScreen() : _buildGameScreen(),
+      body: Center(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 500),
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return ScaleTransition(scale: animation, child: child);
+          },
+          child: countdownNumber > 0
+              ? Text(
+                  countdownNumber.toString(),
+                  key: ValueKey<int>(countdownNumber),
+                  style: const TextStyle(
+                    fontSize: 120,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange, // Tema naranja para nivel medio
+                  ),
+                )
+              : const Text(
+                  '¡Comienza!',
+                  key: ValueKey<String>('start'),
+                  style: TextStyle(
+                    fontSize: 60,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange, // Tema naranja para nivel medio
+                  ),
+                ),
+        ),
+      ),
     );
   }
 
