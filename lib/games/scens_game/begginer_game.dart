@@ -1,9 +1,27 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+// Clase para representar una nota que cae
+class FallingNote {
+  final int piston; // 1, 2, o 3
+  double y; // Posición Y actual
+  final double startTime; // Tiempo cuando empezó a caer
+  bool isHit; // Si ya fue golpeada
+  bool isMissed; // Si se perdió la nota
+
+  FallingNote({
+    required this.piston,
+    required this.y,
+    required this.startTime,
+    this.isHit = false,
+    this.isMissed = false,
+  });
+}
 
 class BegginnerGamePage extends StatefulWidget {
   final String songName;
@@ -47,6 +65,19 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   int correctNotes = 0; // Notas correctas
   double get accuracy => totalNotes == 0 ? 1.0 : correctNotes / totalNotes;
 
+  // Variables para el sistema Guitar Hero
+  List<FallingNote> fallingNotes = [];
+  Timer? noteSpawner;
+  late AnimationController _noteAnimationController;
+  bool isGameActive = false;
+
+  // Configuración del juego
+  static const double noteSpeed = 200.0; // pixels por segundo
+  static const double hitZoneY =
+      500.0; // Posición Y donde deben golpearse las notas
+  static const double hitTolerance =
+      30.0; // Tolerancia para considerar un hit correcto
+
   // Sistema de recompensas fijas para nivel principiante según tabla
   // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
   int get coinsPerCorrectNote {
@@ -87,7 +118,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   void dispose() {
     logoTimer?.cancel();
     countdownTimer?.cancel();
+    noteSpawner?.cancel();
     _rotationController.dispose();
+    _noteAnimationController.dispose();
     // Restaurar configuración normal al salir
     _restoreNormalMode();
     super.dispose();
@@ -156,8 +189,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           setState(() {
             showCountdown = false;
           });
-          // Aquí se iniciaría la música
-          debugPrint('¡Comenzar música!');
+          // Iniciar el juego Guitar Hero
+          _startGame();
         }
       }
     });
@@ -169,6 +202,109 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       duration: const Duration(seconds: 8),
       vsync: this,
     )..repeat(); // Repetir infinitamente
+
+    // Controlador para las notas que caen
+    _noteAnimationController = AnimationController(
+      duration: const Duration(seconds: 4), // Tiempo que tarda en caer una nota
+      vsync: this,
+    );
+  }
+
+  // Iniciar el juego Guitar Hero
+  void _startGame() {
+    isGameActive = true;
+    _spawnNotes();
+    _updateGame();
+  }
+
+  // Generar notas aleatorias
+  void _spawnNotes() {
+    noteSpawner = Timer.periodic(const Duration(milliseconds: 1500), (timer) {
+      if (!isGameActive) {
+        timer.cancel();
+        return;
+      }
+
+      final random = Random();
+      final piston = random.nextInt(3) + 1; // Pistones 1, 2, o 3
+
+      fallingNotes.add(FallingNote(
+        piston: piston,
+        y: -50, // Empezar fuera de la pantalla
+        startTime: DateTime.now().millisecondsSinceEpoch / 1000,
+      ));
+    });
+  }
+
+  // Actualizar posiciones de las notas
+  void _updateGame() {
+    Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      // ~60 FPS
+      if (!isGameActive) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        final currentTime = DateTime.now().millisecondsSinceEpoch / 1000;
+
+        // Actualizar posición de cada nota
+        for (var note in fallingNotes) {
+          if (!note.isHit && !note.isMissed) {
+            final elapsed = currentTime - note.startTime;
+            note.y = -50 + (elapsed * noteSpeed);
+
+            // Verificar si la nota se perdió (pasó la zona de hit)
+            if (note.y > hitZoneY + 100) {
+              note.isMissed = true;
+              _onNoteMissed();
+            }
+          }
+        }
+
+        // Remover notas que ya no se necesitan
+        fallingNotes.removeWhere((note) => note.y > 700 || note.isHit);
+      });
+    });
+  }
+
+  // Cuando se presiona un pistón, verificar si hay una nota
+  void _checkNoteHit(int pistonNumber) {
+    for (var note in fallingNotes) {
+      if (note.piston == pistonNumber && !note.isHit && !note.isMissed) {
+        // Verificar si la nota está en la zona de hit
+        final distance = (note.y - hitZoneY).abs();
+        if (distance <= hitTolerance) {
+          note.isHit = true;
+          _onNoteHit();
+          return;
+        }
+      }
+    }
+    // Si no hay nota correcta, es un miss
+    _onNoteMissed();
+  }
+
+  // Cuando se acierta una nota
+  void _onNoteHit() {
+    setState(() {
+      totalNotes++;
+      correctNotes++;
+      currentScore += 10;
+      experiencePoints += experiencePerCorrectNote;
+    });
+
+    // Feedback háptico
+    HapticFeedback.lightImpact();
+  }
+
+  // Cuando se falla una nota
+  void _onNoteMissed() {
+    setState(() {
+      totalNotes++;
+      // No incrementar correctNotes
+      currentScore = (currentScore - 5).clamp(0, double.infinity).toInt();
+    });
   }
 
   @override
@@ -859,36 +995,172 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         color: Colors.black.withOpacity(0.3),
         border: Border.all(color: Colors.blue.withOpacity(0.2)),
       ),
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
+        children: [
+          // Líneas guía para los pistones
+          _buildPistonGuides(),
+
+          // Zona de hit (donde deben presionarse las notas)
+          _buildHitZone(),
+
+          // Notas que caen
+          ..._buildFallingNotes(),
+
+          // Efectos de feedback
+          _buildFeedbackEffects(),
+        ],
+      ),
+    );
+  }
+
+  // Construir las líneas guía para cada pistón
+  Widget _buildPistonGuides() {
+    return Positioned.fill(
+      child: CustomPaint(
+        painter: PistonGuidesPainter(),
+      ),
+    );
+  }
+
+  // Construir la zona de hit
+  Widget _buildHitZone() {
+    return Positioned(
+      bottom: 140, // Justo encima de los pistones
+      left: 0,
+      right: 0,
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.2),
+          border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
+        ),
+        child: Row(
           children: [
-            Icon(
-              Icons.music_note,
-              color: Colors.blue,
-              size: 80,
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Área de Juego',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            // Zona pistón 1
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Center(
+                  child: Text(
+                    '1',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
             ),
-            SizedBox(height: 10),
-            Text(
-              'Aquí aparecerán las notas musicales',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
+            // Zona pistón 2
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Center(
+                  child: Text(
+                    '2',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Zona pistón 3
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Center(
+                  child: Text(
+                    '3',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  // Construir las notas que caen
+  List<Widget> _buildFallingNotes() {
+    return fallingNotes.map((note) {
+      if (note.isHit || note.isMissed) return const SizedBox.shrink();
+
+      final screenWidth = MediaQuery.of(context).size.width;
+      final pistonWidth = screenWidth / 3;
+      final noteX = (note.piston - 1) * pistonWidth + (pistonWidth / 2) - 25;
+
+      return Positioned(
+        left: noteX,
+        top: note.y,
+        child: _buildNote(note),
+      );
+    }).toList();
+  }
+
+  // Construir una nota individual
+  Widget _buildNote(FallingNote note) {
+    Color noteColor;
+    switch (note.piston) {
+      case 1:
+        noteColor = Colors.red;
+        break;
+      case 2:
+        noteColor = Colors.green;
+        break;
+      case 3:
+        noteColor = Colors.blue;
+        break;
+      default:
+        noteColor = Colors.white;
+    }
+
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        color: noteColor,
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: noteColor.withOpacity(0.5),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          note.piston.toString(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Efectos de feedback visual
+  Widget _buildFeedbackEffects() {
+    return const SizedBox.shrink(); // Por ahora vacío, se puede agregar después
   }
 
   Widget _buildPistonControls() {
@@ -997,12 +1269,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
-    // Simular jugabilidad (esto se reemplazará con lógica real del juego)
-    _simulateGameplay(true); // true = nota correcta, false = nota incorrecta
+    // Verificar si hay una nota que golpear
+    if (isGameActive) {
+      _checkNoteHit(pistonNumber);
+    }
 
     debugPrint('Pistón $pistonNumber presionado');
-
-    // TODO: Implementar lógica del juego
   }
 
   void _onPistonReleased(int pistonNumber) {
@@ -1013,30 +1285,42 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // TODO: Implementar lógica del juego
   }
+}
 
-  // Método para simular el progreso del juego (temporal)
-  void _simulateGameplay(bool isCorrect) {
-    setState(() {
-      totalNotes++;
-      if (isCorrect) {
-        correctNotes++;
-        currentScore += 10; // +10 puntos por nota correcta
-        experiencePoints += experiencePerCorrectNote; // +1 exp en principiante
-      } else {
-        // Penalización por nota incorrecta
-        currentScore = (currentScore - 5).clamp(0, double.infinity).toInt();
-        // No quitar monedas ni experiencia por errores
-      }
-    });
+// CustomPainter para dibujar las líneas guía de los pistones
+class PistonGuidesPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.blue.withOpacity(0.3)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    // Dibujar líneas verticales para cada pistón
+    final pistonWidth = size.width / 3;
+
+    // Línea pistón 1
+    canvas.drawLine(
+      Offset(pistonWidth * 0.5, 0),
+      Offset(pistonWidth * 0.5, size.height),
+      paint,
+    );
+
+    // Línea pistón 2
+    canvas.drawLine(
+      Offset(pistonWidth * 1.5, 0),
+      Offset(pistonWidth * 1.5, size.height),
+      paint,
+    );
+
+    // Línea pistón 3
+    canvas.drawLine(
+      Offset(pistonWidth * 2.5, 0),
+      Offset(pistonWidth * 2.5, size.height),
+      paint,
+    );
   }
 
-  // Método para resetear el progreso del juego
-  // void _resetGameProgress() {
-  //   setState(() {
-  //     totalNotes = 0;
-  //     correctNotes = 0;
-  //     currentScore = 0;
-  //     // No resetear totalCoins ya que es persistente
-  //   });
-  // }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
