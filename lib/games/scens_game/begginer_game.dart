@@ -807,11 +807,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         // Botón de pausa
         Container(
           decoration: BoxDecoration(
-            color: Colors.orange,
+            color: Colors.blue,
             borderRadius: BorderRadius.circular(25),
             boxShadow: [
               BoxShadow(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.blue.withOpacity(0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:refmp/theme/theme_provider.dart';
 
 void showBackDialog(BuildContext context, String songName) {
   showDialog(
     context: context,
     barrierDismissible: false,
     builder: (context) {
+      final themeProvider = Provider.of<ThemeProvider>(context);
       return Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -13,6 +16,12 @@ void showBackDialog(BuildContext context, String songName) {
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: themeProvider.isDarkMode
+                ? const Color(0xFF1E1E1E)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -35,12 +44,14 @@ void showBackDialog(BuildContext context, String songName) {
               const SizedBox(height: 20),
 
               // Título
-              const Text(
+              Text(
                 '¿Estás seguro?',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: themeProvider.isDarkMode
+                      ? Color.fromARGB(255, 255, 255, 255)
+                      : Color.fromARGB(255, 33, 150, 243),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -51,7 +62,9 @@ void showBackDialog(BuildContext context, String songName) {
                 '¿Estás seguro de que quieres salir de la canción:',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey[600],
+                  color: themeProvider.isDarkMode
+                      ? Colors.grey[300]
+                      : Colors.grey[600],
                 ),
                 textAlign: TextAlign.center,
               ),

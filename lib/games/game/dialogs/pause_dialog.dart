@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:refmp/theme/theme_provider.dart';
 import 'back_dialog.dart';
 
 void showPauseDialog(
@@ -7,6 +9,7 @@ void showPauseDialog(
   VoidCallback onResume,
   VoidCallback onRestart,
 ) {
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
   showDialog(
     context: context,
     barrierDismissible: false,
@@ -23,32 +26,38 @@ void showPauseDialog(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Icono de pausa
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(40),
-                  border: Border.all(color: Colors.blue, width: 2),
-                ),
-                child: const Icon(
-                  Icons.pause_rounded,
-                  color: Colors.blue,
-                  size: 40,
+              // Icono de pausa centrado
+              Center(
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(25),
+                    border: Border.all(color: Colors.blue, width: 2),
+                  ),
+                  child: const Icon(
+                    Icons.pause_rounded,
+                    color: Colors.blue,
+                    size: 35,
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              // Título
-              const Text(
-                'Juego en Pausa',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+              // Título centrado
+              Center(
+                child: Text(
+                  'Juego en Pausa',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: themeProvider.isDarkMode
+                        ? Color.fromARGB(255, 255, 255, 255)
+                        : Color.fromARGB(255, 33, 150, 243),
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
 
@@ -60,11 +69,11 @@ void showPauseDialog(
                     child: Column(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 70,
+                          height: 70,
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(30),
+                            borderRadius: BorderRadius.circular(35),
                             border: Border.all(color: Colors.red, width: 2),
                           ),
                           child: IconButton(
@@ -75,15 +84,15 @@ void showPauseDialog(
                             icon: const Icon(
                               Icons.arrow_back_rounded,
                               color: Colors.red,
-                              size: 28,
+                              size: 32,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         const Text(
                           'Regresar',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Colors.red,
                           ),
@@ -99,11 +108,11 @@ void showPauseDialog(
                     child: Column(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 70,
+                          height: 70,
                           decoration: BoxDecoration(
                             color: Colors.green.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(30),
+                            borderRadius: BorderRadius.circular(35),
                             border: Border.all(color: Colors.green, width: 2),
                           ),
                           child: IconButton(
@@ -114,15 +123,15 @@ void showPauseDialog(
                             icon: const Icon(
                               Icons.play_arrow_rounded,
                               color: Colors.green,
-                              size: 28,
+                              size: 32,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         const Text(
                           'Reanudar',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Colors.green,
                           ),
@@ -138,11 +147,11 @@ void showPauseDialog(
                     child: Column(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 70,
+                          height: 70,
                           decoration: BoxDecoration(
                             color: Colors.orange.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(30),
+                            borderRadius: BorderRadius.circular(35),
                             border: Border.all(color: Colors.orange, width: 2),
                           ),
                           child: IconButton(
@@ -153,15 +162,15 @@ void showPauseDialog(
                             icon: const Icon(
                               Icons.refresh_rounded,
                               color: Colors.orange,
-                              size: 28,
+                              size: 32,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         const Text(
                           'Volver a\nempezar',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Colors.orange,
                           ),

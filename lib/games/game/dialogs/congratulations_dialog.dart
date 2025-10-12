@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:refmp/theme/theme_provider.dart';
 
 void showCongratulationsDialog(
   BuildContext context, {
@@ -12,6 +14,7 @@ void showCongratulationsDialog(
     context: context,
     barrierDismissible: false,
     builder: (context) {
+      final themeProvider = Provider.of<ThemeProvider>(context);
       return Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -20,6 +23,12 @@ void showCongratulationsDialog(
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: themeProvider.isDarkMode
+                ? const Color(0xFF1E1E1E)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -51,12 +60,13 @@ void showCongratulationsDialog(
               const SizedBox(height: 20),
 
               // Título
-              const Text(
+              Text(
                 '¡Felicitaciones!',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color:
+                      themeProvider.isDarkMode ? Colors.white : Colors.black87,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -66,7 +76,9 @@ void showCongratulationsDialog(
                 'Has completado la canción',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey[600],
+                  color: themeProvider.isDarkMode
+                      ? Colors.grey[300]
+                      : Colors.grey[600],
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -76,9 +88,14 @@ void showCongratulationsDialog(
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: themeProvider.isDarkMode
+                      ? Colors.grey[800]?.withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  border: Border.all(
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[600]!.withOpacity(0.3)
+                          : Colors.grey.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
@@ -104,7 +121,9 @@ void showCongratulationsDialog(
                             'Experiencia ganada:',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[700],
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey[300]
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
@@ -142,7 +161,9 @@ void showCongratulationsDialog(
                             'Puntos obtenidos:',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[700],
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey[300]
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
@@ -180,7 +201,9 @@ void showCongratulationsDialog(
                             'Notas acertadas:',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[700],
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey[300]
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
@@ -218,7 +241,9 @@ void showCongratulationsDialog(
                             'Notas falladas:',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[700],
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey[300]
+                                  : Colors.grey[700],
                             ),
                           ),
                         ),
