@@ -10,6 +10,8 @@ class BegginnerGamePage extends StatefulWidget {
   final String? songId;
   final String? songImageUrl;
   final String? profileImageUrl;
+  final String?
+      songDifficulty; // Dificultad de la canción desde la base de datos
 
   const BegginnerGamePage({
     super.key,
@@ -17,6 +19,7 @@ class BegginnerGamePage extends StatefulWidget {
     this.songId,
     this.songImageUrl,
     this.profileImageUrl,
+    this.songDifficulty,
   });
 
   @override
@@ -35,11 +38,39 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   late AnimationController _rotationController;
 
   // Variables para el sistema de puntuación y rendimiento
-  int totalCoins = 150; // Monedas del jugador
   int currentScore = 0; // Puntuación actual
+  int experiencePoints = 0; // Puntos de experiencia (empiezan en 0)
   int totalNotes = 0; // Total de notas tocadas
   int correctNotes = 0; // Notas correctas
   double get accuracy => totalNotes == 0 ? 1.0 : correctNotes / totalNotes;
+
+  // Sistema de recompensas fijas para nivel principiante según tabla
+  // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
+  int get coinsPerCorrectNote {
+    final String difficulty =
+        (widget.songDifficulty ?? 'fácil').toLowerCase().trim();
+
+    // Usar dificultad real de la base de datos según la tabla
+    switch (difficulty) {
+      case 'fácil':
+      case 'facil':
+        return 10; // Canciones fáciles en nivel principiante
+      case 'medio':
+      case 'media':
+        return 15; // Canciones medias en nivel principiante
+      case 'difícil':
+      case 'dificil':
+        return 20; // Canciones difíciles en nivel principiante
+      default:
+        return 10; // Default a fácil
+    }
+  }
+
+  // Monedas que se van a ganar en este nivel (fijas, no cambian durante el juego)
+  int get totalCoins => coinsPerCorrectNote;
+
+  int get experiencePerCorrectNote =>
+      1; // Principiante: +1 exp por nota correcta
 
   @override
   void initState() {
@@ -659,9 +690,64 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 ),
               ),
               const SizedBox(width: 8),
-              // Cantidad de monedas
+              // Cantidad de monedas por nota correcta en este nivel
               Text(
                 totalCoins.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 10),
+
+        // Puntos de experiencia
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.purple.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.purple.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icono de experiencia
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: Colors.purple,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.purple.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.star,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Cantidad de puntos de experiencia
+              Text(
+                '$experiencePoints',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -845,11 +931,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       if (isCorrect) {
         correctNotes++;
         currentScore += 10; // +10 puntos por nota correcta
-        totalCoins += 2; // +2 monedas por nota correcta
+        experiencePoints += experiencePerCorrectNote; // +1 exp en principiante
       } else {
         // Penalización por nota incorrecta
         currentScore = (currentScore - 5).clamp(0, double.infinity).toInt();
-        totalCoins = (totalCoins - 1).clamp(0, double.infinity).toInt();
+        // No quitar monedas ni experiencia por errores
       }
     });
   }

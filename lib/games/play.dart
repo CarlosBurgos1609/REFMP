@@ -514,6 +514,36 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  // Función para calcular monedas estáticas según dificultad de canción y nivel de juego
+  int getStaticCoins(String songDifficulty, String gameLevel) {
+    final normalizedSongDifficulty = songDifficulty.trim().toLowerCase();
+    final normalizedGameLevel = gameLevel.trim().toLowerCase();
+
+    // Matriz de monedas: [Principiante, Medio, Difícil]
+    Map<String, List<int>> coinMatrix = {
+      'fácil': [10, 15, 20], // Canciones fáciles
+      'facil': [10, 15, 20], // Variante sin acento
+      'medio': [15, 20, 25], // Canciones medias
+      'media': [15, 20, 25], // Variante femenina
+      'difícil': [20, 25, 30], // Canciones difíciles
+      'dificil': [20, 25, 30], // Variante sin acento
+    };
+
+    List<int> coins =
+        coinMatrix[normalizedSongDifficulty] ?? [10, 15, 20]; // Default a fácil
+
+    // Determinar índice según nivel del juego
+    if (_isBeginnerLevel(normalizedGameLevel)) {
+      return coins[0]; // Principiante
+    } else if (_isMediumLevel(normalizedGameLevel)) {
+      return coins[1]; // Medio
+    } else if (_isDifficultLevel(normalizedGameLevel)) {
+      return coins[2]; // Difícil
+    } else {
+      return coins[0]; // Default a principiante
+    }
+  }
+
   // Función para navegar a la página de juego según el nivel
   void _navigateToGame(Map<String, dynamic> level) {
     // ignore: unnecessary_null_comparison
@@ -555,6 +585,8 @@ class _PlayPageState extends State<PlayPage> {
         songId: songId,
         songImageUrl: songImageUrl,
         profileImageUrl: profileImageUrl,
+        songDifficulty:
+            song!['difficulty'] ?? 'fácil', // Pasar dificultad de la canción
       );
       debugPrint('Navegando a BegginnerGamePage');
     } else if (_isMediumLevel(levelName)) {
@@ -563,6 +595,8 @@ class _PlayPageState extends State<PlayPage> {
         songId: songId,
         songImageUrl: songImageUrl,
         profileImageUrl: profileImageUrl,
+        songDifficulty:
+            song!['difficulty'] ?? 'fácil', // Pasar dificultad de la canción
       );
       debugPrint('Navegando a MediumGamePage');
     } else if (_isDifficultLevel(levelName)) {
@@ -571,6 +605,8 @@ class _PlayPageState extends State<PlayPage> {
         songId: songId,
         songImageUrl: songImageUrl,
         profileImageUrl: profileImageUrl,
+        songDifficulty:
+            song!['difficulty'] ?? 'fácil', // Pasar dificultad de la canción
       );
       debugPrint('Navegando a DificultGamePage');
     } else {
@@ -1229,6 +1265,55 @@ class _PlayPageState extends State<PlayPage> {
                                                             TextAlign.center,
                                                         style: const TextStyle(
                                                             fontSize: 15),
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      // Mostrar información de monedas estáticas
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 8),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: Colors.amber
+                                                              .withOpacity(0.2),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(20),
+                                                          border: Border.all(
+                                                              color: Colors
+                                                                  .amber
+                                                                  .withOpacity(
+                                                                      0.5)),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          children: [
+                                                            const Icon(
+                                                              Icons
+                                                                  .monetization_on,
+                                                              color:
+                                                                  Colors.amber,
+                                                              size: 20,
+                                                            ),
+                                                            const SizedBox(
+                                                                width: 6),
+                                                            Text(
+                                                              '${getStaticCoins(song!['difficulty'] ?? 'fácil', level['name'] ?? '')} monedas',
+                                                              style:
+                                                                  const TextStyle(
+                                                                fontSize: 14,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: Colors
+                                                                    .orange,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
                                                       ),
                                                       const SizedBox(
                                                           height: 10),
