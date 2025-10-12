@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../game/dialogs/back_dialog.dart';
+import '../game/dialogs/pause_dialog.dart';
 
 class DificultGamePage extends StatefulWidget {
   final String songName;
@@ -545,9 +547,35 @@ class _DificultGamePageState extends State<DificultGamePage>
             ],
           ),
           child: IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => showBackDialog(context, widget.songName),
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+            padding: const EdgeInsets.all(12),
+          ),
+        ),
+
+        const SizedBox(width: 15),
+
+        // Botón de pausa
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: IconButton(
+            onPressed: () => _pauseGame(),
+            icon: const Icon(
+              Icons.pause_rounded,
               color: Colors.white,
               size: 24,
             ),
@@ -982,6 +1010,22 @@ class _DificultGamePageState extends State<DificultGamePage>
     debugPrint('Pistón $pistonNumber liberado');
 
     // TODO: Implementar lógica del juego
+  }
+
+  // Método de control de pausa
+  void _pauseGame() {
+    showPauseDialog(
+      context,
+      widget.songName,
+      () {
+        // Reanudar (por ahora vacío)
+        debugPrint('Reanudar juego difícil');
+      },
+      () {
+        // Reiniciar (por ahora vacío)
+        debugPrint('Reiniciar juego difícil');
+      },
+    );
   }
 
   // Método para simular el progreso del juego (temporal)

@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../game/dialogs/back_dialog.dart';
+import '../game/dialogs/pause_dialog.dart';
+// import '../game/dialogs/congratulations_dialog.dart';
 
 // Clase para representar una nota que cae
 class FallingNote {
@@ -68,8 +71,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Variables para el sistema Guitar Hero
   List<FallingNote> fallingNotes = [];
   Timer? noteSpawner;
+  Timer? gameUpdateTimer;
   late AnimationController _noteAnimationController;
   bool isGameActive = false;
+  bool isGamePaused = false;
 
   // Configuración del juego
   static const double noteSpeed = 200.0; // pixels por segundo
@@ -119,6 +124,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     logoTimer?.cancel();
     countdownTimer?.cancel();
     noteSpawner?.cancel();
+    gameUpdateTimer?.cancel();
     _rotationController.dispose();
     _noteAnimationController.dispose();
     // Restaurar configuración normal al salir
@@ -220,7 +226,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Generar notas aleatorias
   void _spawnNotes() {
     noteSpawner = Timer.periodic(const Duration(milliseconds: 1500), (timer) {
-      if (!isGameActive) {
+      if (!isGameActive || isGamePaused) {
         timer.cancel();
         return;
       }
@@ -234,13 +240,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         startTime: DateTime.now().millisecondsSinceEpoch / 1000,
       ));
     });
-  }
+  } // Actualizar posiciones de las notas
 
-  // Actualizar posiciones de las notas
   void _updateGame() {
-    Timer.periodic(const Duration(milliseconds: 16), (timer) {
+    gameUpdateTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       // ~60 FPS
-      if (!isGameActive) {
+      if (!isGameActive || isGamePaused) {
         timer.cancel();
         return;
       }
@@ -267,6 +272,79 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       });
     });
   }
+
+  // Métodos de control de pausa
+  void _pauseGame() {
+    if (isGameActive && !isGamePaused) {
+      setState(() {
+        isGamePaused = true;
+      });
+      noteSpawner?.cancel();
+      gameUpdateTimer?.cancel();
+
+      showPauseDialog(
+        context,
+        widget.songName,
+        _resumeGame,
+        _restartGame,
+      );
+    }
+  }
+
+  void _resumeGame() {
+    if (isGameActive && isGamePaused) {
+      setState(() {
+        isGamePaused = false;
+      });
+      _spawnNotes();
+      _updateGame();
+    }
+  }
+
+  void _restartGame() {
+    // Reiniciar variables del juego
+    setState(() {
+      isGameActive = false;
+      isGamePaused = false;
+      fallingNotes.clear();
+      totalNotes = 0;
+      correctNotes = 0;
+      currentScore = 0;
+      experiencePoints = 0;
+    });
+
+    // Cancelar timers
+    noteSpawner?.cancel();
+    gameUpdateTimer?.cancel();
+
+    // Iniciar countdown nuevamente
+    setState(() {
+      showCountdown = true;
+      countdownNumber = 3;
+    });
+    _startCountdown();
+  }
+
+  // void _endGame() {
+  //   setState(() {
+  //     isGameActive = false;
+  //     isGamePaused = false;
+  //   });
+
+  //   noteSpawner?.cancel();
+  //   gameUpdateTimer?.cancel();
+
+  //   showCongratulationsDialog(
+  //     context,
+  //     experiencePoints: experiencePoints,
+  //     totalScore: currentScore,
+  //     correctNotes: correctNotes,
+  //     missedNotes: totalNotes - correctNotes,
+  //     onContinue: () {
+  //       Navigator.pop(context); // Regresar al menú anterior
+  //     },
+  //   );
+  // }
 
   // Cuando se presiona un pistón, verificar si hay una nota
   void _checkNoteHit(int pistonNumber) {
@@ -714,9 +792,35 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             ],
           ),
           child: IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => showBackDialog(context, widget.songName),
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+            padding: const EdgeInsets.all(12),
+          ),
+        ),
+
+        const SizedBox(width: 15),
+
+        // Botón de pausa
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.orange.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: IconButton(
+            onPressed: () => _pauseGame(),
+            icon: const Icon(
+              Icons.pause_rounded,
               color: Colors.white,
               size: 24,
             ),
