@@ -28,8 +28,8 @@ void showBackDialog(BuildContext context, String songName) {
             children: [
               // Icono de advertencia
               Container(
-                width: 80,
-                height: 80,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(40),
@@ -38,7 +38,7 @@ void showBackDialog(BuildContext context, String songName) {
                 child: const Icon(
                   Icons.warning_rounded,
                   color: Colors.orange,
-                  size: 40,
+                  size: 20,
                 ),
               ),
               const SizedBox(height: 20),
