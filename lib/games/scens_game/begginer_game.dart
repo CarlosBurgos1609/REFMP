@@ -228,7 +228,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         id: 'demo_$i',
         songId: 'demo',
         noteName: noteNames[i % noteNames.length],
-        startTimeMs: i * 1200, // Una nota cada 1.2 segundos
+        startTimeMs: i * 200, // Una nota cada 1.2 segundos
         durationMs: 500,
         beatPosition: 1.0,
         measureNumber: (i ~/ 4) + 1,
@@ -755,11 +755,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   //   );
   // }
 
-  // Cuando se presiona un pistón, verificar si hay una nota
+  // Cuando se presiona un pistón, verificar si hay una nota (solo para scoring)
   void _checkNoteHit(int pistonNumber) {
-    setState(() {
-      pressedPistons.add(pistonNumber);
-    });
+    // NO agregar pistón aquí, ya se hace en _onPistonPressed
+    // setState(() {
+    //   pressedPistons.add(pistonNumber);
+    // });
 
     for (var note in fallingNotes) {
       if (!note.isHit && !note.isMissed) {
@@ -779,7 +780,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               lastPlayedNote = note.noteName;
             });
 
-            _onNoteHit(note.noteName); // Pasar el nombre de la nota
+            _onNoteHit(note
+                .noteName); // Pasar el nombre de la nota (pero no reproducir sonido aquí)
             return;
           }
         }
@@ -789,7 +791,59 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _onNoteMissed();
   }
 
-  // Cuando se acierta una nota
+  // Reproducir sonido basado en la combinación de pistones presionados
+  void _playNoteFromPistonCombination() async {
+    // Buscar si hay alguna nota cayendo que coincida con los pistones presionados
+    FallingNote? matchingNote;
+
+    for (var note in fallingNotes) {
+      if (!note.isHit &&
+          !note.isMissed &&
+          note.matchesPistons(pressedPistons)) {
+        matchingNote = note;
+        break; // Tomar la primera nota que coincida
+      }
+    }
+
+    if (matchingNote != null) {
+      // Reproducir el sonido de la nota que coincide
+      await _playNoteSound(matchingNote.noteName);
+      print('🎵 Playing sound from falling note: ${matchingNote.noteName}');
+    } else {
+      // Si no hay notas cayendo que coincidan, usar mapeo de respaldo
+      final note = _pistonCombinationToNote(pressedPistons);
+      if (note != null) {
+        await _playNoteSound(note);
+        print('🎵 Playing sound from piston combination: $note');
+      }
+    }
+  }
+
+  // Mapeo de combinaciones de pistones a notas (respaldo cuando no hay notas cayendo)
+  String? _pistonCombinationToNote(Set<int> pistonCombination) {
+    // Mapeo básico basado en escalas cromáticas de trompeta
+    if (pistonCombination.isEmpty) {
+      return 'C4'; // Sin pistones
+    } else if (pistonCombination.containsAll([1, 2])) {
+      return 'A3'; // Pistones 1+2
+    } else if (pistonCombination.contains(1)) {
+      return 'Bb3'; // Solo pistón 1
+    } else if (pistonCombination.contains(2)) {
+      return 'A4'; // Solo pistón 2
+    } else if (pistonCombination.containsAll([1, 3])) {
+      return 'G3'; // Pistones 1+3
+    } else if (pistonCombination.containsAll([2, 3])) {
+      return 'G4'; // Pistones 2+3
+    } else if (pistonCombination.contains(3)) {
+      return 'A#4'; // Solo pistón 3
+    } else if (pistonCombination.containsAll([1, 2, 3])) {
+      return 'F#3'; // Todos los pistones
+    }
+
+    return 'C4'; // Default
+  }
+
+  // Cuando se acierta una nota (solo actualizar puntuación)
   void _onNoteHit([String? noteName]) {
     setState(() {
       totalNotes++;
@@ -798,10 +852,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       experiencePoints += experiencePerCorrectNote;
     });
 
-    // Reproducir sonido de la nota tocada
-    if (noteName != null) {
-      _playNoteSound(noteName);
-    }
+    // NO reproducir sonido aquí - el sonido se reproduce en _onPistonPressed
+    // if (noteName != null) {
+    //   _playNoteSound(noteName);
+    // }
 
     // Feedback háptico
     HapticFeedback.lightImpact();
@@ -1907,7 +1961,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
-    // Verificar si hay una nota que golpear
+    // Siempre reproducir sonido cuando se presiona un pistón
+    _playNoteFromPistonCombination();
+
+    // Verificar si hay una nota que golpear (solo para scoring)
     if (isGameActive) {
       _checkNoteHit(pistonNumber);
     }
