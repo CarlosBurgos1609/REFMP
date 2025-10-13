@@ -78,10 +78,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Configuración del juego
   static const double noteSpeed = 200.0; // pixels por segundo
-  static const double hitZoneY =
-      500.0; // Posición Y donde deben golpearse las notas
   static const double hitTolerance =
-      30.0; // Tolerancia para considerar un hit correcto
+      50.0; // Tolerancia aumentada para hits más fáciles después de los pistones
 
   // Sistema de recompensas fijas para nivel principiante según tabla
   // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
@@ -259,8 +257,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             final elapsed = currentTime - note.startTime;
             note.y = -50 + (elapsed * noteSpeed);
 
-            // Verificar si la nota se perdió (pasó la zona de hit)
-            if (note.y > hitZoneY + 100) {
+            // Verificar si la nota se perdió (pasó la zona de hit ampliada)
+            final screenHeight = MediaQuery.of(context).size.height;
+            final hitZoneY = screenHeight - 160;
+            if (note.y > hitZoneY + 80) {
+              // Pasó la zona de hit + margen generoso
               note.isMissed = true;
               _onNoteMissed();
             }
@@ -351,7 +352,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   void _checkNoteHit(int pistonNumber) {
     for (var note in fallingNotes) {
       if (note.piston == pistonNumber && !note.isHit && !note.isMissed) {
-        // Verificar si la nota está en la zona de hit
+        // Calcular la posición Y de la zona de hit ampliada
+        final screenHeight = MediaQuery.of(context).size.height;
+        final hitZoneY = screenHeight -
+            160; // Centro de la zona de hit ampliada (bottom: 100 + height: 120 / 2)
+
+        // Verificar si la nota está en la zona de hit ampliada
         final distance = (note.y - hitZoneY).abs();
         if (distance <= hitTolerance) {
           note.isHit = true;
@@ -360,7 +366,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         }
       }
     }
-    // Si no hay nota correcta, es un miss
+    // Si no hay nota correcta en la zona, es un miss
     _onNoteMissed();
   }
 
@@ -557,9 +563,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       child: Stack(
         children: [
           // Área principal del juego (ocupa toda la pantalla)
-          _buildGameArea(),
+          Positioned(
+            top: 0, // Desde el inicio de la pantalla
+            left: 0,
+            right: 0,
+            bottom: 0, // Hasta el final de la pantalla
+            child: _buildGameArea(),
+          ),
 
-          // Header con botón de regreso flotante
+          // Header con botón de regreso flotante (encima del área de juego)
           Positioned(
             top: 20,
             left: 20,
@@ -574,7 +586,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             child: _buildVerticalProgressBar(),
           ),
 
-          // Controles de pistones en la parte inferior centrados
+          // Controles de pistones en la parte inferior centrados (encima del área de juego)
           Positioned(
             bottom: 20,
             left: 0,
@@ -695,7 +707,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                     Align(
                       alignment: Alignment.bottomCenter,
                       child: Container(
-                        height: 190 * accuracy, // Altura basada en la precisión
+                        height: 180 *
+                            accuracy, // Altura basada en la precisión (máximo 180 en lugar de 190)
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(15),
                           gradient: LinearGradient(
@@ -725,7 +738,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                     ...List.generate(5, (index) {
                       double position = (index + 1) * 0.2;
                       return Positioned(
-                        bottom: 190 * position - 1,
+                        bottom: 180 * position - 1, // Cambiado de 190 a 180
                         left: 0,
                         right: 0,
                         child: Container(
@@ -1137,76 +1150,19 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     );
   }
 
-  // Construir la zona de hit
+  // Construir la zona de hit (sutil, después de los pistones)
   Widget _buildHitZone() {
     return Positioned(
-      bottom: 140, // Justo encima de los pistones
+      bottom:
+          120, // Posición más arriba para cubrir mejor la zona de los pistones
       left: 0,
       right: 0,
       child: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.2),
-          border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
-        ),
-        child: Row(
-          children: [
-            // Zona pistón 1
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: const Center(
-                  child: Text(
-                    '1',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Zona pistón 2
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: const Center(
-                  child: Text(
-                    '2',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Zona pistón 3
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: const Center(
-                  child: Text(
-                    '3',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+        height: 120, // Zona de hit mucho más grande para mejor detección
+        // decoration: BoxDecoration(
+        //   color: Colors.white.withOpacity(0.1), // Muy sutil
+        //   border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+        // ),
       ),
     );
   }
@@ -1216,9 +1172,44 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     return fallingNotes.map((note) {
       if (note.isHit || note.isMissed) return const SizedBox.shrink();
 
+      // Calcular la posición X basada en la posición real de los pistones
       final screenWidth = MediaQuery.of(context).size.width;
-      final pistonWidth = screenWidth / 3;
-      final noteX = (note.piston - 1) * pistonWidth + (pistonWidth / 2) - 25;
+
+      // Configuración de pistones (igual que en _buildPistonControls)
+      const double pistonSize = 70.0;
+      const double realPistonSeparation = 16.0;
+      const double realPistonDiameter = 18.0;
+      final double pixelSeparation =
+          (realPistonSeparation / realPistonDiameter) * pistonSize;
+
+      // Ancho total del contenedor de pistones
+      final double totalPistonWidth =
+          (pistonSize * 3) + (pixelSeparation * 2) + 40; // +40 por padding
+      final double startX = (screenWidth - totalPistonWidth) / 2 +
+          20; // Centrado + padding inicial
+
+      // Posición X de cada pistón
+      double pistonCenterX;
+      switch (note.piston) {
+        case 1:
+          pistonCenterX = startX + (pistonSize / 2);
+          break;
+        case 2:
+          pistonCenterX =
+              startX + pistonSize + pixelSeparation + (pistonSize / 2);
+          break;
+        case 3:
+          pistonCenterX = startX +
+              (pistonSize * 2) +
+              (pixelSeparation * 2) +
+              (pistonSize / 2);
+          break;
+        default:
+          pistonCenterX = startX + (pistonSize / 2);
+      }
+
+      final noteX =
+          pistonCenterX - 25; // -25 porque la nota tiene 50px de ancho
 
       return Positioned(
         left: noteX,
@@ -1246,16 +1237,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
 
     return Container(
-      width: 50,
-      height: 50,
+      width: 60,
+      height: 60,
       decoration: BoxDecoration(
         color: noteColor,
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(30),
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: noteColor.withOpacity(0.5),
-            blurRadius: 10,
+            blurRadius: 20,
             offset: const Offset(0, 5),
           ),
         ],
@@ -1411,27 +1402,43 @@ class PistonGuidesPainter extends CustomPainter {
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
-    // Dibujar líneas verticales para cada pistón
-    final pistonWidth = size.width / 3;
+    // Calcular las posiciones reales de los pistones
+    const double pistonSize = 70.0;
+    const double realPistonSeparation = 16.0;
+    const double realPistonDiameter = 18.0;
+    final double pixelSeparation =
+        (realPistonSeparation / realPistonDiameter) * pistonSize;
+
+    // Ancho total del contenedor de pistones
+    final double totalPistonWidth =
+        (pistonSize * 3) + (pixelSeparation * 2) + 40;
+    final double startX = (size.width - totalPistonWidth) / 2 + 20;
+
+    // Dibujar líneas verticales para cada pistón en su posición real
 
     // Línea pistón 1
+    final double piston1X = startX + (pistonSize / 2);
     canvas.drawLine(
-      Offset(pistonWidth * 0.5, 0),
-      Offset(pistonWidth * 0.5, size.height),
+      Offset(piston1X, 0),
+      Offset(piston1X, size.height),
       paint,
     );
 
     // Línea pistón 2
+    final double piston2X =
+        startX + pistonSize + pixelSeparation + (pistonSize / 2);
     canvas.drawLine(
-      Offset(pistonWidth * 1.5, 0),
-      Offset(pistonWidth * 1.5, size.height),
+      Offset(piston2X, 0),
+      Offset(piston2X, size.height),
       paint,
     );
 
     // Línea pistón 3
+    final double piston3X =
+        startX + (pistonSize * 2) + (pixelSeparation * 2) + (pistonSize / 2);
     canvas.drawLine(
-      Offset(pistonWidth * 2.5, 0),
-      Offset(pistonWidth * 2.5, size.height),
+      Offset(piston3X, 0),
+      Offset(piston3X, size.height),
       paint,
     );
   }
