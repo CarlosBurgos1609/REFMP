@@ -1154,7 +1154,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Widget _buildHitZone() {
     return Positioned(
       bottom:
-          120, // Posición más arriba para cubrir mejor la zona de los pistones
+          130, // Posición más arriba para cubrir mejor la zona de los pistones
       left: 0,
       right: 0,
       child: Container(
