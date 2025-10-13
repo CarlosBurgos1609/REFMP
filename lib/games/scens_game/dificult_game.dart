@@ -562,11 +562,12 @@ class _DificultGamePageState extends State<DificultGamePage>
         // Botón de pausa
         Container(
           decoration: BoxDecoration(
-            color: Colors.blue,
+            color: Colors.red,
             borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.red.withOpacity(0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),

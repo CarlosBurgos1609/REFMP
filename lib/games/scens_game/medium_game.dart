@@ -567,11 +567,12 @@ class _MediumGamePageState extends State<MediumGamePage>
         // Botón de pausa
         Container(
           decoration: BoxDecoration(
-            color: Colors.blue,
+            color: Colors.orange,
             borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.orange.withOpacity(0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),

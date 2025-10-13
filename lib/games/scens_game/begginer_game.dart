@@ -809,6 +809,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           decoration: BoxDecoration(
             color: Colors.blue,
             borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
                 color: Colors.blue.withOpacity(0.3),
