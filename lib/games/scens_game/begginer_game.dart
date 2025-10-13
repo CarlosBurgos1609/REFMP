@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
 import '../../services/database_service.dart';
+import '../../services/trumpet_audio_service.dart';
 // import '../game/dialogs/congratulations_dialog.dart';
 
 // Clase para representar una nota que cae
@@ -124,69 +124,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   String?
       lastPlayedNote; // Última nota musical tocada (para mostrar en el contenedor)
 
-  // Sistema de audio para notas de trompeta
-  late AudioPlayer _audioPlayer;
-  static const Map<String, String> _noteToAudioFile = {
-    // Octava 3
-    'F#3': 'F#3.ogg',
-    'GB3': 'F#3.ogg', // Gb es lo mismo que F#
-    'G3': 'G3.ogg',
-    'G#3': 'G#3.ogg',
-    'AB3': 'G#3.ogg', // Ab es lo mismo que G#
-    'A3': 'A3.ogg',
-    'A#3': 'A#3.ogg',
-    'BB3': 'A#3.ogg', // Bb es lo mismo que A#
-    'B3': 'B3.ogg',
-
-    // Octava 4
-    'C4': 'C4.ogg',
-    'C#4': 'C#4.ogg',
-    'DB4': 'C#4.ogg', // Db es lo mismo que C#
-    'D4': 'D4.ogg',
-    'D#4': 'D#4.ogg',
-    'EB4': 'D#4.ogg', // Eb es lo mismo que D#
-    'E4': 'E4.ogg',
-    'F4': 'F4.ogg',
-    'F#4': 'F#4.ogg',
-    'GB4': 'F#4.ogg', // Gb es lo mismo que F#
-    'G4': 'G4.ogg',
-    'G#4': 'G#4.ogg',
-    'AB4': 'G#4.ogg', // Ab es lo mismo que G#
-    'A4': 'A4.ogg',
-    'A#4': 'A#4.ogg',
-    'BB4': 'A#4.ogg', // Bb es lo mismo que A#
-    'B4': 'B4.ogg',
-
-    // Octava 5
-    'C5': 'C5.ogg',
-    'C#5': 'C#5.ogg',
-    'DB5': 'C#5.ogg', // Db es lo mismo que C#
-    'D5': 'D5.ogg',
-    'D#5': 'D#5.ogg',
-    'EB5': 'D#5.ogg', // Eb es lo mismo que D#
-    'E5': 'E5.ogg',
-    'F5': 'F5.ogg',
-    'F#5': 'F#5.ogg',
-    'GB5': 'F#5.ogg', // Gb es lo mismo que F#
-    'G5': 'G5.ogg',
-    'G#5': 'G#5.ogg',
-    'AB5': 'G#5.ogg', // Ab es lo mismo que G#
-    'A5': 'A5.ogg',
-    'A#5': 'A#5.ogg',
-    'BB5': 'A#5.ogg', // Bb es lo mismo que A#
-    'B5': 'B5.ogg',
-
-    // Octava 6
-    'C6': 'C6.ogg',
-    'C#6': 'C#6.ogg',
-    'DB6': 'C#6.ogg', // Db es lo mismo que C#
-    'D6': 'D6.ogg',
-    'D#6': 'D#6.ogg',
-    'EB6': 'D#6.ogg', // Eb es lo mismo que D#
-    'E6': 'E6.ogg',
-    'F#6': 'F#6.ogg',
-    'GB6': 'F#6.ogg', // Gb es lo mismo que F#
-  };
+  // Sistema de audio para notas de trompeta usando servicio centralizado
+  late TrumpetAudioService _audioService;
 
   // Configuración del juego
   static const double noteSpeed = 200.0; // pixels por segundo
@@ -233,15 +172,20 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Inicializar el sistema de audio
   void _initializeAudio() {
-    _audioPlayer = AudioPlayer();
-    _audioPlayer.setVolume(0.7); // Volumen al 70%
+    _audioService = TrumpetAudioService.instance;
+    _audioService.setVolume(0.7); // Volumen al 70%
   }
 
   // Cargar datos de la canción desde la base de datos
   Future<void> _loadSongData() async {
+    print('🔄 Loading song data...');
+    print('📋 Song ID: ${widget.songId}');
+    print('🎵 Song Name: ${widget.songName}');
+
     if (widget.songId == null || widget.songId!.isEmpty) {
       print('⚠️ No song ID provided, using demo notes');
       songNotes = _createDemoNotes();
+      print('✅ Created ${songNotes.length} demo notes');
       return;
     }
 
@@ -265,6 +209,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     } catch (e) {
       print('❌ Error loading song data: $e');
       songNotes = _createDemoNotes(); // Fallback a notas demo
+      print('✅ Created ${songNotes.length} fallback demo notes');
     } finally {
       setState(() {
         isLoadingSong = false;
@@ -274,59 +219,37 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Crear notas demo si falla la carga de la base de datos
   List<SongNote> _createDemoNotes() {
-    print('Creating demo notes...');
-    return List.generate(20, (index) {
-      final notes = ['F4', 'G4', 'A4', 'Bb4', 'C5', 'D5'];
-      return SongNote(
-        id: 'demo_$index',
+    print('🎵 Creating demo notes...');
+    final notes = <SongNote>[];
+    final noteNames = ['F4', 'G4', 'A4', 'Bb4', 'C5', 'D5'];
+
+    for (int i = 0; i < 15; i++) {
+      final note = SongNote(
+        id: 'demo_$i',
         songId: 'demo',
-        noteName: notes[index % notes.length],
-        startTimeMs: index * 2000, // Una nota cada 2 segundos
+        noteName: noteNames[i % noteNames.length],
+        startTimeMs: i * 1200, // Una nota cada 1.2 segundos
         durationMs: 500,
         beatPosition: 1.0,
-        measureNumber: (index ~/ 4) + 1,
+        measureNumber: (i ~/ 4) + 1,
         noteType: 'quarter',
         velocity: 80,
         createdAt: DateTime.now(),
       );
-    });
+      notes.add(note);
+      print('🎵 Demo note $i: ${note.noteName} at ${note.startTimeMs}ms');
+    }
+
+    print('✅ Created ${notes.length} demo notes total');
+    return notes;
   }
 
   // Reproducir el sonido correspondiente a una nota musical
   Future<void> _playNoteSound(String noteName) async {
     try {
-      // Normalizar el nombre de la nota (convertir Bb a A#, etc.)
-      String normalizedNote = noteName;
-      if (noteName.contains('b')) {
-        normalizedNote = noteName.replaceAll('b', '#');
-        // Convertir bemol a sostenido equivalente
-        if (normalizedNote.startsWith('Db')) {
-          normalizedNote = normalizedNote.replaceFirst('Db', 'C#');
-        } else if (normalizedNote.startsWith('Eb')) {
-          normalizedNote = normalizedNote.replaceFirst('Eb', 'D#');
-        } else if (normalizedNote.startsWith('Gb')) {
-          normalizedNote = normalizedNote.replaceFirst('Gb', 'F#');
-        } else if (normalizedNote.startsWith('Ab')) {
-          normalizedNote = normalizedNote.replaceFirst('Ab', 'G#');
-        } else if (normalizedNote.startsWith('Bb')) {
-          normalizedNote = normalizedNote.replaceFirst('Bb', 'A#');
-        }
-      }
-
-      // Buscar el archivo de audio correspondiente
-      final audioFile = _noteToAudioFile[normalizedNote];
-      if (audioFile != null) {
-        // Detener cualquier sonido anterior
-        await _audioPlayer.stop();
-
-        // Reproducir el nuevo sonido
-        await _audioPlayer
-            .play(AssetSource('games/game/Songs/Trumpet_notes/$audioFile'));
-        print('🎵 Playing sound: $audioFile for note: $noteName');
-      } else {
-        print(
-            '⚠️ No audio file found for note: $noteName (normalized: $normalizedNote)');
-      }
+      // Reproducir el sonido usando el servicio centralizado
+      await _audioService.playNote(noteName);
+      print('🎵 Playing sound for note: $noteName');
     } catch (e) {
       print('❌ Error playing note sound: $e');
     }
@@ -341,7 +264,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _rotationController.dispose();
     _noteAnimationController.dispose();
     // Limpiar recursos de audio
-    _audioPlayer.dispose();
+    // No necesitamos dispose() aquí porque es un singleton
+    // El servicio maneja su propia limpieza
     // Restaurar configuración normal al salir
     _restoreNormalMode();
     super.dispose();
@@ -433,7 +357,31 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Iniciar el juego Guitar Hero
   void _startGame() {
-    isGameActive = true;
+    print('🎮 Starting game...');
+
+    // Si aún está cargando, esperar un poco
+    if (isLoadingSong) {
+      print('⏳ Still loading song data, waiting...');
+      Timer(const Duration(milliseconds: 500), () {
+        if (mounted) _startGame();
+      });
+      return;
+    }
+
+    // Si no hay notas, crear notas demo como respaldo
+    if (songNotes.isEmpty) {
+      print('⚠️ No notes available, creating demo notes as fallback');
+      songNotes = _createDemoNotes();
+    }
+
+    setState(() {
+      isGameActive = true;
+      currentNoteIndex = 0; // Reset index
+    });
+
+    print('📝 Song notes count: ${songNotes.length}');
+    print('🎵 Current note index: $currentNoteIndex');
+
     _spawnNotes();
     _updateGame();
   }
@@ -441,12 +389,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Generar notas basadas en los datos de la base de datos
   void _spawnNotes() {
     gameStartTime = DateTime.now().millisecondsSinceEpoch;
+    print('🕒 Game start time: $gameStartTime');
 
     if (songNotes.isNotEmpty) {
-      print('Using real song notes from database');
+      print(
+          '🎵 Using real song notes from database (${songNotes.length} notes)');
       _spawnNotesFromDatabase();
     } else {
-      print('Using demo notes');
+      print('🎵 Using demo notes');
       _spawnDemoNotes();
     }
   }
@@ -496,23 +446,43 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Generar notas demo
   void _spawnDemoNotes() {
-    noteSpawner = Timer.periodic(const Duration(milliseconds: 2000), (timer) {
-      if (!isGameActive ||
-          isGamePaused ||
-          currentNoteIndex >= songNotes.length) {
+    print('🎵 Starting demo notes spawning...');
+    print('📝 Available demo notes: ${songNotes.length}');
+
+    if (songNotes.isEmpty) {
+      print('❌ No demo notes available to spawn!');
+      return;
+    }
+
+    // Spawner más simple y directo
+    noteSpawner = Timer.periodic(const Duration(milliseconds: 1200), (timer) {
+      if (!isGameActive || isGamePaused) {
+        print('⏸️ Game not active or paused, stopping spawner');
+        timer.cancel();
+        return;
+      }
+
+      if (currentNoteIndex >= songNotes.length) {
+        print(
+            '🏁 All demo notes spawned (${currentNoteIndex}/${songNotes.length})');
         timer.cancel();
         return;
       }
 
       final songNote = songNotes[currentNoteIndex];
-      fallingNotes.add(FallingNote(
-        piston: songNote.pistonCombination.isNotEmpty
-            ? songNote.pistonCombination.first
-            : 1,
-        songNote: songNote,
-        y: -50,
-        startTime: DateTime.now().millisecondsSinceEpoch / 1000,
-      ));
+      print(
+          '🎵 Spawning demo note ${currentNoteIndex + 1}/${songNotes.length}: ${songNote.noteName}');
+
+      setState(() {
+        fallingNotes.add(FallingNote(
+          piston:
+              (currentNoteIndex % 3) + 1, // Alternamos entre pistones 1, 2, 3
+          songNote: songNote,
+          y: -50,
+          startTime: DateTime.now().millisecondsSinceEpoch / 1000,
+        ));
+      });
+
       currentNoteIndex++;
     });
   } // Actualizar posiciones de las notas
@@ -547,8 +517,154 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         // Remover notas que ya no se necesitan
         fallingNotes.removeWhere((note) => note.y > 700 || note.isHit);
+
+        // Verificar si el juego ha terminado
+        _checkGameEnd();
       });
     });
+  }
+
+  // Verificar si el juego ha terminado
+  void _checkGameEnd() {
+    // El juego termina cuando:
+    // 1. Se han spawneado todas las notas (currentNoteIndex >= songNotes.length)
+    // 2. Ya no hay notas cayendo en pantalla
+    if (currentNoteIndex >= songNotes.length && fallingNotes.isEmpty) {
+      print('🏁 Game ended! All notes completed.');
+      _endGame();
+    }
+  }
+
+  // Finalizar el juego y mostrar resultados
+  void _endGame() {
+    setState(() {
+      isGameActive = false;
+      isGamePaused = false;
+    });
+
+    noteSpawner?.cancel();
+    gameUpdateTimer?.cancel();
+
+    // Mostrar diálogo de resultados
+    _showGameResults();
+  }
+
+  // Mostrar resultados del juego
+  void _showGameResults() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black.withOpacity(0.9),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.blue, width: 2),
+        ),
+        title: Column(
+          children: [
+            Icon(
+              accuracy >= 0.8
+                  ? Icons.star
+                  : accuracy >= 0.6
+                      ? Icons.thumb_up
+                      : Icons.info,
+              color: accuracy >= 0.8
+                  ? Colors.amber
+                  : accuracy >= 0.6
+                      ? Colors.green
+                      : Colors.blue,
+              size: 60,
+            ),
+            SizedBox(height: 10),
+            Text(
+              accuracy >= 0.8
+                  ? '¡Excelente!'
+                  : accuracy >= 0.6
+                      ? '¡Bien hecho!'
+                      : '¡Sigue practicando!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildResultRow('Puntuación:', '$currentScore', Colors.amber),
+            _buildResultRow('Notas correctas:', '$correctNotes', Colors.green),
+            _buildResultRow(
+                'Notas perdidas:', '${totalNotes - correctNotes}', Colors.red),
+            _buildResultRow(
+                'Precisión:', '${(accuracy * 100).toInt()}%', Colors.blue),
+            _buildResultRow(
+                'Experiencia:', '+$experiencePoints XP', Colors.purple),
+            _buildResultRow('Monedas:', '+$totalCoins', Colors.amber),
+          ],
+        ),
+        actions: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton(
+                onPressed: _restartGame,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                child: Text('Reintentar'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Cerrar diálogo
+                  Navigator.of(context).pop(); // Regresar al menú
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                child: Text('Continuar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Widget helper para las filas de resultados
+  Widget _buildResultRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Métodos de control de pausa
@@ -581,6 +697,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   void _restartGame() {
+    print('🔄 Restarting game...');
+
+    // NO cerrar diálogos aquí - el diálogo ya se cierra desde pause_dialog.dart
+    // El Navigator.pop() estaba causando que se saliera del juego completamente
+
     // Reiniciar variables del juego
     setState(() {
       isGameActive = false;
@@ -595,9 +716,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       lastPlayedNote = null; // Limpiar última nota tocada
     });
 
-    // Cancelar timers
+    // Cancelar TODOS los timers
     noteSpawner?.cancel();
     gameUpdateTimer?.cancel();
+    countdownTimer?.cancel(); // ¡Importante! Cancelar el timer del countdown
+
+    // Reiniciar tiempo de inicio del juego
+    gameStartTime = 0;
+
+    print('🎮 Starting countdown for restart...');
 
     // Iniciar countdown nuevamente
     setState(() {

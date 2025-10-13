@@ -106,6 +106,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/Trumpet_notes/
     # - assets/scripts/logo/logo.png
   #   - images/a_dot_ham.jpeg
 

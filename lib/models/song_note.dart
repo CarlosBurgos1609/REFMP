@@ -168,12 +168,12 @@ class SongNote {
   // Verificar si la combinación de pistones presionados coincide con la nota
   bool matchesPistonCombination(Set<int> pressedPistons) {
     final requiredPistons = pistonCombination.toSet();
-    
+
     // Si no se requieren pistones, no debe haber ningún pistón presionado
     if (requiredPistons.isEmpty) {
       return pressedPistons.isEmpty;
     }
-    
+
     // Los pistones presionados deben coincidir exactamente con los requeridos
     return pressedPistons.length == requiredPistons.length &&
         pressedPistons.containsAll(requiredPistons);

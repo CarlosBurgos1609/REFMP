@@ -7,6 +7,9 @@ import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
+import '../../models/song_note.dart';
+import '../../services/database_service.dart';
+import '../../services/trumpet_audio_service.dart';
 
 class MediumGamePage extends StatefulWidget {
   final String songName;
@@ -78,12 +81,22 @@ class _MediumGamePageState extends State<MediumGamePage>
 
   int get experiencePerCorrectNote => 2; // Medio: +2 exp por nota correcta
 
+  // Sistema de audio para notas de trompeta usando servicio centralizado
+  late TrumpetAudioService _audioService;
+
+  // Sistema de notas musicales
+  List<SongNote> songNotes = [];
+  bool isLoadingSong = false;
+  String? lastPlayedNote; // Última nota musical tocada
+
   @override
   void initState() {
     super.initState();
     _setupScreen();
     _startLogoTimer();
     _initializeAnimations();
+    _initializeAudio();
+    _loadSongData(); // Cargar datos musicales
     // Simular juego para demostración
     _simulateGameplay();
   }
@@ -170,6 +183,73 @@ class _MediumGamePageState extends State<MediumGamePage>
       duration: const Duration(seconds: 8),
       vsync: this,
     )..repeat(); // Repetir infinitamente
+  }
+
+  // Inicializar el sistema de audio
+  void _initializeAudio() {
+    _audioService = TrumpetAudioService.instance;
+    _audioService.setVolume(0.7); // Volumen al 70%
+  }
+
+  // Cargar datos de la canción desde la base de datos
+  Future<void> _loadSongData() async {
+    if (widget.songId == null) {
+      print('⚠️ No songId provided, skipping song data load');
+      return;
+    }
+
+    setState(() {
+      isLoadingSong = true;
+    });
+
+    try {
+      final notes = await DatabaseService.getSongNotes(widget.songId!);
+      setState(() {
+        songNotes = notes;
+        isLoadingSong = false;
+      });
+      print('✅ Loaded ${songNotes.length} notes for song ${widget.songId}');
+    } catch (e) {
+      print('❌ Error loading song data: $e');
+      setState(() {
+        isLoadingSong = false;
+      });
+    }
+  }
+
+  // Reproducir el sonido correspondiente a una nota musical
+  Future<void> _playNoteSound(String noteName) async {
+    try {
+      // Reproducir el sonido usando el servicio centralizado
+      await _audioService.playNote(noteName);
+      print('🎵 Playing sound for note: $noteName');
+    } catch (e) {
+      print('❌ Error playing note sound: $e');
+    }
+  }
+
+  // Convertir combinación de pistones a nota musical
+  String? _pistonCombinationToNote(Set<int> pistonCombination) {
+    // Mapeo básico de pistones a notas en trompeta
+    if (pistonCombination.isEmpty) {
+      return 'Bb3'; // Sin pistones presionados
+    } else if (pistonCombination.containsAll([1, 2])) {
+      return 'A3';
+    } else if (pistonCombination.contains(1)) {
+      return 'A3';
+    } else if (pistonCombination.contains(2)) {
+      return 'A3';
+    } else if (pistonCombination.containsAll([1, 3])) {
+      return 'G3';
+    } else if (pistonCombination.containsAll([2, 3])) {
+      return 'Ab3';
+    } else if (pistonCombination.contains(3)) {
+      return 'G3';
+    } else if (pistonCombination.containsAll([1, 2, 3])) {
+      return 'Gb3';
+    }
+
+    return 'Bb3'; // Default
   }
 
   @override
@@ -1008,19 +1088,30 @@ class _MediumGamePageState extends State<MediumGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
-    // Aquí puedes agregar la lógica del juego
-    debugPrint('Pistón $pistonNumber presionado');
+    // Reproducir nota correspondiente a la combinación de pistones
+    _playNoteFromPistonCombination();
 
-    // TODO: Implementar lógica del juego
+    debugPrint(
+        'Pistón $pistonNumber presionado. Combinación actual: $pressedPistons');
   }
 
   void _onPistonReleased(int pistonNumber) {
     // Remover pistón del conjunto de pistones presionados
     pressedPistons.remove(pistonNumber);
 
-    debugPrint('Pistón $pistonNumber liberado');
+    debugPrint(
+        'Pistón $pistonNumber liberado. Combinación actual: $pressedPistons');
+  }
 
-    // TODO: Implementar lógica del juego
+  // Reproducir nota basada en la combinación actual de pistones
+  void _playNoteFromPistonCombination() async {
+    final note = _pistonCombinationToNote(pressedPistons);
+    if (note != null) {
+      setState(() {
+        lastPlayedNote = note;
+      });
+      await _playNoteSound(note);
+    }
   }
 
   // Método de control de pausa

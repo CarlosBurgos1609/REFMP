@@ -7,17 +7,22 @@ class DatabaseService {
   // Obtener todas las notas de una canción ordenadas por tiempo de inicio
   static Future<List<SongNote>> getSongNotes(String songId) async {
     try {
+      print('🔍 Fetching notes for song ID: $songId');
       final response = await _supabase
           .from('song_notes')
           .select('*')
           .eq('song_id', songId)
           .order('start_time_ms', ascending: true);
 
-      return (response as List<dynamic>)
+      print('📡 Database response: $response');
+      final notes = (response as List<dynamic>)
           .map((json) => SongNote.fromJson(json as Map<String, dynamic>))
           .toList();
+
+      print('✅ Successfully converted ${notes.length} notes from database');
+      return notes;
     } catch (e) {
-      print('Error al obtener notas de la canción: $e');
+      print('❌ Error al obtener notas de la canción: $e');
       throw Exception('Error al cargar las notas de la canción: $e');
     }
   }
@@ -27,7 +32,8 @@ class DatabaseService {
     try {
       final response = await _supabase
           .from('songs')
-          .select('name, bpm, time_signature, key_signature, duration_seconds, difficulty_level')
+          .select(
+              'name, bpm, time_signature, key_signature, duration_seconds, difficulty_level')
           .eq('id', songId)
           .single();
 
@@ -40,10 +46,7 @@ class DatabaseService {
 
   // Obtener notas por rango de tiempo (útil para cargar solo las notas próximas)
   static Future<List<SongNote>> getSongNotesInTimeRange(
-    String songId, 
-    int startTimeMs, 
-    int endTimeMs
-  ) async {
+      String songId, int startTimeMs, int endTimeMs) async {
     try {
       final response = await _supabase
           .from('song_notes')
@@ -65,10 +68,8 @@ class DatabaseService {
   // Obtener el total de notas de una canción
   static Future<int> getTotalNotesCount(String songId) async {
     try {
-      final response = await _supabase
-          .from('song_notes')
-          .select('id')
-          .eq('song_id', songId);
+      final response =
+          await _supabase.from('song_notes').select('id').eq('song_id', songId);
 
       return (response as List<dynamic>).length;
     } catch (e) {
@@ -90,7 +91,7 @@ class DatabaseService {
 
       final lastNoteStartTime = response['start_time_ms'] as int;
       final lastNoteDuration = response['duration_ms'] as int;
-      
+
       return lastNoteStartTime + lastNoteDuration;
     } catch (e) {
       print('Error al calcular duración de la canción: $e');

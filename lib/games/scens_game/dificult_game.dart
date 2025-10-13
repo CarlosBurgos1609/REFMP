@@ -6,6 +6,9 @@ import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
+import '../../models/song_note.dart';
+import '../../services/database_service.dart';
+import '../../services/trumpet_audio_service.dart';
 
 class DificultGamePage extends StatefulWidget {
   final String songName;
@@ -76,12 +79,24 @@ class _DificultGamePageState extends State<DificultGamePage>
   // Monedas que se van a ganar en este nivel (fijas, no cambian durante el juego)
   int get totalCoins => coinsPerCorrectNote;
 
+  int get experiencePerCorrectNote => 3; // Difícil: +3 exp por nota correcta
+
+  // Sistema de audio para notas de trompeta usando servicio centralizado
+  late TrumpetAudioService _audioService;
+
+  // Sistema de notas musicales
+  List<SongNote> songNotes = [];
+  bool isLoadingSong = false;
+  String? lastPlayedNote; // Última nota musical tocada
+
   @override
   void initState() {
     super.initState();
     _setupScreen();
     _startLogoTimer();
     _initializeAnimations();
+    _initializeAudio();
+    _loadSongData(); // Cargar datos musicales
   }
 
   @override
@@ -166,6 +181,73 @@ class _DificultGamePageState extends State<DificultGamePage>
       duration: const Duration(seconds: 8),
       vsync: this,
     )..repeat(); // Repetir infinitamente
+  }
+
+  // Inicializar el sistema de audio
+  void _initializeAudio() {
+    _audioService = TrumpetAudioService.instance;
+    _audioService.setVolume(0.7); // Volumen al 70%
+  }
+
+  // Cargar datos de la canción desde la base de datos
+  Future<void> _loadSongData() async {
+    if (widget.songId == null) {
+      print('⚠️ No songId provided, skipping song data load');
+      return;
+    }
+
+    setState(() {
+      isLoadingSong = true;
+    });
+
+    try {
+      final notes = await DatabaseService.getSongNotes(widget.songId!);
+      setState(() {
+        songNotes = notes;
+        isLoadingSong = false;
+      });
+      print('✅ Loaded ${songNotes.length} notes for song ${widget.songId}');
+    } catch (e) {
+      print('❌ Error loading song data: $e');
+      setState(() {
+        isLoadingSong = false;
+      });
+    }
+  }
+
+  // Reproducir el sonido correspondiente a una nota musical
+  Future<void> _playNoteSound(String noteName) async {
+    try {
+      // Reproducir el sonido usando el servicio centralizado
+      await _audioService.playNote(noteName);
+      print('🎵 Playing sound for note: $noteName');
+    } catch (e) {
+      print('❌ Error playing note sound: $e');
+    }
+  }
+
+  // Convertir combinación de pistones a nota musical (más complejo para nivel difícil)
+  String? _pistonCombinationToNote(Set<int> pistonCombination) {
+    // Mapeo más avanzado de pistones a notas para nivel difícil
+    if (pistonCombination.isEmpty) {
+      return 'Bb4'; // Sin pistones presionados - octava más alta
+    } else if (pistonCombination.containsAll([1, 2])) {
+      return 'A4';
+    } else if (pistonCombination.contains(1)) {
+      return 'A4';
+    } else if (pistonCombination.contains(2)) {
+      return 'A4';
+    } else if (pistonCombination.containsAll([1, 3])) {
+      return 'G4';
+    } else if (pistonCombination.containsAll([2, 3])) {
+      return 'Ab4';
+    } else if (pistonCombination.contains(3)) {
+      return 'G4';
+    } else if (pistonCombination.containsAll([1, 2, 3])) {
+      return 'Gb4';
+    }
+
+    return 'Bb4'; // Default octava más alta para nivel difícil
   }
 
   @override
@@ -1007,21 +1089,33 @@ class _DificultGamePageState extends State<DificultGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
+    // Reproducir nota correspondiente a la combinación de pistones
+    _playNoteFromPistonCombination();
+
     // Simular jugabilidad (esto se reemplazará con lógica real del juego)
     _simulateGameplay(true); // true = nota correcta, false = nota incorrecta
 
-    debugPrint('Pistón $pistonNumber presionado');
-
-    // TODO: Implementar lógica del juego
+    debugPrint(
+        'Pistón $pistonNumber presionado. Combinación actual: $pressedPistons');
   }
 
   void _onPistonReleased(int pistonNumber) {
     // Remover pistón del conjunto de pistones presionados
     pressedPistons.remove(pistonNumber);
 
-    debugPrint('Pistón $pistonNumber liberado');
+    debugPrint(
+        'Pistón $pistonNumber liberado. Combinación actual: $pressedPistons');
+  }
 
-    // TODO: Implementar lógica del juego
+  // Reproducir nota basada en la combinación actual de pistones
+  void _playNoteFromPistonCombination() async {
+    final note = _pistonCombinationToNote(pressedPistons);
+    if (note != null) {
+      setState(() {
+        lastPlayedNote = note;
+      });
+      await _playNoteSound(note);
+    }
   }
 
   // Método de control de pausa
