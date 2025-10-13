@@ -287,6 +287,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         widget.songName,
         _resumeGame,
         _restartGame,
+        onResumeFromBack: _resumeGame,
       );
     }
   }
@@ -792,7 +793,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             ],
           ),
           child: IconButton(
-            onPressed: () => showBackDialog(context, widget.songName),
+            onPressed: () => showBackDialog(
+              context,
+              widget.songName,
+              onCancel: () {
+                // Si el juego está pausado, reanudarlo
+                if (isGamePaused) {
+                  _resumeGame();
+                }
+              },
+            ),
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
               color: Colors.white,

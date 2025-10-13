@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
 
-void showBackDialog(BuildContext context, String songName) {
+void showBackDialog(
+  BuildContext context,
+  String songName, {
+  VoidCallback? onCancel,
+}) {
   showDialog(
     context: context,
     barrierDismissible: false,
@@ -126,7 +130,13 @@ void showBackDialog(BuildContext context, String songName) {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Llamar callback si existe para reanudar el juego
+                  if (onCancel != null) {
+                    onCancel();
+                  }
+                },
                 child: const Text(
                   'Cancelar',
                   style: TextStyle(

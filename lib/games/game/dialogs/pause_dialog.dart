@@ -7,8 +7,9 @@ void showPauseDialog(
   BuildContext context,
   String songName,
   VoidCallback onResume,
-  VoidCallback onRestart,
-) {
+  VoidCallback onRestart, {
+  VoidCallback? onResumeFromBack,
+}) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
   showDialog(
     context: context,
@@ -79,7 +80,11 @@ void showPauseDialog(
                           child: IconButton(
                             onPressed: () {
                               Navigator.pop(context); // Cerrar diálogo de pausa
-                              showBackDialog(context, songName);
+                              showBackDialog(
+                                context,
+                                songName,
+                                onCancel: onResumeFromBack ?? onResume,
+                              );
                             },
                             icon: const Icon(
                               Icons.arrow_back_rounded,

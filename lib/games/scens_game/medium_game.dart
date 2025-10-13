@@ -43,7 +43,8 @@ class _MediumGamePageState extends State<MediumGamePage>
   // Controlador de animación para la rotación de la imagen de la canción
   late AnimationController _rotationController;
 
-  // Variables para el sistema de puntuación y rendimiento
+  bool isGameActive = false;
+  bool isGamePaused = false;
   int currentScore = 0; // Puntuación actual
   int experiencePoints = 0; // Puntos de experiencia (empiezan en 0)
   int totalNotes = 0; // Total de notas tocadas
@@ -552,7 +553,16 @@ class _MediumGamePageState extends State<MediumGamePage>
             ],
           ),
           child: IconButton(
-            onPressed: () => showBackDialog(context, widget.songName),
+            onPressed: () => showBackDialog(
+              context,
+              widget.songName,
+              onCancel: () {
+                // Si el juego está pausado, reanudarlo
+                if (isGamePaused) {
+                  _resumeGame();
+                }
+              },
+            ),
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
               color: Colors.white,
@@ -1015,18 +1025,43 @@ class _MediumGamePageState extends State<MediumGamePage>
 
   // Método de control de pausa
   void _pauseGame() {
+    setState(() {
+      isGamePaused = true;
+    });
+
     showPauseDialog(
       context,
       widget.songName,
       () {
         // Reanudar (por ahora vacío)
+        _resumeGame();
         debugPrint('Reanudar juego medio');
       },
       () {
         // Reiniciar (por ahora vacío)
+        _restartGame();
         debugPrint('Reiniciar juego medio');
       },
+      onResumeFromBack: () {
+        _resumeGame();
+      },
     );
+  }
+
+  void _resumeGame() {
+    setState(() {
+      isGamePaused = false;
+    });
+  }
+
+  void _restartGame() {
+    setState(() {
+      isGamePaused = false;
+      currentScore = 0;
+      experiencePoints = 0;
+      totalNotes = 0;
+      correctNotes = 0;
+    });
   }
 
   // Método para simular el juego y actualizar estadísticas
