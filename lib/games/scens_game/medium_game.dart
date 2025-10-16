@@ -9,7 +9,7 @@ import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
 import '../../services/database_service.dart';
-import '../../services/trumpet_audio_service.dart';
+import '../../services/note_audio_service.dart'; // ACTUALIZADO: usar NoteAudioService
 
 class MediumGamePage extends StatefulWidget {
   final String songName;
@@ -82,7 +82,7 @@ class _MediumGamePageState extends State<MediumGamePage>
   int get experiencePerCorrectNote => 2; // Medio: +2 exp por nota correcta
 
   // Sistema de audio para notas de trompeta usando servicio centralizado
-  late TrumpetAudioService _audioService;
+  // Audio service removido - ahora usando NoteAudioService estático
 
   // Sistema de notas musicales
   List<SongNote> songNotes = [];
@@ -186,9 +186,9 @@ class _MediumGamePageState extends State<MediumGamePage>
   }
 
   // Inicializar el sistema de audio
-  void _initializeAudio() {
-    _audioService = TrumpetAudioService.instance;
-    _audioService.setVolume(0.7); // Volumen al 70%
+  Future<void> _initializeAudio() async {
+    await NoteAudioService.initialize();
+    await NoteAudioService.setVolume(0.7); // Volumen al 70%
   }
 
   // Cargar datos de la canción desde la base de datos
@@ -221,8 +221,8 @@ class _MediumGamePageState extends State<MediumGamePage>
   Future<void> _playNoteSound(String noteName) async {
     try {
       // Reproducir el sonido usando el servicio centralizado
-      await _audioService.playNote(noteName);
-      print('🎵 Playing sound for note: $noteName');
+      // Nota: En nivel medio, solo reproducir sonidos basados en notas reales de la base de datos
+      print('🎵 Note sound requested: $noteName (disabled in medium mode)');
     } catch (e) {
       print('❌ Error playing note sound: $e');
     }

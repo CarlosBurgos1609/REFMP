@@ -79,6 +79,7 @@ dependencies:
   hive: ^2.2.3
   hive_generator: ^2.0.1
   dio: ^5.8.0+1
+  http: ^1.1.0
   video_player: ^2.9.5
   youtube_player_flutter: ^9.1.1
 
