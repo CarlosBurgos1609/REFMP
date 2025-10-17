@@ -186,7 +186,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   int gameStartTime = 0; // Tiempo cuando empezó el juego (en milisegundos)
   String?
       lastPlayedNote; // Última nota musical tocada (para mostrar en el contenedor)
-  
+
   // NUEVO: Servicio de audio continuo
   final ContinuousSongService _continuousAudioService = ContinuousSongService();
   bool _isAudioContinuous = true; // Si está usando audio continuo
@@ -252,7 +252,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Future<void> _initializeAudio() async {
     try {
       await NoteAudioService.initialize();
-      
+
       // NUEVO: Inicializar servicio de audio continuo
       await _continuousAudioService.initialize();
 
@@ -314,25 +314,27 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
           // NUEVO: Cargar canción en el servicio de audio continuo
           if (_isAudioContinuous && widget.songId != null) {
-            bool songLoaded = await _continuousAudioService.loadSong(widget.songId!);
+            bool songLoaded =
+                await _continuousAudioService.loadSong(widget.songId!);
             if (songLoaded) {
               print('✅ Song loaded in continuous audio service');
-              
+
               // Configurar callbacks para el servicio continuo
               _continuousAudioService.onNoteStart = (note) {
                 print('🎵 Continuous audio: Note started - ${note.noteName}');
               };
-              
+
               _continuousAudioService.onNoteEnd = (note) {
                 print('✅ Continuous audio: Note ended - ${note.noteName}');
               };
-              
+
               _continuousAudioService.onSongComplete = () {
                 print('🎉 Continuous audio: Song completed');
                 _endGame();
               };
             } else {
-              print('⚠️ Failed to load song in continuous audio service, falling back to individual notes');
+              print(
+                  '⚠️ Failed to load song in continuous audio service, falling back to individual notes');
               _isAudioContinuous = false;
             }
           }
@@ -527,7 +529,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // NUEVO: Detener cualquier sonido en reproducción
     NoteAudioService.stopAllSounds();
-    
+
     // NUEVO: Limpiar servicio de audio continuo
     _continuousAudioService.dispose();
 
@@ -889,14 +891,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               // Reducido de +80 a +50 para eliminar notas más rápido
               note.isMissed = true;
               print('❌ Note missed: ${note.noteName} at Y: ${note.y}');
-              
+
               // NUEVO: Mutear audio continuo cuando se pierde una nota
               if (_isAudioContinuous && _playerIsOnTrack) {
                 _continuousAudioService.muteGame();
                 _playerIsOnTrack = false;
                 print('🔇 Note missed - muting continuous audio');
               }
-              
+
               _onNoteMissed();
             }
           }
@@ -935,7 +937,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     noteSpawner?.cancel();
     gameUpdateTimer?.cancel();
-    
+
     // NUEVO: Parar audio continuo
     if (_isAudioContinuous) {
       _continuousAudioService.stop();
@@ -971,7 +973,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       });
       noteSpawner?.cancel();
       gameUpdateTimer?.cancel();
-      
+
       // NUEVO: Pausar audio continuo
       if (_isAudioContinuous) {
         _continuousAudioService.pause();
@@ -992,12 +994,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       setState(() {
         isGamePaused = false;
       });
-      
+
       // NUEVO: Reanudar audio continuo
       if (_isAudioContinuous) {
         _continuousAudioService.resume();
       }
-      
+
       _spawnNotes();
       _updateGame();
     }
@@ -1072,7 +1074,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // NUEVO: Verificar si el jugador está tocando la nota correcta (para mute/unmute del audio continuo)
   void _checkNoteHit(int pistonNumber) {
     bool hitCorrectNote = false;
-    
+
     for (var note in fallingNotes) {
       if (!note.isHit && !note.isMissed) {
         final screenHeight = MediaQuery.of(context).size.height;
@@ -1083,7 +1085,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
           // Verificar si los pistones presionados coinciden con la nota
           if (note.matchesPistons(pressedPistons)) {
-            print('✅ HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
+            print(
+                '✅ HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
             note.isHit = true;
             hitCorrectNote = true;
 
@@ -1104,18 +1107,18 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         }
       }
     }
-    
+
     // Si no se acertó ninguna nota y el jugador estaba en el track
     if (!hitCorrectNote && _playerIsOnTrack) {
       print('❌ MISS! Pressed: $pressedPistons - Player off track');
-      
+
       // NUEVO: Mutear audio continuo cuando el jugador falla
       if (_isAudioContinuous) {
         _continuousAudioService.muteGame();
         _playerIsOnTrack = false;
         print('🔇 Player off track - muting continuous audio');
       }
-      
+
       _onNoteMissed();
     }
   }
@@ -1127,7 +1130,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       print('🔇 Audio continuo activo - no reproducir sonidos individuales');
       return;
     }
-    
+
     // LÓGICA ORIGINAL: Solo se ejecuta si NO está usando audio continuo
     SongNote? noteToPlay;
 
