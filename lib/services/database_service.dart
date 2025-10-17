@@ -15,7 +15,10 @@ class DatabaseService {
       print('🔍 Fetching notes for song ID: $songId');
 
       // Consulta con JOIN para obtener datos de chromatic_scale
-      final response = await _supabase.from('song_notes').select('''
+      // ARREGLADO: Ordenar por measure_number y luego por beat_position para manejar notas repetidas correctamente
+      final response = await _supabase
+          .from('song_notes')
+          .select('''
             id,
             song_id,
             start_time_ms,
@@ -38,19 +41,38 @@ class DatabaseService {
               piston_3,
               note_url
             )
-          ''').eq('song_id', songId).order('start_time_ms', ascending: true);
+          ''')
+          .eq('song_id', songId)
+          .order('measure_number', ascending: true)
+          .order('beat_position', ascending: true);
 
       print('📡 Database response: $response');
 
+      // NUEVO: Verificar que datos llegaron
+      if (response.isEmpty) {
+        print('⚠️ No notes found in database for song: $songId');
+        return [];
+      }
+
+      print('🔍 Processing ${response.length} notes from database...');
+
       final notes = (response as List<dynamic>).map((json) {
+        print(
+            '🔍 Processing note JSON: ${json.toString().substring(0, 200)}...');
+
         // Crear SongNote desde los datos principales
         final songNote = SongNote.fromJson(json as Map<String, dynamic>);
 
         // Si hay datos de chromatic_scale, crear ChromaticNote y asociarlo
         if (json['chromatic_scale'] != null) {
+          print(
+              '✅ Found chromatic_scale data for note: ${json['chromatic_scale']['english_name']}');
           final chromaticData = json['chromatic_scale'] as Map<String, dynamic>;
           final chromaticNote = ChromaticNote.fromJson(chromaticData);
           songNote.setChromaticNote(chromaticNote);
+        } else {
+          print(
+              '❌ No chromatic_scale data found for note with chromatic_id: ${json['chromatic_id']}');
         }
 
         return songNote;
@@ -115,7 +137,8 @@ class DatabaseService {
           .eq('song_id', songId)
           .gte('start_time_ms', startTimeMs)
           .lte('start_time_ms', endTimeMs)
-          .order('start_time_ms', ascending: true);
+          .order('measure_number', ascending: true)
+          .order('beat_position', ascending: true);
 
       final notes = (response as List<dynamic>).map((json) {
         final songNote = SongNote.fromJson(json as Map<String, dynamic>);
@@ -218,7 +241,7 @@ class DatabaseService {
     int? preferredStartTime,
     int? duration,
     String noteType = 'quarter',
-    int velocity = 80,
+    int velocity = 120,
   }) async {
     try {
       // Obtener notas existentes de la canción

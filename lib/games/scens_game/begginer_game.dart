@@ -4,13 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart'; // NUEVO: Para cache robusto
+import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para cache offline
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
 import '../../models/chromatic_note.dart'; // NUEVA importación
 import '../../services/note_audio_service.dart'; // NUEVO: Servicio de audio
+import '../../services/continuous_song_service.dart'; // NUEVO: Servicio de audio continuo
 import '../../services/database_service.dart';
 import '../game/dialogs/congratulations_dialog.dart';
+
+// NUEVO: Sistema de cache robusto como objects.dart
+class AudioCacheManager {
+  static const key = 'audioCacheKey';
+  static CacheManager instance = CacheManager(
+    Config(
+      key,
+      stalePeriod: const Duration(days: 7), // Cache de audio por 7 días
+      maxNrOfCacheObjects: 500, // Más objetos para audio
+      fileService: HttpFileService(),
+    ),
+  );
+}
 
 // Clase para representar una nota que cae
 class FallingNote {
@@ -159,15 +175,27 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   bool isGameActive = false;
   bool isGamePaused = false;
   bool isLoadingSong = false;
+  bool isPreloadingAudio = false; // NUEVO: Estado de precarga de audio
+  int audioCacheProgress = 0; // NUEVO: Progreso de descarga (0-100)
+  bool _audioCacheCompleted = false; // NUEVO: Si el cache de audio se completó
+  Timer? _logoExitTimer; // NUEVO: Timer para salir del logo
+  Timer? _endGameTimer; // NUEVO: Timer para mostrar diálogo final
+  final Map<String, bool> _audioLoadStatus =
+      {}; // NUEVO: Estado de carga de cada audio
   int currentNoteIndex = 0; // Índice de la próxima nota a mostrar
   int gameStartTime = 0; // Tiempo cuando empezó el juego (en milisegundos)
   String?
       lastPlayedNote; // Última nota musical tocada (para mostrar en el contenedor)
+  
+  // NUEVO: Servicio de audio continuo
+  final ContinuousSongService _continuousAudioService = ContinuousSongService();
+  bool _isAudioContinuous = true; // Si está usando audio continuo
+  bool _playerIsOnTrack = true; // Si el jugador está tocando correctamente
 
   // Configuración del juego
   static const double noteSpeed = 200.0; // pixels por segundo
   static const double hitTolerance =
-      50.0; // Tolerancia aumentada para hits más fáciles después de los pistones
+      70.0; // Tolerancia aumentada para hits más fáciles y anticipados
 
   // Sistema de recompensas fijas para nivel principiante según tabla
   // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
@@ -201,10 +229,23 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   void initState() {
     super.initState();
     _setupScreen();
-    _startLogoTimer();
     _initializeAnimations();
+    _initializeHive(); // NUEVO: Inicializar Hive
     _initializeAudio(); // NUEVO: Inicializar servicio de audio
     _loadSongData(); // Cargar datos musicales
+    _startLogoTimer(); // MOVIDO: iniciar timer después de cargar datos
+  }
+
+  // NUEVO: Inicializar Hive si no está abierto
+  Future<void> _initializeHive() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+        print('✅ Hive box opened successfully');
+      }
+    } catch (e) {
+      print('❌ Error initializing Hive: $e');
+    }
   }
 
   // NUEVO: Inicializar el servicio de audio
@@ -212,16 +253,20 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     try {
       await NoteAudioService.initialize();
       
+      // NUEVO: Inicializar servicio de audio continuo
+      await _continuousAudioService.initialize();
+
       // Verificar tamaño del caché y limpiar si es muy grande
       final cacheSizeMB = await NoteAudioService.getCacheSizeMB();
       print('📊 Audio cache size: ${cacheSizeMB.toStringAsFixed(1)} MB');
-      
-      if (cacheSizeMB > 50) { // Si el caché supera 50MB
+
+      if (cacheSizeMB > 50) {
+        // Si el caché supera 50MB
         print('🧹 Cache too large, clearing old files...');
         await NoteAudioService.clearOldCache();
       }
-      
-      print('✅ Audio service initialized successfully');
+
+      print('✅ Audio services initialized successfully');
     } catch (e) {
       print('❌ Error initializing audio service: $e');
     }
@@ -247,17 +292,53 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           print(
               '✅ Loaded ${songNotes.length} notes from database for song: ${widget.songName}');
 
-          // Mostrar información de las primeras notas
+          // Mostrar información detallada de las primeras notas
           for (int i = 0;
               i < (songNotes.length < 5 ? songNotes.length : 5);
               i++) {
             final note = songNotes[i];
             print(
                 '🎵 Note $i: ${note.noteName} (chromatic_id: ${note.chromaticId}) - Pistons: ${note.pistonCombination} - URL: ${note.noteUrl}');
+
+            // NUEVO: Verificar si la información cromática está cargada
+            if (note.chromaticNote != null) {
+              print(
+                  '   ✅ ChromaticNote loaded: ${note.chromaticNote!.englishName} (${note.chromaticNote!.spanishName})');
+              print('   🎺 Pistons: ${note.chromaticNote!.requiredPistons}');
+              print('   🔗 Audio URL: ${note.chromaticNote!.noteUrl}');
+            } else {
+              print(
+                  '   ❌ ChromaticNote NOT loaded for chromatic_id: ${note.chromaticId}');
+            }
           }
 
-          // NUEVO: Precargar audio de las primeras notas
-          _precacheAudioForFirstNotes();
+          // NUEVO: Cargar canción en el servicio de audio continuo
+          if (_isAudioContinuous && widget.songId != null) {
+            bool songLoaded = await _continuousAudioService.loadSong(widget.songId!);
+            if (songLoaded) {
+              print('✅ Song loaded in continuous audio service');
+              
+              // Configurar callbacks para el servicio continuo
+              _continuousAudioService.onNoteStart = (note) {
+                print('🎵 Continuous audio: Note started - ${note.noteName}');
+              };
+              
+              _continuousAudioService.onNoteEnd = (note) {
+                print('✅ Continuous audio: Note ended - ${note.noteName}');
+              };
+              
+              _continuousAudioService.onSongComplete = () {
+                print('🎉 Continuous audio: Song completed');
+                _endGame();
+              };
+            } else {
+              print('⚠️ Failed to load song in continuous audio service, falling back to individual notes');
+              _isAudioContinuous = false;
+            }
+          }
+
+          // NUEVO: Precargar TODOS los audios durante el logo
+          _precacheAllAudioFiles();
 
           currentNoteIndex = 0;
         } else {
@@ -278,32 +359,158 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     });
   }
 
-  // NUEVO: Precargar audio de las primeras notas para reproducción instantánea
-  Future<void> _precacheAudioForFirstNotes() async {
+  // NUEVO: Método robusto de descarga y cache de audio (similar a objects.dart)
+  Future<String?> _downloadAndCacheAudio(String url, String cacheKey) async {
+    if (!Hive.isBoxOpen('offline_data')) {
+      await Hive.openBox('offline_data');
+    }
+
+    final box = Hive.box('offline_data');
+    final cachedData = box.get(cacheKey, defaultValue: null);
+
+    // Verificar si ya está en cache y el archivo existe
+    if (cachedData != null &&
+        cachedData['url'] == url &&
+        cachedData['path'] != null &&
+        File(cachedData['path']).existsSync()) {
+      print('🎵 Using cached audio: ${cachedData['path']}');
+      _audioLoadStatus[cacheKey] = true;
+      return cachedData['path'];
+    }
+
+    // Validar URL
+    if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
+      print('❌ Invalid audio URL: $url');
+      _audioLoadStatus[cacheKey] = false;
+      return null;
+    }
+
     try {
-      print('🎵 Precaching audio for first notes...');
+      print('📥 Downloading audio: $url');
 
-      final notesToPrecache = songNotes.take(10).toList(); // Primeras 10 notas
+      // Usar el cache manager robusto
+      final fileInfo =
+          await AudioCacheManager.instance.downloadFile(url).timeout(
+                const Duration(seconds: 8), // Timeout de 8 segundos
+              );
 
-      for (var note in notesToPrecache) {
+      final filePath = fileInfo.file.path;
+
+      // Guardar en Hive para persistencia offline
+      await box.put(cacheKey, {
+        'path': filePath,
+        'url': url,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      print('✅ Audio cached successfully: $filePath');
+      _audioLoadStatus[cacheKey] = true;
+      return filePath;
+    } catch (e) {
+      print('❌ Error caching audio $url: $e');
+      _audioLoadStatus[cacheKey] = false;
+      return null;
+    }
+  }
+
+  // NUEVO: Precargar TODOS los audios durante la pantalla del logo (SISTEMA ROBUSTO)
+  Future<void> _precacheAllAudioFiles() async {
+    try {
+      setState(() {
+        isPreloadingAudio = true;
+        audioCacheProgress = 0;
+      });
+
+      print('🎵 Starting robust audio precaching...');
+
+      if (songNotes.isEmpty) {
+        print('⚠️ No notes to precache');
+        setState(() {
+          isPreloadingAudio = false;
+          audioCacheProgress = 100;
+          _audioCacheCompleted = true;
+        });
+        // Proceder inmediatamente al countdown si no hay notas
+        _proceedToCountdown();
+        return;
+      }
+
+      // Obtener todas las URLs únicas de audio
+      final Set<String> uniqueAudioUrls = {};
+      for (var note in songNotes) {
         if (note.noteUrl != null && note.noteUrl!.isNotEmpty) {
-          // Precargar en background sin esperar (sin duración para precache)
-          NoteAudioService.playNoteFromUrl(
-            note.noteUrl,
-            noteId: note.chromaticId?.toString(),
-            // No incluir durationMs para precache - queremos solo descargar
-          ).then((_) {
-            // Inmediatamente detener después de precargar
-            NoteAudioService.stopAllSounds();
-          }).catchError((e) {
-            print('⚠️ Failed to precache note ${note.noteName}: $e');
+          uniqueAudioUrls.add(note.noteUrl!);
+        }
+      }
+
+      print('📥 Found ${uniqueAudioUrls.length} unique audio files to cache');
+
+      if (uniqueAudioUrls.isEmpty) {
+        setState(() {
+          isPreloadingAudio = false;
+          audioCacheProgress = 100;
+          _audioCacheCompleted = true;
+        });
+        _proceedToCountdown();
+        return;
+      }
+
+      // Descargar audios uno por uno con sistema robusto
+      int processedCount = 0;
+      int successCount = 0;
+
+      for (String url in uniqueAudioUrls) {
+        final cacheKey = 'audio_${url.hashCode}';
+
+        try {
+          final cachedPath = await _downloadAndCacheAudio(url, cacheKey);
+          if (cachedPath != null) {
+            successCount++;
+            print(
+                '✅ Cached audio (${processedCount + 1}/${uniqueAudioUrls.length}): Success');
+          } else {
+            print(
+                '⚠️ Failed to cache audio (${processedCount + 1}/${uniqueAudioUrls.length}): ${url.split('/').last}');
+          }
+        } catch (e) {
+          print(
+              '❌ Error caching audio (${processedCount + 1}/${uniqueAudioUrls.length}): $e');
+        }
+
+        processedCount++;
+
+        if (mounted) {
+          setState(() {
+            audioCacheProgress =
+                ((processedCount / uniqueAudioUrls.length) * 100).round();
           });
         }
       }
 
-      print('✅ Started precaching ${notesToPrecache.length} notes');
+      if (mounted) {
+        setState(() {
+          isPreloadingAudio = false;
+          audioCacheProgress = 100;
+          _audioCacheCompleted = true;
+        });
+      }
+
+      print(
+          '🎉 Audio precaching completed! ${successCount}/${uniqueAudioUrls.length} files cached successfully');
+
+      // Proceder al countdown ahora que el cache está completo
+      _proceedToCountdown();
     } catch (e) {
-      print('❌ Error precaching audio: $e');
+      print('❌ Error during audio precaching: $e');
+      if (mounted) {
+        setState(() {
+          isPreloadingAudio = false;
+          audioCacheProgress = 100;
+          _audioCacheCompleted = true;
+        });
+      }
+      // Proceder al countdown aunque haya errores
+      _proceedToCountdown();
     }
   }
 
@@ -313,11 +520,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     countdownTimer?.cancel();
     noteSpawner?.cancel();
     gameUpdateTimer?.cancel();
+    _logoExitTimer?.cancel(); // NUEVO: Cancelar timer de salida del logo
+    _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final
     _rotationController.dispose();
     _noteAnimationController.dispose();
 
     // NUEVO: Detener cualquier sonido en reproducción
     NoteAudioService.stopAllSounds();
+    
+    // NUEVO: Limpiar servicio de audio continuo
+    _continuousAudioService.dispose();
 
     // Restaurar configuración normal al salir
     _restoreNormalMode();
@@ -364,15 +576,26 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   void _startLogoTimer() {
-    logoTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          showLogo = false;
-          showCountdown = true;
-        });
-        _startCountdown();
+    // Timer máximo de seguridad (6 segundos) - si no se completa la descarga, continuar
+    _logoExitTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted && showLogo) {
+        print('⏰ Logo timer expired, proceeding to countdown...');
+        _proceedToCountdown();
       }
     });
+
+    // No iniciar countdown automáticamente - esperar a que termine el cache o expire el timer
+  }
+
+  // NUEVO: Proceder al countdown cuando el cache esté listo o expire el timer
+  void _proceedToCountdown() {
+    if (mounted && showLogo) {
+      setState(() {
+        showLogo = false;
+        showCountdown = true;
+      });
+      _startCountdown();
+    }
   }
 
   void _startCountdown() {
@@ -429,10 +652,23 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     setState(() {
       isGameActive = true;
       currentNoteIndex = 0; // Reset index
+      _playerIsOnTrack = true; // Inicializar como que el jugador está correcto
     });
 
     print('📝 Song notes count: ${songNotes.length}');
     print('🎵 Current note index: $currentNoteIndex');
+
+    // NUEVO: Iniciar audio continuo si está disponible
+    if (_isAudioContinuous) {
+      print('🎵 Starting continuous audio playback...');
+      _continuousAudioService.play().then((_) {
+        print('✅ Continuous audio started successfully');
+      }).catchError((e) {
+        print('❌ Error starting continuous audio: $e');
+        // Fallback a sistema normal
+        _isAudioContinuous = false;
+      });
+    }
 
     _spawnNotes();
     _updateGame();
@@ -608,7 +844,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   // Actualizar posiciones de las notas
-
   void _updateGame() {
     gameUpdateTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       // ~60 FPS
@@ -619,6 +854,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       setState(() {
         final currentTime = DateTime.now().millisecondsSinceEpoch / 1000;
+        final screenHeight = MediaQuery.of(context).size.height;
+        final hitZoneY = screenHeight - 160;
 
         // Actualizar posición de cada nota
         for (var note in fallingNotes) {
@@ -626,19 +863,50 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             final elapsed = currentTime - note.startTime;
             note.y = -50 + (elapsed * noteSpeed);
 
-            // Verificar si la nota se perdió (pasó la zona de hit ampliada)
-            final screenHeight = MediaQuery.of(context).size.height;
-            final hitZoneY = screenHeight - 160;
-            if (note.y > hitZoneY + 80) {
-              // Pasó la zona de hit + margen generoso
+            // AUTO-HIT para notas de aire (sin presionar pistones)
+            if (note.isOpenNote &&
+                note.y >= hitZoneY - 30 &&
+                note.y <= hitZoneY + 30) {
+              print('🌬️ AUTO-HIT for open note (aire): ${note.noteName}');
+              note.isHit = true;
+
+              // Actualizar la última nota tocada para mostrar en el contenedor
+              setState(() {
+                lastPlayedNote = note.noteName;
+              });
+
+              // NUEVO: Reproducir sonido para nota de aire automáticamente
+              if (note.songNote != null && note.songNote!.noteUrl != null) {
+                _playFromRobustCache(note.songNote!);
+              }
+
+              _onNoteHit(note.noteName); // Contar como acierto
+              continue; // Pasar a la siguiente nota
+            }
+
+            // Verificar si la nota se perdió (más cerca de los pistones - límite reducido)
+            if (note.y > hitZoneY + 50) {
+              // Reducido de +80 a +50 para eliminar notas más rápido
               note.isMissed = true;
+              print('❌ Note missed: ${note.noteName} at Y: ${note.y}');
+              
+              // NUEVO: Mutear audio continuo cuando se pierde una nota
+              if (_isAudioContinuous && _playerIsOnTrack) {
+                _continuousAudioService.muteGame();
+                _playerIsOnTrack = false;
+                print('🔇 Note missed - muting continuous audio');
+              }
+              
               _onNoteMissed();
             }
           }
         }
 
-        // Remover notas que ya no se necesitan
-        fallingNotes.removeWhere((note) => note.y > 700 || note.isHit);
+        // Remover notas que ya no se necesitan (más agresivo)
+        fallingNotes.removeWhere((note) =>
+            note.y > hitZoneY + 100 || // Eliminar notas que pasaron muy abajo
+            note.isHit ||
+            note.isMissed);
 
         // Verificar si el juego ha terminado
         _checkGameEnd();
@@ -667,9 +935,18 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     noteSpawner?.cancel();
     gameUpdateTimer?.cancel();
+    
+    // NUEVO: Parar audio continuo
+    if (_isAudioContinuous) {
+      _continuousAudioService.stop();
+    }
 
-    // Mostrar diálogo de resultados
-    _showGameResults();
+    // NUEVO: Esperar 2 segundos antes de mostrar el diálogo para que termine la última nota
+    _endGameTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        _showGameResults();
+      }
+    });
   }
 
   // Mostrar resultados del juego
@@ -694,6 +971,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       });
       noteSpawner?.cancel();
       gameUpdateTimer?.cancel();
+      
+      // NUEVO: Pausar audio continuo
+      if (_isAudioContinuous) {
+        _continuousAudioService.pause();
+      }
 
       showPauseDialog(
         context,
@@ -710,6 +992,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       setState(() {
         isGamePaused = false;
       });
+      
+      // NUEVO: Reanudar audio continuo
+      if (_isAudioContinuous) {
+        _continuousAudioService.resume();
+      }
+      
       _spawnNotes();
       _updateGame();
     }
@@ -733,12 +1021,19 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       currentNoteIndex = 0; // Reiniciar índice de notas
       pressedPistons.clear(); // Limpiar pistones presionados
       lastPlayedNote = null; // Limpiar última nota tocada
+      _playerIsOnTrack = true; // Reiniciar estado del jugador
     });
+
+    // NUEVO: Parar audio continuo
+    if (_isAudioContinuous) {
+      _continuousAudioService.stop();
+    }
 
     // Cancelar TODOS los timers
     noteSpawner?.cancel();
     gameUpdateTimer?.cancel();
     countdownTimer?.cancel(); // ¡Importante! Cancelar el timer del countdown
+    _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final si existe
 
     // Reiniciar tiempo de inicio del juego
     gameStartTime = 0;
@@ -774,48 +1069,66 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   //   );
   // }
 
-  // Cuando se presiona un pistón, verificar si hay una nota (solo para scoring)
+  // NUEVO: Verificar si el jugador está tocando la nota correcta (para mute/unmute del audio continuo)
   void _checkNoteHit(int pistonNumber) {
-    // NO agregar pistón aquí, ya se hace en _onPistonPressed
-    // setState(() {
-    //   pressedPistons.add(pistonNumber);
-    // });
-
+    bool hitCorrectNote = false;
+    
     for (var note in fallingNotes) {
       if (!note.isHit && !note.isMissed) {
         final screenHeight = MediaQuery.of(context).size.height;
         final hitZoneY = screenHeight - 160;
         final distance = (note.y - hitZoneY).abs();
 
-        if (distance <= hitTolerance) {
-          // Usar la nueva lógica de pistones
+        // Verificar si la nota está en la zona de hit
+        if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
+          // Verificar si los pistones presionados coinciden con la nota
           if (note.matchesPistons(pressedPistons)) {
-            print(
-                '✅ HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
+            print('✅ HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
             note.isHit = true;
+            hitCorrectNote = true;
 
-            // Actualizar la última nota tocada para mostrar en el contenedor
             setState(() {
               lastPlayedNote = note.noteName;
             });
 
-            // NO reproducir sonido aquí - ya se reproduce en _playNoteFromPistonCombination
-            // El audio ya fue reproducido cuando se presionó el pistón
+            // NUEVO: Desmutear audio continuo cuando el jugador acierta
+            if (_isAudioContinuous && !_playerIsOnTrack) {
+              _continuousAudioService.unmuteGame();
+              _playerIsOnTrack = true;
+              print('🔊 Player back on track - unmuting continuous audio');
+            }
 
-            _onNoteHit(note
-                .noteName); // Pasar el nombre de la nota (pero no reproducir sonido aquí)
+            _onNoteHit(note.noteName);
             return;
           }
         }
       }
     }
-    print('❌ MISS! Pressed: $pressedPistons');
-    _onNoteMissed();
+    
+    // Si no se acertó ninguna nota y el jugador estaba en el track
+    if (!hitCorrectNote && _playerIsOnTrack) {
+      print('❌ MISS! Pressed: $pressedPistons - Player off track');
+      
+      // NUEVO: Mutear audio continuo cuando el jugador falla
+      if (_isAudioContinuous) {
+        _continuousAudioService.muteGame();
+        _playerIsOnTrack = false;
+        print('🔇 Player off track - muting continuous audio');
+      }
+      
+      _onNoteMissed();
+    }
   }
 
-  // Reproducir sonido basado en la combinación de pistones presionados
-  void _playNoteFromPistonCombination() async {
-    // NUEVA LÓGICA: Buscar primero en notas cayendo, luego en todas las notas cargadas
+  // MODIFICADO: Solo reproducir sonido si NO está usando audio continuo
+  void _playNoteFromPistonCombination() {
+    // Si está usando audio continuo, NO reproducir sonidos individuales
+    if (_isAudioContinuous) {
+      print('🔇 Audio continuo activo - no reproducir sonidos individuales');
+      return;
+    }
+    
+    // LÓGICA ORIGINAL: Solo se ejecuta si NO está usando audio continuo
     SongNote? noteToPlay;
 
     // 1. Buscar en notas cayendo que coincidan con los pistones presionados
@@ -841,15 +1154,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
     }
 
-    // 3. Reproducir la nota encontrada
-    if (noteToPlay != null) {
-      // Usar try-catch para manejar fallos de red sin afectar la jugabilidad
-      try {
-        await NoteAudioService.playNoteFromSongNote(noteToPlay);
-      } catch (e) {
-        print('⚠️ Audio playback failed but continuing game: $e');
-        // El juego continúa normalmente aunque falle el audio
-      }
+    // 3. Reproducir la nota encontrada usando el cache robusto
+    if (noteToPlay != null && noteToPlay.noteUrl != null) {
+      _playFromRobustCache(noteToPlay);
     } else {
       print('⚠️ No note found for piston combination: $pressedPistons');
       // Buscar notas disponibles para debug (solo las primeras 3 para no saturar log)
@@ -859,6 +1166,55 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           print('   ${note.noteName}: ${note.pistonCombination}');
         }
       }
+    }
+  }
+
+  // NUEVO: Reproducir audio desde cache robusto
+  Future<void> _playFromRobustCache(SongNote note) async {
+    if (note.noteUrl == null) return;
+
+    final cacheKey = 'audio_${note.noteUrl.hashCode}';
+
+    try {
+      // Intentar reproducir desde cache robusto primero
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final cachedData = box.get(cacheKey, defaultValue: null);
+
+      if (cachedData != null &&
+          cachedData['path'] != null &&
+          File(cachedData['path']).existsSync()) {
+        // Reproducir desde archivo local cached usando el sistema existente
+        final localFile = File(cachedData['path']);
+        await NoteAudioService.playNoteFromUrl(
+          localFile.uri.toString(), // Convertir path local a URI
+          noteId: note.chromaticId?.toString(),
+          durationMs: note.durationMs,
+        );
+        print('🔊 Audio played from robust cache: ${note.noteName}');
+      } else {
+        // Fallback: usar el sistema original
+        NoteAudioService.playNoteFromUrl(
+          note.noteUrl!,
+          noteId: note.chromaticId?.toString(),
+          durationMs: note.durationMs,
+        ).then((_) {
+          print('🔊 Audio played via fallback: ${note.noteName}');
+        }).catchError((e) {
+          print('⚠️ Audio playback failed: $e');
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error playing from cache, using fallback: $e');
+      // Fallback completo
+      NoteAudioService.playNoteFromUrl(
+        note.noteUrl!,
+        noteId: note.chromaticId?.toString(),
+        durationMs: note.durationMs,
+      ).catchError((e) => print('⚠️ Fallback also failed: $e'));
     }
   }
 
@@ -902,6 +1258,17 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   Widget _buildLogoScreen() {
+    // Obtener dimensiones de la pantalla para diseño responsive
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360; // Detectar pantallas pequeñas
+
+    // Calcular tamaños responsive
+    final logoSize = isSmallScreen ? 120.0 : 200.0;
+    final titleFontSize = isSmallScreen ? 24.0 : 32.0;
+    final subtitleFontSize = isSmallScreen ? 14.0 : 18.0;
+    final progressBarWidth =
+        (screenWidth - 40).clamp(200.0, 300.0); // Con padding de 20 a cada lado
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -916,66 +1283,160 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           ],
         ),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Logo
-            Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Spacer flexible para centrar mejor en pantallas pequeñas
+              const Spacer(flex: 1),
+
+              // Logo responsive
+              Container(
+                width: logoSize,
+                height: logoSize,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(isSmallScreen ? 15 : 20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: isSmallScreen ? 15 : 20,
+                      offset: Offset(0, isSmallScreen ? 5 : 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(isSmallScreen ? 15 : 20),
+                  child: Image.asset(
+                    'assets/images/icono.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius:
+                              BorderRadius.circular(isSmallScreen ? 15 : 20),
+                        ),
+                        child: Icon(
+                          Icons.music_note,
+                          size: logoSize * 0.5, // 50% del tamaño del logo
+                          color: Colors.blue,
+                        ),
+                      );
+                    },
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.asset(
-                  'assets/images/icono.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(
-                        Icons.music_note,
-                        size: 100,
-                        color: Colors.blue,
-                      ),
-                    );
-                  },
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
-            // Texto de carga
-            const Text(
-              'REFMP',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 3,
+
+              SizedBox(height: isSmallScreen ? 20 : 30),
+
+              // Título responsive
+              Text(
+                'REFMP',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: isSmallScreen ? 2 : 3,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Nivel Principiante',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-                fontWeight: FontWeight.w300,
+
+              SizedBox(height: isSmallScreen ? 5 : 10),
+
+              // Subtítulo responsive
+              Text(
+                'Nivel Principiante',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: subtitleFontSize,
+                  fontWeight: FontWeight.w300,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+
+              // Spacer flexible
+              const Spacer(flex: 1),
+
+              // Indicador de carga de audio (parte inferior)
+              if (isLoadingSong || isPreloadingAudio) ...[
+                // Barra de progreso responsive
+                Container(
+                  width: progressBarWidth,
+                  height: isSmallScreen ? 6 : 8,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(isSmallScreen ? 3 : 4),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Progreso de descarga de audio
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: isPreloadingAudio
+                            ? (progressBarWidth * (audioCacheProgress / 100))
+                            : (isLoadingSong ? progressBarWidth : 0),
+                        height: isSmallScreen ? 6 : 8,
+                        decoration: BoxDecoration(
+                          color: isPreloadingAudio
+                              ? Colors.blue
+                              : Colors.white.withOpacity(0.8),
+                          borderRadius:
+                              BorderRadius.circular(isSmallScreen ? 3 : 4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isPreloadingAudio
+                                      ? Colors.blue
+                                      : Colors.white)
+                                  .withOpacity(0.5),
+                              blurRadius: isSmallScreen ? 6 : 8,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: isSmallScreen ? 10 : 15),
+
+                // Texto de estado compacto
+                Text(
+                  isLoadingSong
+                      ? 'Cargando canción...'
+                      : isPreloadingAudio
+                          ? 'Descargando ${audioCacheProgress}%'
+                          : _audioCacheCompleted
+                              ? '¡Audio listo!'
+                              : 'Preparando...',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: isSmallScreen ? 12 : 14,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+
+                // Información adicional solo si hay espacio
+                if (isPreloadingAudio && !isSmallScreen) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Optimizando experiencia musical',
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+
+              // Spacer final para mantener el contenido centrado
+              const Spacer(flex: 1),
+            ],
+          ),
         ),
       ),
     );
@@ -1112,16 +1573,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           imageUrl.startsWith('file://') ? imageUrl.substring(7) : imageUrl);
 
       if (file.existsSync()) {
-        return Image.file(
-          file,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return const Icon(
-              Icons.person,
-              color: Colors.white,
-              size: 35,
-            );
-          },
+        return ClipRRect(
+          borderRadius:
+              BorderRadius.circular(27), // Asegurar que esté recortado
+          child: Image.file(
+            file,
+            fit: BoxFit.cover,
+            width: 54, // Dimensiones fijas para evitar desbordamiento
+            height: 54,
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(
+                Icons.person,
+                color: Colors.white,
+                size: 35,
+              );
+            },
+          ),
         );
       } else {
         return const Icon(
@@ -1133,21 +1600,26 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
     // Es una URL de red
     else if (imageUrl.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: imageUrl,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => const Icon(
-          Icons.person,
-          color: Colors.white,
-          size: 35,
-        ),
-        errorWidget: (context, url, error) {
-          return const Icon(
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(27), // Asegurar que esté recortado
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          fit: BoxFit.cover,
+          width: 54, // Dimensiones fijas para evitar desbordamiento
+          height: 54,
+          placeholder: (context, url) => const Icon(
             Icons.person,
             color: Colors.white,
             size: 35,
-          );
-        },
+          ),
+          errorWidget: (context, url, error) {
+            return const Icon(
+              Icons.person,
+              color: Colors.white,
+              size: 35,
+            );
+          },
+        ),
       );
     }
     // Fallback para otros casos
@@ -2112,10 +2584,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
-    // Siempre reproducir sonido cuando se presiona un pistón
+    // INMEDIATAMENTE reproducir sonido cuando se presiona un pistón (sin await)
     _playNoteFromPistonCombination();
 
-    // Verificar si hay una nota que golpear (solo para scoring)
+    // Verificar si hay una nota que golpear (solo para scoring) - INMEDIATAMENTE también
     if (isGameActive) {
       _checkNoteHit(pistonNumber);
     }
