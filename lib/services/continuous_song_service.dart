@@ -14,7 +14,8 @@ class ContinuousSongService {
   ContinuousSongService._internal();
 
   // Audio player principal para la canción continua
-  final AudioPlayer _continuousPlayer = AudioPlayer();
+  AudioPlayer? _continuousPlayer;
+  bool _isPlayerDisposed = false;
 
   // Lista de notas de la canción ordenadas por tiempo
   List<SongNote> _songNotes = [];
@@ -43,8 +44,14 @@ class ContinuousSongService {
   /// Inicializar el servicio
   Future<void> initialize() async {
     try {
-      await _continuousPlayer.setReleaseMode(ReleaseMode.stop);
-      await _continuousPlayer.setPlayerMode(PlayerMode.lowLatency);
+      // Crear nuevo player si no existe o si fue dispuesto
+      if (_continuousPlayer == null || _isPlayerDisposed) {
+        _continuousPlayer = AudioPlayer();
+        _isPlayerDisposed = false;
+      }
+
+      await _continuousPlayer!.setReleaseMode(ReleaseMode.stop);
+      await _continuousPlayer!.setPlayerMode(PlayerMode.lowLatency);
       await NoteAudioService.initialize();
 
       _isInitialized = true;
@@ -52,6 +59,30 @@ class ContinuousSongService {
     } catch (e) {
       print('❌ Error initializing ContinuousSongService: $e');
       _isInitialized = false;
+      _continuousPlayer = null;
+      _isPlayerDisposed = true;
+    }
+  }
+
+  /// Helper para verificar si el player está disponible
+  bool _isPlayerAvailable() {
+    return _continuousPlayer != null && !_isPlayerDisposed && _isInitialized;
+  }
+
+  /// Helper para ejecutar operaciones de audio de manera segura
+  Future<void> _safeAudioOperation(
+      Future<void> Function(AudioPlayer player) operation) async {
+    if (!_isPlayerAvailable()) {
+      print('⚠️ Audio player not available for operation');
+      return;
+    }
+
+    try {
+      await operation(_continuousPlayer!);
+    } catch (e) {
+      print('❌ Audio operation failed: $e');
+      // Si hay error, marcar como dispuesto para reinicializar en la siguiente operación
+      _isPlayerDisposed = true;
     }
   }
 
@@ -153,7 +184,9 @@ class ContinuousSongService {
     _playbackTimer?.cancel();
     _noteScheduler?.cancel();
 
-    await _continuousPlayer.pause();
+    await _safeAudioOperation((player) async {
+      await player.pause();
+    });
   }
 
   /// Reanudar la reproducción
@@ -166,7 +199,9 @@ class ContinuousSongService {
     _songStartTime =
         DateTime.now().millisecondsSinceEpoch - _getCurrentPlayTime();
 
-    await _continuousPlayer.resume();
+    await _safeAudioOperation((player) async {
+      await player.resume();
+    });
     _scheduleNextNote();
     _startProgressTimer();
   }
@@ -182,7 +217,9 @@ class ContinuousSongService {
     _playbackTimer?.cancel();
     _noteScheduler?.cancel();
 
-    await _continuousPlayer.stop();
+    await _safeAudioOperation((player) async {
+      await player.stop();
+    });
   }
 
   /// Mutear el audio del juego (cuando el jugador falla)
@@ -190,7 +227,9 @@ class ContinuousSongService {
     if (_gameAudioEnabled) {
       print('🔇 Muting game audio due to player error');
       _gameAudioEnabled = false;
-      await _continuousPlayer.setVolume(0.0);
+      await _safeAudioOperation((player) async {
+        await player.setVolume(0.0);
+      });
     }
   }
 
@@ -199,7 +238,9 @@ class ContinuousSongService {
     if (!_gameAudioEnabled) {
       print('🔊 Unmuting game audio - player back on track');
       _gameAudioEnabled = true;
-      await _continuousPlayer.setVolume(1.0);
+      await _safeAudioOperation((player) async {
+        await player.setVolume(1.0);
+      });
     }
   }
 
@@ -280,22 +321,22 @@ class ContinuousSongService {
   /// Reproducir el audio de una nota de forma continua
   Future<void> _playContinuousNoteAudio(SongNote note) async {
     try {
-      // Detener audio anterior
-      await _continuousPlayer.stop();
+      await _safeAudioOperation((player) async {
+        // Detener audio anterior
+        await player.stop();
 
-      // Configurar para reproducir por la duración exacta
-      await _continuousPlayer.setReleaseMode(ReleaseMode.release);
+        // Configurar para reproducir por la duración exacta
+        await player.setReleaseMode(ReleaseMode.release);
 
-      // Reproducir desde URL
-      await _continuousPlayer.play(UrlSource(note.noteUrl!));
+        // Reproducir desde URL
+        await player.play(UrlSource(note.noteUrl!));
+      });
 
       // Programar parada automática después de la duración
       Timer(Duration(milliseconds: note.durationMs), () async {
-        try {
-          await _continuousPlayer.stop();
-        } catch (e) {
-          print('⚠️ Error stopping note audio: $e');
-        }
+        await _safeAudioOperation((player) async {
+          await player.stop();
+        });
       });
     } catch (e) {
       print('❌ Error playing continuous note audio: $e');
@@ -377,10 +418,21 @@ class ContinuousSongService {
     await stop();
     _playbackTimer?.cancel();
     _noteScheduler?.cancel();
-    await _continuousPlayer.dispose();
+
+    // Disponer del player de manera segura
+    if (_continuousPlayer != null && !_isPlayerDisposed) {
+      try {
+        await _continuousPlayer!.dispose();
+      } catch (e) {
+        print('⚠️ Error disposing audio player: $e');
+      }
+      _continuousPlayer = null;
+      _isPlayerDisposed = true;
+    }
 
     _songNotes.clear();
     _chromaticNotesCache.clear();
+    _isInitialized = false;
 
     print('🗑️ ContinuousSongService disposed');
   }

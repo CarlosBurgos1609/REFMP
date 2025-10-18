@@ -11,7 +11,7 @@ import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
 import '../../models/chromatic_note.dart'; // NUEVA importación
 import '../../services/note_audio_service.dart'; // NUEVO: Servicio de audio
-import '../../services/continuous_song_service.dart'; // NUEVO: Servicio de audio continuo
+import '../../services/continuous_audio_controller.dart'; // NUEVO: Controlador de audio continuo
 import '../../services/database_service.dart';
 import '../game/dialogs/congratulations_dialog.dart';
 
@@ -187,9 +187,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   String?
       lastPlayedNote; // Última nota musical tocada (para mostrar en el contenedor)
 
-  // NUEVO: Servicio de audio continuo
-  final ContinuousSongService _continuousAudioService = ContinuousSongService();
-  bool _isAudioContinuous = true; // Si está usando audio continuo
+  // NUEVO: Controlador de audio continuo
+  final ContinuousAudioController _audioController =
+      ContinuousAudioController();
+  bool _isAudioContinuous =
+      false; // CAMBIADO: Inicialmente deshabilitado para pruebas
   bool _playerIsOnTrack = true; // Si el jugador está tocando correctamente
 
   // Configuración del juego
@@ -253,8 +255,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     try {
       await NoteAudioService.initialize();
 
-      // NUEVO: Inicializar servicio de audio continuo
-      await _continuousAudioService.initialize();
+      // NUEVO: Inicializar controlador de audio continuo
+      await _audioController.initialize();
 
       // Verificar tamaño del caché y limpiar si es muy grande
       final cacheSizeMB = await NoteAudioService.getCacheSizeMB();
@@ -270,9 +272,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     } catch (e) {
       print('❌ Error initializing audio service: $e');
     }
-  }
+  } // Cargar datos de la canción desde la base de datos
 
-  // Cargar datos de la canción desde la base de datos
   Future<void> _loadSongData() async {
     print('🔄 Loading song data...');
     print('📋 Song ID: ${widget.songId}');
@@ -312,29 +313,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             }
           }
 
-          // NUEVO: Cargar canción en el servicio de audio continuo
+          // NUEVO: Cargar canción en el controlador de audio continuo
           if (_isAudioContinuous && widget.songId != null) {
-            bool songLoaded =
-                await _continuousAudioService.loadSong(widget.songId!);
+            bool songLoaded = await _audioController.loadSong(widget.songId!);
             if (songLoaded) {
-              print('✅ Song loaded in continuous audio service');
+              print('✅ Song loaded in continuous audio controller');
 
-              // Configurar callbacks para el servicio continuo
-              _continuousAudioService.onNoteStart = (note) {
+              // Configurar callbacks para el controlador
+              _audioController.onNoteStart = (note) {
                 print('🎵 Continuous audio: Note started - ${note.noteName}');
               };
 
-              _continuousAudioService.onNoteEnd = (note) {
+              _audioController.onNoteEnd = (note) {
                 print('✅ Continuous audio: Note ended - ${note.noteName}');
               };
 
-              _continuousAudioService.onSongComplete = () {
+              _audioController.onSongComplete = () {
                 print('🎉 Continuous audio: Song completed');
                 _endGame();
               };
             } else {
               print(
-                  '⚠️ Failed to load song in continuous audio service, falling back to individual notes');
+                  '⚠️ Failed to load song in continuous audio controller, falling back to individual notes');
               _isAudioContinuous = false;
             }
           }
@@ -524,14 +524,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     gameUpdateTimer?.cancel();
     _logoExitTimer?.cancel(); // NUEVO: Cancelar timer de salida del logo
     _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final
+    _pistonCombinationTimer
+        ?.cancel(); // NUEVO: Cancelar timer de combinaciones de pistones
     _rotationController.dispose();
     _noteAnimationController.dispose();
 
     // NUEVO: Detener cualquier sonido en reproducción
     NoteAudioService.stopAllSounds();
 
-    // NUEVO: Limpiar servicio de audio continuo
-    _continuousAudioService.dispose();
+    // NUEVO: Limpiar controlador de audio continuo
+    _audioController.dispose();
 
     // Restaurar configuración normal al salir
     _restoreNormalMode();
@@ -660,13 +662,13 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     print('📝 Song notes count: ${songNotes.length}');
     print('🎵 Current note index: $currentNoteIndex');
 
-    // NUEVO: Iniciar audio continuo si está disponible
+    // NUEVO: Iniciar tracking de audio continuo si está disponible
     if (_isAudioContinuous) {
-      print('🎵 Starting continuous audio playback...');
-      _continuousAudioService.play().then((_) {
-        print('✅ Continuous audio started successfully');
+      print('🎵 Starting continuous audio tracking...');
+      _audioController.startTracking().then((_) {
+        print('✅ Continuous audio tracking started successfully');
       }).catchError((e) {
-        print('❌ Error starting continuous audio: $e');
+        print('❌ Error starting continuous audio tracking: $e');
         // Fallback a sistema normal
         _isAudioContinuous = false;
       });
@@ -857,7 +859,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       setState(() {
         final currentTime = DateTime.now().millisecondsSinceEpoch / 1000;
         final screenHeight = MediaQuery.of(context).size.height;
-        final hitZoneY = screenHeight - 160;
+        final screenWidth = MediaQuery.of(context).size.width;
+
+        // Calcular zona de hit responsive (igual que en _buildHitZone)
+        final isTablet = screenWidth > 600;
+        final isSmallPhone = screenHeight < 700;
+
+        double hitZoneBottom;
+        if (isSmallPhone) {
+          hitZoneBottom = 110; // Más cerca para celulares pequeños
+        } else if (isTablet) {
+          hitZoneBottom = 150; // Más espacio en tablets
+        } else {
+          hitZoneBottom = 130; // Tamaño estándar para celulares normales
+        }
+
+        final hitZoneY = screenHeight - hitZoneBottom;
 
         // Actualizar posición de cada nota
         for (var note in fallingNotes) {
@@ -877,9 +894,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 lastPlayedNote = note.noteName;
               });
 
-              // NUEVO: Reproducir sonido para nota de aire automáticamente
-              if (note.songNote != null && note.songNote!.noteUrl != null) {
+              // MEJORADO: Solo reproducir sonido si NO está usando audio continuo
+              if (!_isAudioContinuous &&
+                  note.songNote != null &&
+                  note.songNote!.noteUrl != null) {
                 _playFromRobustCache(note.songNote!);
+              } else if (_isAudioContinuous) {
+                print(
+                    '🔇 Audio continuo activo - no reproducir nota de aire automática');
               }
 
               _onNoteHit(note.noteName); // Contar como acierto
@@ -892,11 +914,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               note.isMissed = true;
               print('❌ Note missed: ${note.noteName} at Y: ${note.y}');
 
-              // NUEVO: Mutear audio continuo cuando se pierde una nota
+              // NUEVO: Notificar al controlador cuando se pierde una nota
               if (_isAudioContinuous && _playerIsOnTrack) {
-                _continuousAudioService.muteGame();
+                _audioController.onPlayerMiss();
                 _playerIsOnTrack = false;
-                print('🔇 Note missed - muting continuous audio');
+                print('🔇 Note missed');
               }
 
               _onNoteMissed();
@@ -940,7 +962,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // NUEVO: Parar audio continuo
     if (_isAudioContinuous) {
-      _continuousAudioService.stop();
+      _audioController.stop();
     }
 
     // NUEVO: Esperar 2 segundos antes de mostrar el diálogo para que termine la última nota
@@ -976,7 +998,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       // NUEVO: Pausar audio continuo
       if (_isAudioContinuous) {
-        _continuousAudioService.pause();
+        _audioController.pause();
       }
 
       showPauseDialog(
@@ -997,7 +1019,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       // NUEVO: Reanudar audio continuo
       if (_isAudioContinuous) {
-        _continuousAudioService.resume();
+        _audioController.resume();
       }
 
       _spawnNotes();
@@ -1028,7 +1050,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // NUEVO: Parar audio continuo
     if (_isAudioContinuous) {
-      _continuousAudioService.stop();
+      _audioController.stop();
     }
 
     // Cancelar TODOS los timers
@@ -1071,22 +1093,41 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   //   );
   // }
 
-  // NUEVO: Verificar si el jugador está tocando la nota correcta (para mute/unmute del audio continuo)
+  // MEJORADO: Verificar si el jugador está tocando la nota correcta con mejor detección de combinaciones
   void _checkNoteHit(int pistonNumber) {
     bool hitCorrectNote = false;
+    bool isInHitZone = false;
 
+    // Primero verificar si hay alguna nota en la zona de hit
     for (var note in fallingNotes) {
       if (!note.isHit && !note.isMissed) {
         final screenHeight = MediaQuery.of(context).size.height;
-        final hitZoneY = screenHeight - 160;
+        final screenWidth = MediaQuery.of(context).size.width;
+
+        // Calcular zona de hit responsive (igual que en el timer y _buildHitZone)
+        final isTablet = screenWidth > 600;
+        final isSmallPhone = screenHeight < 700;
+
+        double hitZoneBottom;
+        if (isSmallPhone) {
+          hitZoneBottom = 110; // Más cerca para celulares pequeños
+        } else if (isTablet) {
+          hitZoneBottom = 150; // Más espacio en tablets
+        } else {
+          hitZoneBottom = 130; // Tamaño estándar para celulares normales
+        }
+
+        final hitZoneY = screenHeight - hitZoneBottom;
         final distance = (note.y - hitZoneY).abs();
 
         // Verificar si la nota está en la zona de hit
         if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
-          // Verificar si los pistones presionados coinciden con la nota
-          if (note.matchesPistons(pressedPistons)) {
+          isInHitZone = true;
+
+          // Verificar si los pistones presionados coinciden EXACTAMENTE con la nota
+          if (_exactPistonMatch(note, pressedPistons)) {
             print(
-                '✅ HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
+                '✅ EXACT HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
             note.isHit = true;
             hitCorrectNote = true;
 
@@ -1094,65 +1135,102 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               lastPlayedNote = note.noteName;
             });
 
-            // NUEVO: Desmutear audio continuo cuando el jugador acierta
-            if (_isAudioContinuous && !_playerIsOnTrack) {
-              _continuousAudioService.unmuteGame();
-              _playerIsOnTrack = true;
-              print('🔊 Player back on track - unmuting continuous audio');
+            // NUEVO: Notificar al controlador que el jugador acertó
+            if (_isAudioContinuous) {
+              _audioController.onPlayerHit(pressedPistons);
+              if (!_playerIsOnTrack) {
+                _playerIsOnTrack = true;
+                print('🔊 Player back on track');
+              }
             }
 
             _onNoteHit(note.noteName);
             return;
+          } else {
+            // Debug: mostrar qué se esperaba vs qué se presionó
+            print('🔍 PARTIAL MATCH - Note: ${note.noteName}');
+            print(
+                '   Required: ${note.requiredPistons} (${note.requiredPistons.length} pistons)');
+            print(
+                '   Pressed: $pressedPistons (${pressedPistons.length} pistons)');
+
+            // Si es una combinación de múltiples pistones, dar un poco más de tiempo
+            final requiredCount = note.requiredPistons.length;
+            if (requiredCount > 1 && pressedPistons.length < requiredCount) {
+              print(
+                  '⏳ Multi-piston note - waiting for complete combination...');
+              // No marcar como error aún, puede que esté presionando gradualmente
+              return;
+            }
           }
         }
       }
     }
 
-    // Si no se acertó ninguna nota y el jugador estaba en el track
-    if (!hitCorrectNote && _playerIsOnTrack) {
+    // Solo marcar como error si había una nota en zona de hit Y no se acertó
+    if (isInHitZone && !hitCorrectNote && _playerIsOnTrack) {
       print('❌ MISS! Pressed: $pressedPistons - Player off track');
 
-      // NUEVO: Mutear audio continuo cuando el jugador falla
+      // NUEVO: Notificar al controlador que el jugador falló
       if (_isAudioContinuous) {
-        _continuousAudioService.muteGame();
+        _audioController.onPlayerMiss();
         _playerIsOnTrack = false;
-        print('🔇 Player off track - muting continuous audio');
+        print('🔇 Player off track');
       }
 
       _onNoteMissed();
+    } else if (!isInHitZone) {
+      print('🎵 FREE PLAY - No notes in hit zone, just playing sound');
     }
   }
 
-  // MODIFICADO: Solo reproducir sonido si NO está usando audio continuo
+  // NUEVO: Función auxiliar para verificar coincidencia exacta de pistones
+  bool _exactPistonMatch(FallingNote note, Set<int> pressedPistons) {
+    final required = note.requiredPistons.toSet();
+
+    // Para notas de aire (sin pistones)
+    if (required.isEmpty) {
+      return pressedPistons.isEmpty;
+    }
+
+    // Para notas que requieren pistones específicos
+    return required.length == pressedPistons.length &&
+        required.every((piston) => pressedPistons.contains(piston));
+  }
+
+  // MEJORADO: Mejor detección de combinaciones de pistones para reproducir sonido
   void _playNoteFromPistonCombination() {
-    // Si está usando audio continuo, NO reproducir sonidos individuales
-    if (_isAudioContinuous) {
-      print('🔇 Audio continuo activo - no reproducir sonidos individuales');
+    // Si no hay pistones presionados, reproducir nota de aire
+    if (pressedPistons.isEmpty) {
+      print('🎵 No pistons pressed - playing open note (air)');
+      _playOpenNote();
       return;
     }
 
-    // LÓGICA ORIGINAL: Solo se ejecuta si NO está usando audio continuo
+    print('🎹 Finding note for piston combination: $pressedPistons');
     SongNote? noteToPlay;
 
-    // 1. Buscar en notas cayendo que coincidan con los pistones presionados
+    // 1. Buscar en notas cayendo que coincidan EXACTAMENTE con los pistones presionados
     for (var fallingNote in fallingNotes) {
       if (!fallingNote.isHit &&
           !fallingNote.isMissed &&
-          fallingNote.matchesPistons(pressedPistons) &&
+          _exactPistonMatchForSong(fallingNote.songNote, pressedPistons) &&
           fallingNote.songNote != null) {
         noteToPlay = fallingNote.songNote!;
-        print('🎵 Playing sound from falling note: ${noteToPlay.noteName}');
+        print(
+            '🎵 Playing from falling note: ${noteToPlay.noteName} (${noteToPlay.pistonCombination})');
         break;
       }
     }
 
-    // 2. Si no hay notas cayendo, buscar en todas las notas cargadas
+    // 2. Si no hay notas cayendo, buscar en todas las notas cargadas con coincidencia exacta
     if (noteToPlay == null && songNotes.isNotEmpty) {
       for (var songNote in songNotes) {
-        if (songNote.matchesPistonCombination(pressedPistons)) {
+        if (_exactPistonMatchForSong(songNote, pressedPistons)) {
           noteToPlay = songNote;
-          print('🎵 Playing sound from song database: ${noteToPlay.noteName}');
-          break; // Tomar la primera que coincida
+          print(
+              '🎵 Playing from database: ${noteToPlay.noteName} (${noteToPlay.pistonCombination})');
+          break; // Tomar la primera que coincida exactamente
         }
       }
     }
@@ -1161,13 +1239,54 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     if (noteToPlay != null && noteToPlay.noteUrl != null) {
       _playFromRobustCache(noteToPlay);
     } else {
-      print('⚠️ No note found for piston combination: $pressedPistons');
-      // Buscar notas disponibles para debug (solo las primeras 3 para no saturar log)
-      if (songNotes.isNotEmpty) {
-        print('📋 Available combinations in database (first 3):');
-        for (var note in songNotes.take(3)) {
-          print('   ${note.noteName}: ${note.pistonCombination}');
-        }
+      print('⚠️ No exact match found for: $pressedPistons');
+      _debugAvailableCombinations();
+    }
+  }
+
+  // NUEVO: Función auxiliar para verificar coincidencia exacta con SongNote
+  bool _exactPistonMatchForSong(SongNote? songNote, Set<int> pressedPistons) {
+    if (songNote == null) return false;
+
+    final required = songNote.pistonCombination.toSet();
+
+    // Para notas de aire (sin pistones)
+    if (required.isEmpty) {
+      return pressedPistons.isEmpty;
+    }
+
+    // Para notas que requieren pistones específicos - coincidencia exacta
+    return required.length == pressedPistons.length &&
+        required.every((piston) => pressedPistons.contains(piston));
+  }
+
+  // NUEVO: Reproducir nota de aire (sin pistones)
+  void _playOpenNote() {
+    SongNote? openNote;
+
+    // Buscar nota sin pistones requeridos
+    for (var note in songNotes) {
+      if (note.pistonCombination.isEmpty) {
+        openNote = note;
+        break;
+      }
+    }
+
+    if (openNote != null && openNote.noteUrl != null) {
+      print('🌬️ Playing open note: ${openNote.noteName}');
+      _playFromRobustCache(openNote);
+    }
+  }
+
+  // NUEVO: Debug de combinaciones disponibles
+  void _debugAvailableCombinations() {
+    if (songNotes.isNotEmpty) {
+      print('📋 Available combinations (first 5):');
+      for (var note in songNotes.take(5)) {
+        final combo = note.pistonCombination.isEmpty
+            ? '[Air]'
+            : note.pistonCombination.toString();
+        print('   ${note.noteName}: $combo');
       }
     }
   }
@@ -1554,9 +1673,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             child: _buildVerticalProgressBar(),
           ),
 
-          // Controles de pistones en la parte inferior centrados (encima del área de juego)
+          // Controles de pistones en la parte inferior centrados (responsive)
           Positioned(
-            bottom: 20,
+            bottom: () {
+              final screenHeight = MediaQuery.of(context).size.height;
+              final screenWidth = MediaQuery.of(context).size.width;
+              final isTablet = screenWidth > 600;
+              final isSmallPhone = screenHeight < 700;
+
+              if (isSmallPhone) {
+                return 15.0; // Más cerca del borde en celulares pequeños
+              } else if (isTablet) {
+                return 30.0; // Más espacio en tablets
+              } else {
+                return 20.0; // Posición estándar
+              }
+            }(),
             left: 0,
             right: 0,
             child: Center(
@@ -1933,6 +2065,50 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         const SizedBox(width: 15),
 
+        // Botón de debug para alternar audio continuo/individual
+        Container(
+          decoration: BoxDecoration(
+            color: _isAudioContinuous ? Colors.green : Colors.orange,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: (_isAudioContinuous ? Colors.green : Colors.orange)
+                    .withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: IconButton(
+            onPressed: () {
+              setState(() {
+                _isAudioContinuous = !_isAudioContinuous;
+              });
+              if (_isAudioContinuous) {
+                print('🎵 Audio continuo activado');
+                // Si hay una canción cargada, iniciar tracking
+                if (widget.songId != null && isGameActive) {
+                  _audioController.loadSong(widget.songId!).then((_) {
+                    _audioController.startTracking();
+                  });
+                }
+              } else {
+                print('🎼 Audio individual activado');
+                _audioController.stop();
+              }
+            },
+            icon: Icon(
+              _isAudioContinuous ? Icons.library_music : Icons.music_note,
+              color: Colors.white,
+              size: 20,
+            ),
+            padding: const EdgeInsets.all(8),
+          ),
+        ),
+
+        const SizedBox(width: 15),
+
         // Imagen de perfil (circular y transparente) - VERSION SIMPLE
         Container(
           width: 60,
@@ -2273,19 +2449,54 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     );
   }
 
-  // Construir la zona de hit (sutil, después de los pistones)
+  // Construir la zona de hit (responsive, justo debajo de los pistones)
   Widget _buildHitZone() {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Detectar si es tablet o celular para ajustar posición
+    final isTablet = screenWidth > 600;
+    final isSmallPhone = screenHeight < 700;
+
+    // Posición responsive de la zona de hit
+    // Para celulares pequeños: más cerca de los pistones
+    // Para tablets: más espacio para acomodar mejor el layout
+    double hitZoneBottom;
+    double hitZoneHeight;
+
+    if (isSmallPhone) {
+      hitZoneBottom = 110; // Más cerca para celulares pequeños
+      hitZoneHeight = 80; // Zona más compacta
+    } else if (isTablet) {
+      hitZoneBottom = 150; // Más espacio en tablets
+      hitZoneHeight = 120; // Zona más grande
+    } else {
+      hitZoneBottom = 130; // Tamaño estándar para celulares normales
+      hitZoneHeight = 100;
+    }
+
     return Positioned(
-      bottom:
-          130, // Posición más arriba para cubrir mejor la zona de los pistones
+      bottom: hitZoneBottom,
       left: 0,
       right: 0,
       child: Container(
-        height: 120, // Zona de hit mucho más grande para mejor detección
-        // decoration: BoxDecoration(
-        //   color: Colors.white.withOpacity(0.1), // Muy sutil
-        //   border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-        // ),
+        height: hitZoneHeight,
+        decoration: BoxDecoration(
+          // Hacer la zona visible para pruebas (comentar después si se desea)
+          color: Colors.white.withOpacity(0.05), // Muy sutil pero visible
+          border: Border.all(color: Colors.blue.withOpacity(0.2), width: 1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Text(
+            'ZONA DE HIT',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.3),
+              fontSize: isSmallPhone ? 12 : 14,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2482,12 +2693,26 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   Widget _buildPistonControls() {
-    // Simular las distancias reales de una trompeta (ajustado para estar más cerca)
-    // En una trompeta real, los pistones están separados por aproximadamente 22mm
-    // Tamaño del pistón: aproximadamente 18mm de diámetro
-    const double pistonSize = 70.0; // Tamaño del botón en pixels
-    const double realPistonSeparation =
-        16.0; // Reducido de 22.0 para estar más cerca
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = screenWidth > 600;
+    final isSmallPhone = screenHeight < 700;
+
+    // Tamaños responsive para los pistones
+    final double pistonSize;
+    final double realPistonSeparation;
+
+    if (isSmallPhone) {
+      pistonSize = 60.0; // Más pequeños en celulares pequeños
+      realPistonSeparation = 12.0;
+    } else if (isTablet) {
+      pistonSize = 85.0; // Más grandes en tablets
+      realPistonSeparation = 20.0;
+    } else {
+      pistonSize = 70.0; // Tamaño estándar
+      realPistonSeparation = 16.0;
+    }
+
     const double realPistonDiameter = 18.0; // mm en trompeta real
 
     // Calcular la separación proporcional en pixels
@@ -2495,7 +2720,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         (realPistonSeparation / realPistonDiameter) * pistonSize;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: EdgeInsets.symmetric(
+          horizontal: isSmallPhone ? 15 : 20, vertical: isSmallPhone ? 8 : 10),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.7),
         borderRadius: BorderRadius.circular(30),
@@ -2505,25 +2731,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         mainAxisSize: MainAxisSize.min,
         children: [
           // Pistón 1
-          _buildPistonButton(1),
+          _buildPistonButton(1, pistonSize),
 
           SizedBox(width: pixelSeparation),
 
           // Pistón 2
-          _buildPistonButton(2),
+          _buildPistonButton(2, pistonSize),
 
           SizedBox(width: pixelSeparation),
 
           // Pistón 3
-          _buildPistonButton(3),
+          _buildPistonButton(3, pistonSize),
         ],
       ),
     );
   }
 
-  Widget _buildPistonButton(int pistonNumber) {
-    const double pistonSize =
-        70.0; // Tamaño constante para simular trompeta real
+  Widget _buildPistonButton(int pistonNumber, double pistonSize) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallPhone = screenHeight < 700;
+
+    // Tamaño de fuente responsive
+    final double fontSize = isSmallPhone ? 20.0 : 24.0;
 
     return GestureDetector(
       onTapDown: (_) => _onPistonPressed(pistonNumber),
@@ -2565,9 +2794,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 child: Center(
                   child: Text(
                     pistonNumber.toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: fontSize,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -2580,6 +2809,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     );
   }
 
+  // Timer para manejar combinaciones de pistones
+  Timer? _pistonCombinationTimer;
+
   void _onPistonPressed(int pistonNumber) {
     // Feedback háptico
     HapticFeedback.lightImpact();
@@ -2587,24 +2819,49 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
-    // INMEDIATAMENTE reproducir sonido cuando se presiona un pistón (sin await)
-    _playNoteFromPistonCombination();
+    print(
+        '🎹 Piston $pistonNumber pressed. Current combination: $pressedPistons');
 
-    // Verificar si hay una nota que golpear (solo para scoring) - INMEDIATAMENTE también
-    if (isGameActive) {
-      _checkNoteHit(pistonNumber);
-    }
+    // Cancelar timer anterior si existe
+    _pistonCombinationTimer?.cancel();
 
-    debugPrint('Pistón $pistonNumber presionado');
+    // Crear un pequeño delay para permitir combinaciones naturales
+    _pistonCombinationTimer = Timer(const Duration(milliseconds: 100), () {
+      // Reproducir sonido para la combinación actual
+      _playNoteFromPistonCombination();
+
+      // Verificar si hay una nota que golpear (solo para scoring)
+      if (isGameActive) {
+        _checkNoteHit(pistonNumber);
+      }
+    });
+
+    debugPrint(
+        'Pistón $pistonNumber presionado - Combination: $pressedPistons');
   }
 
   void _onPistonReleased(int pistonNumber) {
     // Remover pistón del conjunto de pistones presionados
     pressedPistons.remove(pistonNumber);
 
-    debugPrint('Pistón $pistonNumber liberado');
+    print(
+        '🎹 Piston $pistonNumber released. Current combination: $pressedPistons');
 
-    // TODO: Implementar lógica del juego
+    // Cancelar timer de combinación al soltar
+    _pistonCombinationTimer?.cancel();
+
+    // Si aún hay pistones presionados, crear nuevo timer para la nueva combinación
+    if (pressedPistons.isNotEmpty) {
+      _pistonCombinationTimer = Timer(const Duration(milliseconds: 50), () {
+        _playNoteFromPistonCombination();
+        if (isGameActive) {
+          // Solo verificar hit si se soltó en zona de hit activa
+          _checkNoteHit(pistonNumber);
+        }
+      });
+    }
+
+    debugPrint('Pistón $pistonNumber liberado - Remaining: $pressedPistons');
   }
 }
 
