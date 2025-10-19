@@ -153,6 +153,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Timer? logoTimer;
   Timer? countdownTimer;
 
+  // NUEVO: Lista para manejar los timers programados de las notas
+  List<Timer> _scheduledNoteTimers = [];
+
   // Estado de los pistones (sin prevención de capturas por pistones)
   Set<int> pressedPistons = <int>{};
 
@@ -195,9 +198,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   bool _playerIsOnTrack = true; // Si el jugador está tocando correctamente
 
   // Configuración del juego
-  static const double noteSpeed = 200.0; // pixels por segundo
+  static const double noteSpeed =
+      150.0; // REDUCIDO: pixels por segundo para mejor control
   static const double hitTolerance =
-      70.0; // Tolerancia aumentada para hits más fáciles y anticipados
+      80.0; // AUMENTADO: Tolerancia para hits más fáciles con la nueva velocidad
 
   // Sistema de recompensas fijas para nivel principiante según tabla
   // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
@@ -258,6 +262,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       // NUEVO: Inicializar controlador de audio continuo
       await _audioController.initialize();
 
+      // NUEVO: Limpiar cache offline antiguo
+      await _BegginnerGamePageState.cleanOldOfflineCache();
+
       // Verificar tamaño del caché y limpiar si es muy grande
       final cacheSizeMB = await NoteAudioService.getCacheSizeMB();
       print('📊 Audio cache size: ${cacheSizeMB.toStringAsFixed(1)} MB');
@@ -267,6 +274,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print('🧹 Cache too large, clearing old files...');
         await NoteAudioService.clearOldCache();
       }
+
+      // NUEVO: Mostrar información del cache offline
+      final cacheInfo = await _BegginnerGamePageState.getOfflineCacheInfo();
+      print('📱 Offline cache info:');
+      print('   🎵 Songs cached: ${cacheInfo['total_songs']}');
+      print('   🔊 Audio files cached: ${cacheInfo['total_audio_files']}');
 
       print('✅ Audio services initialized successfully');
     } catch (e) {
@@ -345,20 +358,87 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           currentNoteIndex = 0;
         } else {
           print('⚠️ No notes found in database for this song');
-          songNotes = []; // Lista vacía, no crear notas demo
+          // Intentar cargar desde cache offline como fallback
+          await _loadSongFromOfflineCache();
         }
       } catch (e) {
-        print('❌ Error loading song data: $e');
-        songNotes = []; // Lista vacía en caso de error
+        print('❌ Error loading song data from database: $e');
+        // Intentar cargar desde cache offline como fallback
+        await _loadSongFromOfflineCache();
       }
     } else {
-      print('⚠️ No song ID provided, cannot load notes');
-      songNotes = []; // Sin ID de canción, lista vacía
+      print('⚠️ No song ID provided, attempting to load from cache');
+      await _loadSongFromOfflineCache();
     }
 
     setState(() {
       isLoadingSong = false;
     });
+  }
+
+  // NUEVO: Cargar canción desde cache offline cuando falla la base de datos
+  Future<void> _loadSongFromOfflineCache() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('⚠️ No song ID for offline cache lookup');
+      songNotes = [];
+      return;
+    }
+
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+      final cachedSongData = box.get(songCacheKey, defaultValue: null);
+
+      if (cachedSongData != null && cachedSongData['notes_data'] != null) {
+        print('📱 Loading song from offline cache...');
+
+        // Reconstruir songNotes desde cache
+        songNotes = [];
+        final notesData = cachedSongData['notes_data'] as List;
+
+        for (var noteData in notesData) {
+          // Crear SongNote desde datos cached
+          final songNote = SongNote(
+            id: noteData['note_id']?.toString() ?? '',
+            songId: widget.songId ?? '',
+            startTimeMs: noteData['start_time_ms'] ?? 0,
+            durationMs: noteData['duration_ms'] ?? 1000,
+            beatPosition: (noteData['beat_position'] ?? 0.0) is int
+                ? (noteData['beat_position'] ?? 0.0).toDouble()
+                : noteData['beat_position'] ?? 0.0,
+            measureNumber: noteData['measure_number'] ?? 1,
+            noteType: noteData['note_type'] ?? 'quarter',
+            velocity: noteData['velocity'] ?? 80,
+            chromaticId: noteData['chromatic_id'],
+            createdAt: DateTime.fromMillisecondsSinceEpoch(
+                noteData['created_at'] ??
+                    DateTime.now().millisecondsSinceEpoch),
+          );
+          songNotes.add(songNote);
+        }
+
+        print(
+            '✅ Successfully loaded ${songNotes.length} notes from offline cache');
+        print(
+            '   📅 Cache timestamp: ${DateTime.fromMillisecondsSinceEpoch(cachedSongData['cached_timestamp'] ?? 0)}');
+        print('   📂 Cache version: ${cachedSongData['version'] ?? 'unknown'}');
+
+        // NUEVO: Precargar TODOS los audios durante el logo
+        _precacheAllAudioFiles();
+
+        currentNoteIndex = 0;
+      } else {
+        print('❌ No offline cache found for song ${widget.songId}');
+        songNotes = []; // Lista vacía
+      }
+    } catch (e) {
+      print('❌ Error loading song from offline cache: $e');
+      songNotes = []; // Lista vacía en caso de error
+    }
   }
 
   // NUEVO: Método robusto de descarga y cache de audio (similar a objects.dart)
@@ -415,7 +495,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
-  // NUEVO: Precargar TODOS los audios durante la pantalla del logo (SISTEMA ROBUSTO)
+  // NUEVO: Precargar TODOS los audios Y la canción completa durante la pantalla del logo (SISTEMA ROBUSTO OFFLINE)
   Future<void> _precacheAllAudioFiles() async {
     try {
       setState(() {
@@ -423,7 +503,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         audioCacheProgress = 0;
       });
 
-      print('🎵 Starting robust audio precaching...');
+      print('🎵 Starting robust audio and song precaching...');
 
       if (songNotes.isEmpty) {
         print('⚠️ No notes to precache');
@@ -437,7 +517,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         return;
       }
 
-      // Obtener todas las URLs únicas de audio
+      // Paso 1: Cache de la canción completa de la base de datos
+      await _cacheSongDataOffline();
+
+      // Paso 2: Obtener todas las URLs únicas de audio de las notas
       final Set<String> uniqueAudioUrls = {};
       for (var note in songNotes) {
         if (note.noteUrl != null && note.noteUrl!.isNotEmpty) {
@@ -447,6 +530,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       print('📥 Found ${uniqueAudioUrls.length} unique audio files to cache');
 
+      // Paso 3: Cache de audios de notas
       if (uniqueAudioUrls.isEmpty) {
         setState(() {
           isPreloadingAudio = false;
@@ -497,13 +581,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         });
       }
 
+      print('🎉 Complete caching finished!');
+      print('   📱 Song data: ✅ Cached offline');
       print(
-          '🎉 Audio precaching completed! ${successCount}/${uniqueAudioUrls.length} files cached successfully');
+          '   � Audio files: ${successCount}/${uniqueAudioUrls.length} cached successfully');
 
       // Proceder al countdown ahora que el cache está completo
       _proceedToCountdown();
     } catch (e) {
-      print('❌ Error during audio precaching: $e');
+      print('❌ Error during complete precaching: $e');
       if (mounted) {
         setState(() {
           isPreloadingAudio = false;
@@ -513,6 +599,66 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
       // Proceder al countdown aunque haya errores
       _proceedToCountdown();
+    }
+  }
+
+  // NUEVO: Cache offline de los datos completos de la canción para funcionamiento offline
+  Future<void> _cacheSongDataOffline() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('⚠️ No song ID to cache');
+      return;
+    }
+
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+
+      print('💾 Caching complete song data for offline use...');
+
+      // Crear estructura completa de datos de la canción para cache offline
+      final songCacheData = {
+        'song_id': widget.songId,
+        'song_name': widget.songName,
+        'song_difficulty': widget.songDifficulty,
+        'song_image_url': widget.songImageUrl,
+        'profile_image_url': widget.profileImageUrl,
+        'notes_count': songNotes.length,
+        'cached_timestamp': DateTime.now().millisecondsSinceEpoch,
+        'version': '1.0', // Para manejo de versiones futuras
+        'notes_data': songNotes
+            .map((note) => {
+                  'note_id': note.id,
+                  'song_id': note.songId,
+                  'start_time_ms': note.startTimeMs,
+                  'duration_ms': note.durationMs,
+                  'beat_position': note.beatPosition,
+                  'measure_number': note.measureNumber,
+                  'note_type': note.noteType,
+                  'velocity': note.velocity,
+                  'chromatic_id': note.chromaticId,
+                  'created_at': note.createdAt.millisecondsSinceEpoch,
+                  // Campos adicionales para compatibilidad
+                  'note_name': note.noteName,
+                  'piston_combination': note.pistonCombination,
+                  'note_url': note.noteUrl,
+                })
+            .toList(),
+      };
+
+      // Guardar en Hive para acceso offline
+      await box.put(songCacheKey, songCacheData);
+
+      print('✅ Song data cached successfully for offline use');
+      print('   📝 Song: ${widget.songName}');
+      print('   🆔 ID: ${widget.songId}');
+      print('   🎵 Notes: ${songNotes.length}');
+      print('   💾 Cache key: $songCacheKey');
+    } catch (e) {
+      print('❌ Error caching song data offline: $e');
     }
   }
 
@@ -526,6 +672,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final
     _pistonCombinationTimer
         ?.cancel(); // NUEVO: Cancelar timer de combinaciones de pistones
+
+    // NUEVO: Cancelar todos los timers programados de notas
+    for (final timer in _scheduledNoteTimers) {
+      timer.cancel();
+    }
+    _scheduledNoteTimers.clear();
     _rotationController.dispose();
     _noteAnimationController.dispose();
 
@@ -662,6 +814,47 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     print('📝 Song notes count: ${songNotes.length}');
     print('🎵 Current note index: $currentNoteIndex');
 
+    // DEBUG: Mostrar timing completo de todas las notas y verificar URLs de audio
+    if (songNotes.isNotEmpty) {
+      print('🎼 === COMPLETE SONG TIMING & AUDIO ANALYSIS ===');
+      print('📊 Total notes: ${songNotes.length}');
+      int notesWithAudio = 0;
+
+      for (int i = 0; i < songNotes.length; i++) {
+        final note = songNotes[i];
+        final hasAudio = note.noteUrl != null && note.noteUrl!.isNotEmpty;
+        if (hasAudio) notesWithAudio++;
+
+        print('  📝 Note ${i + 1}: ${note.noteName}');
+        print(
+            '     ⏰ Start time: ${note.startTimeMs}ms (${(note.startTimeMs / 1000).toStringAsFixed(1)}s)');
+        print('     ⏱️ Duration: ${note.durationMs}ms');
+        print('     🎹 Pistons: ${note.pistonCombination}');
+        print(
+            '     🔊 Audio: ${hasAudio ? "✅ " + note.noteUrl! : "❌ NO AUDIO"}');
+
+        if (i > 0) {
+          final prevNote = songNotes[i - 1];
+          final timeDiff = note.startTimeMs - prevNote.startTimeMs;
+          print(
+              '     📏 Gap from previous: ${timeDiff}ms (${(timeDiff / 1000).toStringAsFixed(1)}s)');
+
+          if (timeDiff < 500) {
+            print('     ⚠️  WARNING: Very close timing! (< 500ms)');
+          }
+        }
+        print(''); // Línea en blanco para separar
+      }
+
+      print(
+          '🔊 Audio summary: ${notesWithAudio}/${songNotes.length} notes have audio URLs');
+      if (notesWithAudio < songNotes.length) {
+        print(
+            '⚠️ WARNING: ${songNotes.length - notesWithAudio} notes are missing audio!');
+      }
+      print('🎼 === END ANALYSIS ===');
+    }
+
     // NUEVO: Iniciar tracking de audio continuo si está disponible
     if (_isAudioContinuous) {
       print('🎵 Starting continuous audio tracking...');
@@ -751,103 +944,86 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
-  // Generar notas basadas en los datos de la base de datos
+  // NUEVO: Sistema programado - todas las notas se programan después del countdown
   void _spawnNotesFromDatabase() {
-    noteSpawner = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (!isGameActive || isGamePaused) {
-        timer.cancel();
-        return;
-      }
+    print('🎯 Programming all ${songNotes.length} notes after countdown');
 
-      final currentGameTime =
-          DateTime.now().millisecondsSinceEpoch - gameStartTime;
-      const int lookaheadTime = 3000; // 3 segundos de anticipación
-
-      // Verificar si hay notas que deben aparecer pronto
-      while (currentNoteIndex < songNotes.length) {
-        final songNote = songNotes[currentNoteIndex];
-        final noteAppearTime = songNote.startTimeMs - lookaheadTime;
-
-        if (currentGameTime >= noteAppearTime) {
-          print(
-              'Spawning note: ${songNote.noteName} (pistons: ${songNote.pistonCombination}) at game time ${currentGameTime}ms');
-
-          // Calcular posición Y con espaciado automático
-          final double calculatedY = _calculateNoteSpacing();
-
-          // Crear FallingNote con datos cromáticos y posición espaciada
-          final fallingNote = FallingNote(
-            piston: songNote.pistonCombination.isNotEmpty
-                ? songNote.pistonCombination.first
-                : 1,
-            songNote: songNote,
-            chromaticNote: songNote.chromaticNote, // Pasar datos cromáticos
-            y: calculatedY,
-            startTime: DateTime.now().millisecondsSinceEpoch / 1000,
-          );
-
-          fallingNotes.add(fallingNote);
-          print(
-              '✅ Added note with chromatic data: ${fallingNote.noteName} at Y: $calculatedY');
-          currentNoteIndex++;
-        } else {
-          break;
-        }
-      }
-
-      // Si ya mostramos todas las notas, detener el spawner
-      if (currentNoteIndex >= songNotes.length) {
-        print('All notes spawned. Total: ${songNotes.length}');
-        timer.cancel();
-      }
-    });
-  }
-
-  // Calcular espaciado automático de notas para evitar superposición
-  double _calculateNoteSpacing() {
-    const double noteHeight = 60.0; // Altura de cada nota
-    const double minNoteGap = 20.0; // Espacio mínimo entre notas
-    const double totalSpacing =
-        noteHeight + minNoteGap; // Espaciado total requerido
-    const double defaultStartY = -50.0; // Posición Y inicial por defecto
-
-    if (fallingNotes.isEmpty) {
-      return defaultStartY;
-    }
-
-    // Buscar todas las notas activas y sus rangos ocupados
-    List<double> occupiedRanges = [];
-
-    for (var existingNote in fallingNotes) {
-      if (!existingNote.isHit && !existingNote.isMissed) {
-        // Calcular el rango que ocupa esta nota (desde Y hasta Y + altura)
-        double noteTop = existingNote.y;
-        double noteBottom = existingNote.y + noteHeight;
-        occupiedRanges.add(noteTop);
-        occupiedRanges.add(noteBottom);
-      }
-    }
-
-    if (occupiedRanges.isEmpty) {
-      return defaultStartY;
-    }
-
-    // Ordenar los rangos para encontrar el espacio más alto disponible
-    occupiedRanges.sort();
-
-    // Encontrar la posición más alta ocupada
-    double highestOccupiedY = occupiedRanges.first;
-
-    // Calcular nueva posición Y asegurando que no hay superposición
-    double newY = highestOccupiedY - totalSpacing;
+    // Calcular tiempo de caída una sola vez
+    final screenHeight = MediaQuery.of(context).size.height;
+    final fallDistance = screenHeight * 1.3;
+    final fallTimeMs = (fallDistance / noteSpeed * 1000).round();
 
     print(
-        '📏 Note spacing: highest occupied Y: $highestOccupiedY, new Y: $newY, total spacing: $totalSpacing');
+        '📐 Fall time calculated: ${fallTimeMs}ms for ${fallDistance}px at ${noteSpeed}px/s');
 
-    return newY;
+    // Programar cada nota individualmente con Timer.delayed
+    for (int i = 0; i < songNotes.length; i++) {
+      final songNote = songNotes[i];
+      final noteAppearTime = songNote.startTimeMs - fallTimeMs;
+
+      print('📅 Programming note ${i + 1}: ${songNote.noteName}');
+      print('  - DB hit time: ${songNote.startTimeMs}ms');
+      print('  - Will appear at: ${noteAppearTime}ms');
+
+      // Programar la aparición de la nota con Timer.delayed y guardar referencia
+      final timer = Timer(Duration(milliseconds: noteAppearTime), () {
+        if (isGameActive && !isGamePaused) {
+          _spawnSingleNote(songNote, i);
+        }
+      });
+
+      _scheduledNoteTimers.add(timer);
+    }
+
+    print('🏁 All ${songNotes.length} notes programmed successfully');
   }
 
-  // Actualizar posiciones de las notas
+  // Spawn individual de una nota con posicionamiento basado en tiempo
+  void _spawnSingleNote(SongNote songNote, int index) {
+    print('🎵 Spawning scheduled note: ${songNote.noteName}');
+
+    // Calcular posición Y basada estrictamente en el tiempo de aparición
+    final currentGameTime =
+        DateTime.now().millisecondsSinceEpoch - gameStartTime;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final fallTimeMs = ((screenHeight * 1.3) / noteSpeed * 1000).round();
+
+    // La nota debe aparecer exactamente cuando sea su momento
+    final expectedAppearTime = songNote.startTimeMs - fallTimeMs;
+    final timeDifference = currentGameTime - expectedAppearTime;
+
+    // Calcular posición Y basada en cuánto tiempo ha pasado desde que debería haber aparecido
+    final initialY = -screenHeight * 0.3;
+    final adjustedY = initialY + (timeDifference * noteSpeed / 1000);
+
+    print('  - Expected appear time: ${expectedAppearTime}ms');
+    print('  - Current game time: ${currentGameTime}ms');
+    print('  - Time difference: ${timeDifference}ms');
+    print('  - Calculated Y position: ${adjustedY.toStringAsFixed(1)}');
+
+    final fallingNote = FallingNote(
+      piston: songNote.pistonCombination.isNotEmpty
+          ? songNote.pistonCombination.first
+          : 1,
+      songNote: songNote,
+      chromaticNote: songNote.chromaticNote,
+      y: adjustedY,
+      startTime: DateTime.now().millisecondsSinceEpoch / 1000,
+    );
+
+    setState(() {
+      fallingNotes.add(fallingNote);
+    });
+
+    print(
+        '✅ Note ${songNote.noteName} spawned at Y: ${adjustedY.toStringAsFixed(1)}');
+  }
+
+  // ELIMINADO: Ya no necesario con el nuevo sistema programado
+
+  // ELIMINADO: Ya no necesario con el nuevo sistema programado
+
+  // Actualizar posiciones de las notas basado en tiempo real
   void _updateGame() {
     gameUpdateTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       // ~60 FPS
@@ -857,7 +1033,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
 
       setState(() {
-        final currentTime = DateTime.now().millisecondsSinceEpoch / 1000;
         final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
 
@@ -876,13 +1051,21 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         final hitZoneY = screenHeight - hitZoneBottom;
 
-        // Actualizar posición de cada nota
+        // SIMPLIFICADO: Actualizar posición de cada nota usando movimiento tradicional
         for (var note in fallingNotes) {
           if (!note.isHit && !note.isMissed) {
-            final elapsed = currentTime - note.startTime;
-            note.y = -50 + (elapsed * noteSpeed);
+            final elapsed =
+                DateTime.now().millisecondsSinceEpoch / 1000 - note.startTime;
 
-            // AUTO-HIT para notas de aire (sin presionar pistones)
+            // Movimiento tradicional: desde posición inicial hacia abajo
+            final initialY = -screenHeight * 0.3;
+            note.y = initialY + (elapsed * noteSpeed);
+
+            // DEBUG: Imprimir posición de las primeras notas
+            if (note.songNote != null && note.songNote!.startTimeMs <= 6000) {
+              print(
+                  '📍 Note ${note.noteName}: Y=${note.y.toStringAsFixed(1)}, elapsed=${elapsed.toStringAsFixed(1)}s, DB_time=${note.songNote!.startTimeMs}ms');
+            } // AUTO-HIT para notas de aire (sin presionar pistones)
             if (note.isOpenNote &&
                 note.y >= hitZoneY - 30 &&
                 note.y <= hitZoneY + 30) {
@@ -938,16 +1121,41 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     });
   }
 
-  // Verificar si el juego ha terminado
+  // MEJORADO: Verificar si el juego ha terminado cuando acabe la duración completa de la última nota
   void _checkGameEnd() {
-    // Solo terminar el juego si hay notas para mostrar y ya se terminaron
-    if (songNotes.isNotEmpty &&
-        currentNoteIndex >= songNotes.length &&
-        fallingNotes.isEmpty) {
-      print('🏁 Game ended! All notes completed.');
-      _endGame();
+    // Verificar si hay notas para mostrar
+    if (songNotes.isEmpty) {
+      return; // Juego sin notas, continúa indefinidamente
     }
-    // Si no hay notas, el juego sigue activo pero sin mostrar nada
+
+    // Verificar si todas las notas ya aparecieron y no hay notas cayendo
+    final currentGameTime =
+        DateTime.now().millisecondsSinceEpoch - gameStartTime;
+    final lastNoteTime = songNotes.isNotEmpty ? songNotes.last.startTimeMs : 0;
+    final lastNoteDuration =
+        songNotes.isNotEmpty ? songNotes.last.durationMs : 1000;
+
+    // El juego termina EXACTAMENTE cuando acaba la duración completa de la última nota
+    // Sin buffer adicional - solo el tiempo exacto que dura el sonido
+    final expectedEndTime = lastNoteTime + lastNoteDuration;
+    final gameTimePassed = currentGameTime >= expectedEndTime;
+
+    if (gameTimePassed) {
+      print('🏁 Game ended! Last note duration completed.');
+      print('   Current time: ${currentGameTime}ms');
+      print('   Last note start: ${lastNoteTime}ms');
+      print('   Last note duration: ${lastNoteDuration}ms');
+      print('   Note end time: ${expectedEndTime}ms');
+      print(
+          '   Sound finished: ${currentGameTime >= expectedEndTime ? "✅" : "❌"}');
+      _endGame();
+    } else {
+      // Debug: mostrar estado actual cada 2 segundos
+      if (currentGameTime % 2000 < 100) {
+        final timeLeft = expectedEndTime - currentGameTime;
+        print('🔄 Game status: ${timeLeft}ms remaining until last note ends');
+      }
+    }
   }
 
   // Finalizar el juego y mostrar resultados
@@ -1058,6 +1266,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     gameUpdateTimer?.cancel();
     countdownTimer?.cancel(); // ¡Importante! Cancelar el timer del countdown
     _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final si existe
+
+    // NUEVO: Cancelar todos los timers programados de notas
+    for (final timer in _scheduledNoteTimers) {
+      timer.cancel();
+    }
+    _scheduledNoteTimers.clear();
 
     // Reiniciar tiempo de inicio del juego
     gameStartTime = 0;
@@ -1200,47 +1414,87 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // MEJORADO: Mejor detección de combinaciones de pistones para reproducir sonido
   void _playNoteFromPistonCombination() {
+    print('🎹 Playing note for combination: $pressedPistons');
+
     // Si no hay pistones presionados, reproducir nota de aire
     if (pressedPistons.isEmpty) {
-      print('🎵 No pistons pressed - playing open note (air)');
+      print('�️ No pistons pressed - playing open note');
       _playOpenNote();
       return;
     }
 
-    print('🎹 Finding note for piston combination: $pressedPistons');
     SongNote? noteToPlay;
 
-    // 1. Buscar en notas cayendo que coincidan EXACTAMENTE con los pistones presionados
+    // 1. Buscar en notas cayendo que coincidan EXACTAMENTE
     for (var fallingNote in fallingNotes) {
       if (!fallingNote.isHit &&
           !fallingNote.isMissed &&
-          _exactPistonMatchForSong(fallingNote.songNote, pressedPistons) &&
-          fallingNote.songNote != null) {
+          fallingNote.songNote != null &&
+          _exactPistonMatchForSong(fallingNote.songNote, pressedPistons)) {
         noteToPlay = fallingNote.songNote!;
-        print(
-            '🎵 Playing from falling note: ${noteToPlay.noteName} (${noteToPlay.pistonCombination})');
+        print('� Found exact match in falling notes: ${noteToPlay.noteName}');
         break;
       }
     }
 
-    // 2. Si no hay notas cayendo, buscar en todas las notas cargadas con coincidencia exacta
+    // 2. Si no hay en notas cayendo, buscar en todas las notas
     if (noteToPlay == null && songNotes.isNotEmpty) {
       for (var songNote in songNotes) {
         if (_exactPistonMatchForSong(songNote, pressedPistons)) {
           noteToPlay = songNote;
-          print(
-              '🎵 Playing from database: ${noteToPlay.noteName} (${noteToPlay.pistonCombination})');
-          break; // Tomar la primera que coincida exactamente
+          print('🎵 Found exact match in database: ${noteToPlay.noteName}');
+          break;
         }
       }
     }
 
-    // 3. Reproducir la nota encontrada usando el cache robusto
-    if (noteToPlay != null && noteToPlay.noteUrl != null) {
+    // 3. Si no se encuentra coincidencia exacta, buscar la más cercana
+    if (noteToPlay == null && songNotes.isNotEmpty) {
+      print('⚠️ No exact match found, looking for closest match...');
+      SongNote? closestMatch;
+      int bestScore = -1;
+
+      for (var songNote in songNotes) {
+        final required = songNote.pistonCombination.toSet();
+        final pressed = pressedPistons;
+
+        // Calcular puntuación de similitud
+        final commonPistons = required.intersection(pressed).length;
+        final totalUnique = required.union(pressed).length;
+        final score =
+            totalUnique > 0 ? (commonPistons * 100) ~/ totalUnique : 0;
+
+        if (score > bestScore &&
+            songNote.noteUrl != null &&
+            songNote.noteUrl!.isNotEmpty) {
+          bestScore = score;
+          closestMatch = songNote;
+        }
+      }
+
+      if (closestMatch != null && bestScore > 30) {
+        // Al menos 30% de similitud
+        noteToPlay = closestMatch;
+        print('🎯 Using closest match (${bestScore}%): ${noteToPlay.noteName}');
+      }
+    }
+
+    // 4. Reproducir la nota encontrada
+    if (noteToPlay != null &&
+        noteToPlay.noteUrl != null &&
+        noteToPlay.noteUrl!.isNotEmpty) {
+      print(
+          '▶️ Playing note: ${noteToPlay.noteName} (pistons: ${noteToPlay.pistonCombination})');
       _playFromRobustCache(noteToPlay);
     } else {
-      print('⚠️ No exact match found for: $pressedPistons');
-      _debugAvailableCombinations();
+      print('❌ No playable note found for combination: $pressedPistons');
+      if (songNotes.isNotEmpty) {
+        print('🔍 Available notes:');
+        for (var note in songNotes.take(5)) {
+          print(
+              '   ${note.noteName}: ${note.pistonCombination} (URL: ${note.noteUrl != null ? "✅" : "❌"})');
+        }
+      }
     }
   }
 
@@ -1260,41 +1514,54 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         required.every((piston) => pressedPistons.contains(piston));
   }
 
-  // NUEVO: Reproducir nota de aire (sin pistones)
+  // MEJORADO: Reproducir nota de aire (sin pistones) con mejor fallback
   void _playOpenNote() {
+    print('🌬️ Looking for open note (no pistons)...');
     SongNote? openNote;
 
     // Buscar nota sin pistones requeridos
     for (var note in songNotes) {
-      if (note.pistonCombination.isEmpty) {
+      if (note.pistonCombination.isEmpty &&
+          note.noteUrl != null &&
+          note.noteUrl!.isNotEmpty) {
         openNote = note;
+        print('✅ Found open note: ${openNote.noteName}');
         break;
       }
     }
 
-    if (openNote != null && openNote.noteUrl != null) {
-      print('🌬️ Playing open note: ${openNote.noteName}');
-      _playFromRobustCache(openNote);
-    }
-  }
-
-  // NUEVO: Debug de combinaciones disponibles
-  void _debugAvailableCombinations() {
-    if (songNotes.isNotEmpty) {
-      print('📋 Available combinations (first 5):');
-      for (var note in songNotes.take(5)) {
-        final combo = note.pistonCombination.isEmpty
-            ? '[Air]'
-            : note.pistonCombination.toString();
-        print('   ${note.noteName}: $combo');
+    // Si no se encuentra nota de aire, usar la primera nota disponible
+    if (openNote == null && songNotes.isNotEmpty) {
+      for (var note in songNotes) {
+        if (note.noteUrl != null && note.noteUrl!.isNotEmpty) {
+          openNote = note;
+          print(
+              '� Using fallback note: ${openNote.noteName} (pistons: ${openNote.pistonCombination})');
+          break;
+        }
       }
     }
+
+    if (openNote != null) {
+      _playFromRobustCache(openNote);
+    } else {
+      print('❌ No playable open note found');
+    }
   }
 
-  // NUEVO: Reproducir audio desde cache robusto
-  Future<void> _playFromRobustCache(SongNote note) async {
-    if (note.noteUrl == null) return;
+  // ELIMINADO: Ya no es necesario - el nuevo sistema tiene mejor debugging
 
+  // MEJORADO: Reproducir audio desde cache robusto con mejor fallback
+  Future<void> _playFromRobustCache(SongNote note) async {
+    print('🎵 Attempting to play: ${note.noteName}');
+
+    // Verificar que la nota tenga URL
+    if (note.noteUrl == null || note.noteUrl!.isEmpty) {
+      print('❌ No audio URL for note: ${note.noteName}');
+      return;
+    }
+
+    print('🔗 Audio URL: ${note.noteUrl}');
     final cacheKey = 'audio_${note.noteUrl.hashCode}';
 
     try {
@@ -1309,34 +1576,38 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       if (cachedData != null &&
           cachedData['path'] != null &&
           File(cachedData['path']).existsSync()) {
-        // Reproducir desde archivo local cached usando el sistema existente
+        // Reproducir desde archivo local cached
         final localFile = File(cachedData['path']);
         await NoteAudioService.playNoteFromUrl(
-          localFile.uri.toString(), // Convertir path local a URI
+          localFile.uri.toString(),
           noteId: note.chromaticId?.toString(),
           durationMs: note.durationMs,
         );
-        print('🔊 Audio played from robust cache: ${note.noteName}');
+        print('✅ Audio played from cache: ${note.noteName}');
       } else {
-        // Fallback: usar el sistema original
-        NoteAudioService.playNoteFromUrl(
+        // Fallback: descargar y reproducir directamente
+        print('⬇️ Cache miss, playing from URL: ${note.noteName}');
+        await NoteAudioService.playNoteFromUrl(
           note.noteUrl!,
           noteId: note.chromaticId?.toString(),
           durationMs: note.durationMs,
-        ).then((_) {
-          print('🔊 Audio played via fallback: ${note.noteName}');
-        }).catchError((e) {
-          print('⚠️ Audio playback failed: $e');
-        });
+        );
+        print('✅ Audio played from URL: ${note.noteName}');
       }
     } catch (e) {
-      print('⚠️ Error playing from cache, using fallback: $e');
-      // Fallback completo
-      NoteAudioService.playNoteFromUrl(
-        note.noteUrl!,
-        noteId: note.chromaticId?.toString(),
-        durationMs: note.durationMs,
-      ).catchError((e) => print('⚠️ Fallback also failed: $e'));
+      print('❌ Error playing audio for ${note.noteName}: $e');
+
+      // Último fallback: intentar una vez más con la URL original
+      try {
+        await NoteAudioService.playNoteFromUrl(
+          note.noteUrl!,
+          noteId: note.chromaticId?.toString(),
+          durationMs: note.durationMs,
+        );
+        print('✅ Final fallback successful for: ${note.noteName}');
+      } catch (finalError) {
+        print('💥 Complete audio failure for ${note.noteName}: $finalError');
+      }
     }
   }
 
@@ -1528,9 +1799,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   isLoadingSong
                       ? 'Cargando canción...'
                       : isPreloadingAudio
-                          ? 'Descargando ${audioCacheProgress}%'
+                          ? 'Cache offline ${audioCacheProgress}%'
                           : _audioCacheCompleted
-                              ? '¡Audio listo!'
+                              ? '¡Música lista offline!'
                               : 'Preparando...',
                   style: TextStyle(
                     color: Colors.white70,
@@ -1544,7 +1815,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 if (isPreloadingAudio && !isSmallScreen) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Optimizando experiencia musical',
+                    'Guardando para reproducción offline',
                     style: TextStyle(
                       color: Colors.white60,
                       fontSize: 12,
@@ -2862,6 +3133,82 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
 
     debugPrint('Pistón $pistonNumber liberado - Remaining: $pressedPistons');
+  }
+
+  // NUEVO: Método helper para limpiar cache offline antiguo
+  static Future<void> cleanOldOfflineCache() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final maxAge =
+          const Duration(days: 7).inMilliseconds; // Cache válido por 7 días
+
+      final keysToDelete = <String>[];
+
+      // Revisar todas las claves del cache
+      for (var key in box.keys) {
+        if (key.toString().startsWith('song_') &&
+            key.toString().endsWith('_complete')) {
+          final data = box.get(key);
+          if (data != null && data['cached_timestamp'] != null) {
+            final cacheAge = now - (data['cached_timestamp'] as int);
+            if (cacheAge > maxAge) {
+              keysToDelete.add(key.toString());
+            }
+          }
+        }
+      }
+
+      // Eliminar cache expirado
+      for (var key in keysToDelete) {
+        await box.delete(key);
+      }
+
+      if (keysToDelete.isNotEmpty) {
+        print('🧹 Cleaned ${keysToDelete.length} expired offline song caches');
+      }
+    } catch (e) {
+      print('❌ Error cleaning old offline cache: $e');
+    }
+  }
+
+  // NUEVO: Método helper para obtener información del cache offline
+  static Future<Map<String, dynamic>> getOfflineCacheInfo() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      int totalSongs = 0;
+      int totalAudioFiles = 0;
+
+      for (var key in box.keys) {
+        if (key.toString().startsWith('song_') &&
+            key.toString().endsWith('_complete')) {
+          totalSongs++;
+        } else if (key.toString().startsWith('audio_')) {
+          totalAudioFiles++;
+        }
+      }
+
+      return {
+        'total_songs': totalSongs,
+        'total_audio_files': totalAudioFiles,
+        'cache_size_mb': 0.0, // Se puede calcular si es necesario
+      };
+    } catch (e) {
+      print('❌ Error getting offline cache info: $e');
+      return {
+        'total_songs': 0,
+        'total_audio_files': 0,
+        'cache_size_mb': 0.0,
+      };
+    }
   }
 }
 
