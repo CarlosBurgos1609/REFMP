@@ -238,6 +238,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _initializeAnimations();
     _initializeHive(); // NUEVO: Inicializar Hive
     _initializeAudio(); // NUEVO: Inicializar servicio de audio
+    _runOfflineDiagnostics(); // NUEVO: Diagnóstico offline completo
     _loadSongData(); // Cargar datos musicales
     _startLogoTimer(); // MOVIDO: iniciar timer después de cargar datos
   }
@@ -246,12 +247,114 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Future<void> _initializeHive() async {
     try {
       if (!Hive.isBoxOpen('offline_data')) {
+        print('📂 Opening Hive offline_data box...');
         await Hive.openBox('offline_data');
         print('✅ Hive box opened successfully');
+      } else {
+        print('✅ Hive box already open');
       }
+
+      // DEBUG: Mostrar información del cache al inicializar
+      final box = Hive.box('offline_data');
+      final totalKeys = box.keys.length;
+      final songKeys = box.keys
+          .where((key) =>
+              key.toString().startsWith('song_') &&
+              key.toString().endsWith('_complete'))
+          .length;
+      final audioKeys =
+          box.keys.where((key) => key.toString().startsWith('audio_')).length;
+
+      print('📊 Hive cache status:');
+      print('   📝 Total keys: $totalKeys');
+      print('   🎵 Song caches: $songKeys');
+      print('   🔊 Audio caches: $audioKeys');
     } catch (e) {
       print('❌ Error initializing Hive: $e');
     }
+  }
+
+  // NUEVO: Ejecutar diagnósticos offline completos al inicializar
+  Future<void> _runOfflineDiagnostics() async {
+    print('🔍 === RUNNING OFFLINE DIAGNOSTICS ===');
+
+    try {
+      // Información del juego actual
+      print('🎮 Game Info:');
+      print('   🆔 Song ID: ${widget.songId}');
+      print('   🎵 Song Name: ${widget.songName}');
+      print('   🎯 Expected cache key: song_${widget.songId}_complete');
+      print('');
+
+      // Verificar estado de Hive
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      // Estadísticas del cache
+      final box = Hive.box('offline_data');
+      final allKeys = box.keys.toList();
+      final songKeys = allKeys
+          .where((key) =>
+              key.toString().startsWith('song_') &&
+              key.toString().endsWith('_complete'))
+          .toList();
+      final audioKeys =
+          allKeys.where((key) => key.toString().startsWith('audio_')).toList();
+
+      print('📊 Cache Statistics:');
+      print('   📝 Total entries: ${allKeys.length}');
+      print('   🎵 Song caches: ${songKeys.length}');
+      print('   🔊 Audio caches: ${audioKeys.length}');
+      print('');
+
+      // Verificar si la canción actual está cacheada
+      final expectedKey = 'song_${widget.songId}_complete';
+      final isCurrentSongCached = box.containsKey(expectedKey);
+
+      print('🎯 Current Song Status:');
+      print('   📦 Is cached: ${isCurrentSongCached ? "✅ YES" : "❌ NO"}');
+
+      if (isCurrentSongCached) {
+        final songData = box.get(expectedKey);
+        if (songData != null) {
+          print('   📝 Cached name: ${songData['song_name'] ?? 'unknown'}');
+          print('   🎼 Cached notes: ${songData['notes_count'] ?? 0}');
+          print(
+              '   📅 Cache date: ${DateTime.fromMillisecondsSinceEpoch(songData['cached_timestamp'] ?? 0)}');
+          print('   📂 Cache version: ${songData['version'] ?? 'unknown'}');
+        }
+      } else {
+        print('   💡 Song needs to be played online first to cache offline');
+      }
+      print('');
+
+      // Listar todas las canciones cacheadas
+      if (songKeys.isNotEmpty) {
+        print('🎵 Available Cached Songs:');
+        for (var key in songKeys.take(5)) {
+          // Mostrar solo las primeras 5
+          final songData = box.get(key);
+          if (songData != null) {
+            final songId = songData['song_id'] ?? 'unknown';
+            final songName = songData['song_name'] ?? 'unknown';
+            final notesCount = songData['notes_count'] ?? 0;
+            print('   🎵 $songName (ID: $songId) - $notesCount notes');
+          }
+        }
+        if (songKeys.length > 5) {
+          print('   ... and ${songKeys.length - 5} more cached songs');
+        }
+      } else {
+        print('🎵 No cached songs found');
+        print('   💡 Play songs online first to enable offline mode');
+      }
+    } catch (e) {
+      print('❌ Error running offline diagnostics: $e');
+    }
+
+    print('🔍 === END OFFLINE DIAGNOSTICS ===');
+    print('');
   }
 
   // NUEVO: Inicializar el servicio de audio
@@ -296,10 +399,71 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       isLoadingSong = true;
     });
 
-    // SIEMPRE intentar cargar desde la base de datos si hay songId
+    // MEJORADO: Verificar calidad del cache offline y recargar si es necesario
     if (widget.songId != null && widget.songId!.isNotEmpty) {
+      // Primero intentar cargar desde cache offline
+      print('🔍 Checking offline cache first...');
+      await _loadSongFromOfflineCache();
+
+      // Verificar si el cache tiene datos de buena calidad (con ChromaticNote)
+      bool cacheHasQualityData = false;
+      if (songNotes.isNotEmpty) {
+        int notesWithChromatic = 0;
+        for (var note in songNotes) {
+          if (note.chromaticNote != null) {
+            notesWithChromatic++;
+          }
+        }
+        cacheHasQualityData = (notesWithChromatic / songNotes.length) >
+            0.5; // Al menos 50% deben tener ChromaticNote
+
+        print('📊 Cache quality check:');
+        print('   🎵 Total notes: ${songNotes.length}');
+        print('   ✅ Notes with ChromaticNote: $notesWithChromatic');
+        print(
+            '   📈 Quality ratio: ${(notesWithChromatic / songNotes.length * 100).toStringAsFixed(1)}%');
+        print(
+            '   🎯 Cache quality: ${cacheHasQualityData ? "✅ GOOD" : "❌ BAD - Need database refresh"}');
+      }
+
+      // Si el cache tiene datos de buena calidad, usarlo
+      if (songNotes.isNotEmpty && cacheHasQualityData) {
+        print('✅ Using high-quality offline cache (${songNotes.length} notes)');
+        setState(() {
+          isLoadingSong = false;
+        });
+        return;
+      }
+
+      // Si el cache es de mala calidad, intentar repararlo
+      if (songNotes.isNotEmpty && !cacheHasQualityData) {
+        print('🧹 Cache quality insufficient, attempting repair...');
+        await _repairOfflineCache();
+
+        // Después del repair, verificar si mejoró
+        if (songNotes.isNotEmpty) {
+          int repairedNotesWithChromatic = 0;
+          for (var note in songNotes) {
+            if (note.chromaticNote != null) {
+              repairedNotesWithChromatic++;
+            }
+          }
+          final repairedQuality =
+              (repairedNotesWithChromatic / songNotes.length) > 0.5;
+
+          if (repairedQuality) {
+            print('✅ Cache repair successful! Using repaired data.');
+            setState(() {
+              isLoadingSong = false;
+            });
+            return;
+          }
+        }
+      }
+
+      // Si no hay cache o el repair falló, intentar la base de datos
       try {
-        print('🔍 Attempting to load from database...');
+        print('🔍 Loading fresh data from database...');
         songNotes = await DatabaseService.getSongNotes(widget.songId!);
 
         if (songNotes.isNotEmpty) {
@@ -378,22 +542,43 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // NUEVO: Cargar canción desde cache offline cuando falla la base de datos
   Future<void> _loadSongFromOfflineCache() async {
+    print('📱 === LOADING FROM OFFLINE CACHE ===');
+
     if (widget.songId == null || widget.songId!.isEmpty) {
-      print('⚠️ No song ID for offline cache lookup');
+      print('❌ No song ID for offline cache lookup');
       songNotes = [];
       return;
     }
 
     try {
       if (!Hive.isBoxOpen('offline_data')) {
+        print('📂 Opening Hive offline_data box...');
         await Hive.openBox('offline_data');
       }
 
       final box = Hive.box('offline_data');
       final songCacheKey = 'song_${widget.songId}_complete';
+      print('🔑 Looking for cache key: $songCacheKey');
+
+      // DEBUG: Mostrar todas las claves disponibles en cache
+      final allKeys = box.keys.toList();
+      print('📋 Available cache keys (${allKeys.length} total):');
+      for (var key in allKeys) {
+        print('   - $key');
+      }
+
       final cachedSongData = box.get(songCacheKey, defaultValue: null);
 
-      if (cachedSongData != null && cachedSongData['notes_data'] != null) {
+      if (cachedSongData == null) {
+        print('❌ No cached data found for key: $songCacheKey');
+        songNotes = [];
+        return;
+      }
+
+      print('✅ Found cached data for song: ${widget.songId}');
+      print('📊 Cache data keys: ${cachedSongData.keys.toList()}');
+
+      if (cachedSongData['notes_data'] != null) {
         print('📱 Loading song from offline cache...');
 
         // Reconstruir songNotes desde cache
@@ -418,6 +603,36 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 noteData['created_at'] ??
                     DateTime.now().millisecondsSinceEpoch),
           );
+
+          // NUEVO: Restaurar ChromaticNote desde cache offline si está disponible
+          if (noteData['chromatic_note_data'] != null) {
+            final chromaticData =
+                noteData['chromatic_note_data'] as Map<String, dynamic>;
+            final chromaticNote = ChromaticNote(
+              id: chromaticData['id'] ?? 0,
+              instrumentId: chromaticData['instrument_id'] ?? 0,
+              englishName: chromaticData['english_name'] ?? 'Unknown',
+              spanishName: chromaticData['spanish_name'] ?? 'Desconocida',
+              octave: chromaticData['octave'] ?? 3,
+              alternative: chromaticData['alternative'],
+              piston1: chromaticData['piston_1'] ?? 'Aire',
+              piston2: chromaticData['piston_2'] ?? 'Aire',
+              piston3: chromaticData['piston_3'] ?? 'Aire',
+              noteUrl: chromaticData['note_url'],
+            );
+            songNote.setChromaticNote(chromaticNote);
+            print(
+                '🎵 Restored ChromaticNote for offline: ${chromaticNote.englishName}');
+          } else {
+            print(
+                '⚠️ No ChromaticNote data in cache for note ${noteData['note_id']}');
+            // Intentar usar los datos básicos si están disponibles
+            if (noteData['note_name'] != null &&
+                noteData['note_name'] != 'Unknown') {
+              print('   📝 Using basic cached data: ${noteData['note_name']}');
+            }
+          }
+
           songNotes.add(songNote);
         }
 
@@ -426,6 +641,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print(
             '   📅 Cache timestamp: ${DateTime.fromMillisecondsSinceEpoch(cachedSongData['cached_timestamp'] ?? 0)}');
         print('   📂 Cache version: ${cachedSongData['version'] ?? 'unknown'}');
+        print('   🎵 Song name: ${cachedSongData['song_name'] ?? 'unknown'}');
+        print(
+            '   🎯 Song difficulty: ${cachedSongData['song_difficulty'] ?? 'unknown'}');
+
+        // NUEVO: Verificar estado de las notas cargadas desde cache
+        _debugOfflineNoteStatus();
 
         // NUEVO: Precargar TODOS los audios durante el logo
         _precacheAllAudioFiles();
@@ -433,12 +654,115 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         currentNoteIndex = 0;
       } else {
         print('❌ No offline cache found for song ${widget.songId}');
+
+        // DEBUG: Mostrar qué canciones están disponibles en cache
+        await _debugAvailableCachedSongs();
+
         songNotes = []; // Lista vacía
       }
     } catch (e) {
       print('❌ Error loading song from offline cache: $e');
       songNotes = []; // Lista vacía en caso de error
     }
+
+    print('📱 === END OFFLINE CACHE LOADING ===');
+  }
+
+  // NUEVO: Debug de canciones disponibles en cache offline
+  Future<void> _debugAvailableCachedSongs() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songKeys = box.keys
+          .where((key) =>
+              key.toString().startsWith('song_') &&
+              key.toString().endsWith('_complete'))
+          .toList();
+
+      print('🎵 === AVAILABLE CACHED SONGS ===');
+      print('📊 Total cached songs: ${songKeys.length}');
+
+      if (songKeys.isEmpty) {
+        print('❌ No songs found in offline cache');
+        print('💡 Make sure to play songs online first to cache them');
+      } else {
+        for (var key in songKeys) {
+          final songData = box.get(key);
+          if (songData != null) {
+            final songId = songData['song_id'] ?? 'unknown';
+            final songName = songData['song_name'] ?? 'unknown';
+            final notesCount = songData['notes_count'] ?? 0;
+            final cachedTime = DateTime.fromMillisecondsSinceEpoch(
+                songData['cached_timestamp'] ?? 0);
+
+            print('🎵 Cached song:');
+            print('   🆔 ID: $songId');
+            print('   📝 Name: $songName');
+            print('   🎼 Notes: $notesCount');
+            print('   📅 Cached: ${cachedTime.toString()}');
+            print('   🔑 Cache key: $key');
+            print('');
+          }
+        }
+      }
+
+      print('🔍 Current song ID: ${widget.songId}');
+      print('🔑 Expected cache key: song_${widget.songId}_complete');
+      print('🎵 === END CACHED SONGS DEBUG ===');
+    } catch (e) {
+      print('❌ Error debugging cached songs: $e');
+    }
+  }
+
+  // NUEVO: Debug del estado de las notas cargadas desde cache offline
+  void _debugOfflineNoteStatus() {
+    print('🔍 === DEBUG OFFLINE NOTES STATUS ===');
+    print('📊 Total notes loaded: ${songNotes.length}');
+
+    int notesWithChromatic = 0;
+    int notesWithAudio = 0;
+
+    for (int i = 0; i < songNotes.length; i++) {
+      final note = songNotes[i];
+      final hasChromatic = note.chromaticNote != null;
+      final hasAudio = note.noteUrl != null && note.noteUrl!.isNotEmpty;
+
+      if (hasChromatic) notesWithChromatic++;
+      if (hasAudio) notesWithAudio++;
+
+      print('  📝 Note ${i + 1}:');
+      print('     🏷️  Name: ${note.noteName}');
+      print(
+          '     🎯  ChromaticNote: ${hasChromatic ? "✅ Loaded" : "❌ Missing"}');
+      print('     🔊  Audio URL: ${hasAudio ? "✅ Available" : "❌ Missing"}');
+      print('     🎹  Pistons: ${note.pistonCombination}');
+
+      if (hasChromatic) {
+        print('     📋  English: ${note.chromaticNote!.englishName}');
+        print('     🇪🇸  Spanish: ${note.chromaticNote!.spanishName}');
+      }
+      print(''); // Línea en blanco
+    }
+
+    print('📈 Summary:');
+    print(
+        '   🎵 Notes with ChromaticNote: ${notesWithChromatic}/${songNotes.length}');
+    print('   🔊 Notes with Audio: ${notesWithAudio}/${songNotes.length}');
+
+    if (notesWithChromatic < songNotes.length) {
+      print(
+          '⚠️ WARNING: ${songNotes.length - notesWithChromatic} notes missing ChromaticNote data!');
+    }
+
+    if (notesWithAudio < songNotes.length) {
+      print(
+          '⚠️ WARNING: ${songNotes.length - notesWithAudio} notes missing audio URLs!');
+    }
+
+    print('🔍 === END DEBUG ===');
   }
 
   // NUEVO: Método robusto de descarga y cache de audio (similar a objects.dart)
@@ -641,10 +965,25 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   'velocity': note.velocity,
                   'chromatic_id': note.chromaticId,
                   'created_at': note.createdAt.millisecondsSinceEpoch,
-                  // Campos adicionales para compatibilidad
+                  // MEJORADO: Guardar información completa de ChromaticNote para uso offline
                   'note_name': note.noteName,
                   'piston_combination': note.pistonCombination,
                   'note_url': note.noteUrl,
+                  // NUEVO: Información completa del ChromaticNote si está disponible
+                  'chromatic_note_data': note.chromaticNote != null
+                      ? {
+                          'id': note.chromaticNote!.id,
+                          'instrument_id': note.chromaticNote!.instrumentId,
+                          'english_name': note.chromaticNote!.englishName,
+                          'spanish_name': note.chromaticNote!.spanishName,
+                          'octave': note.chromaticNote!.octave,
+                          'alternative': note.chromaticNote!.alternative,
+                          'piston_1': note.chromaticNote!.piston1,
+                          'piston_2': note.chromaticNote!.piston2,
+                          'piston_3': note.chromaticNote!.piston3,
+                          'note_url': note.chromaticNote!.noteUrl,
+                        }
+                      : null,
                 })
             .toList(),
       };
@@ -825,11 +1164,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final hasAudio = note.noteUrl != null && note.noteUrl!.isNotEmpty;
         if (hasAudio) notesWithAudio++;
 
-        print('  📝 Note ${i + 1}: ${note.noteName}');
+        final hasChromatic = note.chromaticNote != null;
+        print(
+            '  📝 Note ${i + 1}: ${note.noteName} ${hasChromatic ? "✅" : "❌ UNKNOWN"}');
         print(
             '     ⏰ Start time: ${note.startTimeMs}ms (${(note.startTimeMs / 1000).toStringAsFixed(1)}s)');
         print('     ⏱️ Duration: ${note.durationMs}ms');
         print('     🎹 Pistons: ${note.pistonCombination}');
+        print(
+            '     🎯 ChromaticNote: ${hasChromatic ? "✅ Loaded (${note.chromaticNote!.englishName})" : "❌ Missing"}');
         print(
             '     🔊 Audio: ${hasAudio ? "✅ " + note.noteUrl! : "❌ NO AUDIO"}');
 
@@ -3209,6 +3552,79 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         'cache_size_mb': 0.0,
       };
     }
+  }
+
+  // NUEVO: Método para limpiar cache de baja calidad de una canción específica
+  // ignore: unused_element
+  static Future<void> clearLowQualitySongCache(String songId) async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${songId}_complete';
+
+      if (box.containsKey(songCacheKey)) {
+        await box.delete(songCacheKey);
+        print('🧹 Cleared low-quality cache for song: $songId');
+      }
+    } catch (e) {
+      print('❌ Error clearing song cache: $e');
+    }
+  }
+
+  // NUEVO: Función para diagnosticar y reparar cache offline
+  Future<void> _repairOfflineCache() async {
+    print('🔧 === STARTING OFFLINE CACHE REPAIR ===');
+
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('❌ No song ID to repair');
+      return;
+    }
+
+    try {
+      // Verificar si hay conexión a internet
+      print('🌐 Checking internet connection...');
+
+      // Intentar cargar datos frescos de la base de datos
+      print('🔄 Attempting fresh database load...');
+      final freshNotes = await DatabaseService.getSongNotes(widget.songId!);
+
+      if (freshNotes.isNotEmpty) {
+        // Verificar calidad de los datos frescos
+        int notesWithChromatic = 0;
+        for (var note in freshNotes) {
+          if (note.chromaticNote != null) {
+            notesWithChromatic++;
+          }
+        }
+
+        final qualityRatio = notesWithChromatic / freshNotes.length;
+
+        print('📊 Fresh data quality check:');
+        print('   🎵 Total notes: ${freshNotes.length}');
+        print('   ✅ Notes with ChromaticNote: $notesWithChromatic');
+        print(
+            '   📈 Quality ratio: ${(qualityRatio * 100).toStringAsFixed(1)}%');
+
+        if (qualityRatio > 0.5) {
+          print('✅ Fresh data has good quality, updating cache...');
+          songNotes = freshNotes;
+          await _cacheSongDataOffline(); // Recachear con datos de buena calidad
+          print('🎉 Cache repair completed successfully!');
+        } else {
+          print('⚠️ Fresh data also has poor quality, keeping existing cache');
+        }
+      } else {
+        print('❌ No fresh data available from database');
+      }
+    } catch (e) {
+      print('❌ Error during cache repair: $e');
+      print('💡 Device might be offline - using existing cache as-is');
+    }
+
+    print('🔧 === END OFFLINE CACHE REPAIR ===');
   }
 }
 
