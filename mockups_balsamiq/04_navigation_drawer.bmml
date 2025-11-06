@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mockup version="1.0" skin="sketch" fontFace="Balsamiq Sans" measuredW="280" measuredH="812">
+  <controls>
+    <!-- Drawer Background -->
+    <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="280" h="812" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+      </controlProperties>
+    </control>
+    
+    <!-- Header -->
+    <control controlID="1" controlTypeID="Canvas" x="0" y="0" w="280" h="120" measuredW="100" measuredH="70" zOrder="1" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>2848996</color>
+      </controlProperties>
+    </control>
+    
+    <!-- Profile Image -->
+    <control controlID="2" controlTypeID="Icon" x="20" y="30" w="60" h="60" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+        <icon>CircleIcon%7Clarge</icon>
+      </controlProperties>
+    </control>
+    
+    <!-- User Name -->
+    <control controlID="3" controlTypeID="Label" x="90" y="45" w="150" h="25" measuredW="100" measuredH="25" zOrder="3" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>16777215</color>
+        <size>16</size>
+        <text>Usuario%20REFMP</text>
+      </controlProperties>
+    </control>
+    
+    <!-- User Role -->
+    <control controlID="4" controlTypeID="Label" x="90" y="65" w="150" h="20" measuredW="100" measuredH="20" zOrder="4" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+        <size>12</size>
+        <text>Estudiante</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Main Menu Items -->
+    <!-- Home -->
+    <control controlID="5" controlTypeID="__group__" x="0" y="140" w="280" h="50" measuredW="280" measuredH="50" zOrder="5" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="280" h="50" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="5">
+          <controlProperties>
+            <color>15658734</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="5">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>HomeIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="2" locked="false" isInGroup="5">
+          <controlProperties>
+            <color>2848996</color>
+            <text>Inicio</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Profile -->
+    <control controlID="6" controlTypeID="__group__" x="0" y="190" w="280" h="50" measuredW="280" measuredH="50" zOrder="6" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="6">
+          <controlProperties>
+            <icon>PersonIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="6">
+          <controlProperties>
+            <text>Perfil</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Sedes -->
+    <control controlID="7" controlTypeID="__group__" x="0" y="240" w="280" h="50" measuredW="280" measuredH="50" zOrder="7" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="7">
+          <controlProperties>
+            <icon>BuildingIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="7">
+          <controlProperties>
+            <text>Sedes</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Notifications -->
+    <control controlID="8" controlTypeID="__group__" x="0" y="290" w="280" h="50" measuredW="280" measuredH="50" zOrder="8" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="8">
+          <controlProperties>
+            <icon>BellIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="8">
+          <controlProperties>
+            <text>Notificaciones</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Instruments -->
+    <control controlID="9" controlTypeID="__group__" x="0" y="340" w="280" h="50" measuredW="280" measuredH="50" zOrder="9" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="9">
+          <controlProperties>
+            <icon>MusicIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="9">
+          <controlProperties>
+            <text>Instrumentos</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Events -->
+    <control controlID="10" controlTypeID="__group__" x="0" y="390" w="280" h="50" measuredW="280" measuredH="50" zOrder="10" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="10">
+          <controlProperties>
+            <icon>CalendarIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="10">
+          <controlProperties>
+            <text>Eventos</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Learn -->
+    <control controlID="11" controlTypeID="__group__" x="0" y="440" w="280" h="50" measuredW="280" measuredH="50" zOrder="11" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="11">
+          <controlProperties>
+            <icon>GameIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="11">
+          <controlProperties>
+            <text>Aprende</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Divider -->
+    <control controlID="12" controlTypeID="HRule" x="20" y="510" w="240" h="5" measuredW="100" measuredH="5" zOrder="12" locked="false" isInGroup="-1">
+    </control>
+    
+    <!-- Students -->
+    <control controlID="13" controlTypeID="__group__" x="0" y="530" w="280" h="50" measuredW="280" measuredH="50" zOrder="13" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="13">
+          <controlProperties>
+            <icon>UserIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="13">
+          <controlProperties>
+            <text>Estudiantes</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Teachers -->
+    <control controlID="14" controlTypeID="__group__" x="0" y="580" w="280" h="50" measuredW="280" measuredH="50" zOrder="14" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="14">
+          <controlProperties>
+            <icon>BadgeIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="14">
+          <controlProperties>
+            <text>Profesores</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Settings -->
+    <control controlID="15" controlTypeID="__group__" x="0" y="630" w="280" h="50" measuredW="280" measuredH="50" zOrder="15" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="20" y="13" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="15">
+          <controlProperties>
+            <icon>SettingsIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Label" x="60" y="15" w="100" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="15">
+          <controlProperties>
+            <text>Configuraci%F3n</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Social Media Section -->
+    <control controlID="16" controlTypeID="HRule" x="20" y="700" w="240" h="5" measuredW="100" measuredH="5" zOrder="16" locked="false" isInGroup="-1">
+    </control>
+    
+    <control controlID="17" controlTypeID="Label" x="20" y="720" w="100" h="20" measuredW="100" measuredH="20" zOrder="17" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>10066329</color>
+        <size>14</size>
+        <text>Redes%20Sociales</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Social Icons -->
+    <control controlID="18" controlTypeID="__group__" x="20" y="750" w="240" h="40" measuredW="240" measuredH="40" zOrder="18" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="0" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="18">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>FacebookIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="40" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="18">
+          <controlProperties>
+            <color>65280</color>
+            <icon>WhatsAppIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Icon" x="80" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="18">
+          <controlProperties>
+            <color>16711935</color>
+            <icon>InstagramIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Icon" x="120" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="3" locked="false" isInGroup="18">
+          <controlProperties>
+            <color>16711680</color>
+            <icon>YoutubeIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+  </controls>
+</mockup>
