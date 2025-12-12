@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/interfaces/menu/events.dart';
 import 'package:refmp/theme/theme_provider.dart';
+import 'package:refmp/widgets/location_picker.dart';
 
 class EditEventForm extends StatefulWidget {
   final Map<String, dynamic> event;
@@ -224,6 +225,22 @@ class _EditEventFormState extends State<EditEventForm> {
     );
   }
 
+  // Método para abrir Google Maps y obtener el link
+  Future<void> _openGoogleMaps() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const GoogleMapsWebViewScreen(),
+      ),
+    );
+
+    if (result != null && result['url'] != null) {
+      setState(() {
+        ubicationUrlController.text = result['url'];
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -363,20 +380,69 @@ class _EditEventFormState extends State<EditEventForm> {
                     value!.isEmpty ? 'Ingresa una ubicación' : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: ubicationUrlController,
-                decoration: customInputDecoration(
-                    'URL de ubicación (Google Maps)', Icons.link),
-                validator: (value) {
-                  if (value == null || value.isEmpty)
-                    return null; // Optional field
-                  final urlPattern = RegExp(
-                      r'^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$');
-                  return urlPattern.hasMatch(value)
-                      ? null
-                      : 'Ingresa una URL válida';
-                },
-                keyboardType: TextInputType.url,
+              // Campo de ubicación con Google Maps
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blue, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.map, color: Colors.blue),
+                      title: Text(
+                        ubicationUrlController.text.isNotEmpty
+                            ? 'Link de Google Maps configurado'
+                            : 'Seleccionar ubicación en Google Maps',
+                        style: TextStyle(
+                          color: ubicationUrlController.text.isNotEmpty
+                              ? (themeProvider.isDarkMode
+                                  ? Colors.white
+                                  : Colors.black)
+                              : Colors.grey,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: ubicationUrlController.text.isNotEmpty
+                          ? Text(
+                              ubicationUrlController.text,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          : null,
+                      trailing:
+                          const Icon(Icons.chevron_right, color: Colors.blue),
+                      onTap: _openGoogleMaps,
+                    ),
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(bottom: 8, left: 16, right: 16),
+                      child: ElevatedButton.icon(
+                        onPressed: _openGoogleMaps,
+                        icon: const Icon(Icons.add_location_alt),
+                        label: Text(
+                          ubicationUrlController.text.isNotEmpty
+                              ? 'Cambiar ubicación'
+                              : 'Abrir Google Maps',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 45),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               ListTile(

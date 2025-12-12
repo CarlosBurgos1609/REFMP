@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart'; // NUEVO: Para cache robusto
 import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para cache offline
+import 'package:connectivity_plus/connectivity_plus.dart'; // NUEVO: Para verificar conectividad
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
@@ -143,6 +144,27 @@ class BegginnerGamePage extends StatefulWidget {
 
   @override
   State<BegginnerGamePage> createState() => _BegginnerGamePageState();
+  
+  // NUEVO: Método estático para forzar actualización de una canción específica
+  static Future<void> forceUpdateSong(String songId) async {
+    try {
+      print('🔄 Static force update for song: $songId');
+      
+      if (Hive.isBoxOpen('offline_data')) {
+        final box = Hive.box('offline_data');
+        final songCacheKey = 'song_${songId}_complete';
+        await box.delete(songCacheKey);
+        print('🗑️ Cleared cache for song: $songId');
+      }
+      
+      // Cargar datos frescos
+      final freshNotes = await DatabaseService.getSongNotes(songId);
+      print('✅ Loaded ${freshNotes.length} fresh notes for song: $songId');
+      
+    } catch (e) {
+      print('❌ Error in static force update: $e');
+    }
+  }
 }
 
 class _BegginnerGamePageState extends State<BegginnerGamePage>
@@ -399,69 +421,60 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       isLoadingSong = true;
     });
 
-    // MEJORADO: Verificar calidad del cache offline y recargar si es necesario
+    // MEJORADO: Sistema inteligente que verifica cambios en la base de datos
     if (widget.songId != null && widget.songId!.isNotEmpty) {
       // Primero intentar cargar desde cache offline
-      print('🔍 Checking offline cache first...');
+      print('🔍 Loading from offline cache first...');
       await _loadSongFromOfflineCache();
 
-      // Verificar si el cache tiene datos de buena calidad (con ChromaticNote)
-      bool cacheHasQualityData = false;
+      // NUEVO: Verificar conectividad antes de intentar base de datos
+      bool isOnline = false;
+      try {
+        final connectivityResult = await Connectivity().checkConnectivity();
+        if (connectivityResult.first != ConnectivityResult.none) {
+          final result = await InternetAddress.lookup('google.com');
+          isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+        }
+      } catch (e) {
+        print('❌ Error checking connectivity: $e');
+        isOnline = false;
+      }
+
+      print('🌐 Internet connection: ${isOnline ? "ONLINE" : "OFFLINE"}');
+
+      // Solo verificar actualizaciones si estamos online
+      if (isOnline) {
+        print('🔍 Checking for database updates...');
+        final hasUpdates = await _checkForDatabaseUpdates();
+
+        if (hasUpdates) {
+          print('🆕 Database changes detected! Loading fresh data...');
+          await _loadFreshDataFromDatabase();
+        } else {
+          print('✅ Cache is up to date with database');
+        }
+      } else {
+        print('📱 Offline mode: Using cached data only');
+      }
+
+      // Si después de verificar actualizaciones tenemos datos, validar calidad
       if (songNotes.isNotEmpty) {
-        int notesWithChromatic = 0;
-        for (var note in songNotes) {
-          if (note.chromaticNote != null) {
-            notesWithChromatic++;
-          }
-        }
-        cacheHasQualityData = (notesWithChromatic / songNotes.length) >
-            0.5; // Al menos 50% deben tener ChromaticNote
-
-        print('📊 Cache quality check:');
-        print('   🎵 Total notes: ${songNotes.length}');
-        print('   ✅ Notes with ChromaticNote: $notesWithChromatic');
-        print(
-            '   📈 Quality ratio: ${(notesWithChromatic / songNotes.length * 100).toStringAsFixed(1)}%');
-        print(
-            '   🎯 Cache quality: ${cacheHasQualityData ? "✅ GOOD" : "❌ BAD - Need database refresh"}');
-      }
-
-      // Si el cache tiene datos de buena calidad, usarlo
-      if (songNotes.isNotEmpty && cacheHasQualityData) {
-        print('✅ Using high-quality offline cache (${songNotes.length} notes)');
-        setState(() {
-          isLoadingSong = false;
-        });
-        return;
-      }
-
-      // Si el cache es de mala calidad, intentar repararlo
-      if (songNotes.isNotEmpty && !cacheHasQualityData) {
-        print('🧹 Cache quality insufficient, attempting repair...');
-        await _repairOfflineCache();
-
-        // Después del repair, verificar si mejoró
-        if (songNotes.isNotEmpty) {
-          int repairedNotesWithChromatic = 0;
-          for (var note in songNotes) {
-            if (note.chromaticNote != null) {
-              repairedNotesWithChromatic++;
-            }
-          }
-          final repairedQuality =
-              (repairedNotesWithChromatic / songNotes.length) > 0.5;
-
-          if (repairedQuality) {
-            print('✅ Cache repair successful! Using repaired data.');
-            setState(() {
-              isLoadingSong = false;
-            });
-            return;
-          }
+        // NUEVO: Validar calidad del cache antes de usarlo
+        print('🔍 Validating cache quality...');
+        final isValid = await validateAndRepairCache();
+        
+        if (isValid && songNotes.isNotEmpty) {
+          print('✅ Using validated song data (${songNotes.length} notes)');
+          setState(() {
+            isLoadingSong = false;
+          });
+          return;
+        } else {
+          print('⚠️ Cache validation failed, attempting fresh load...');
         }
       }
 
-      // Si no hay cache o el repair falló, intentar la base de datos
+      // Si no hay datos después de verificar actualizaciones, intentar la base de datos como fallback
       try {
         print('🔍 Loading fresh data from database...');
         songNotes = await DatabaseService.getSongNotes(widget.songId!);
@@ -717,6 +730,210 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
+  // MEJORADO: Verificar si hay cambios en la base de datos comparado con el cache
+  Future<bool> _checkForDatabaseUpdates() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('❌ No song ID to check for updates');
+      return false;
+    }
+
+    try {
+      // Obtener información del cache actual
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+      final cachedData = box.get(songCacheKey, defaultValue: null);
+
+      if (cachedData == null) {
+        print('📝 No cache found, need to load fresh data');
+        return true;
+      }
+
+      // Información del cache
+      final cachedTimestamp = cachedData['cached_timestamp'] ?? 0;
+      final cachedNotesCount = cachedData['notes_count'] ?? 0;
+      final cacheAge = DateTime.now().millisecondsSinceEpoch - cachedTimestamp;
+
+      print('📊 Cache Analysis:');
+      print(
+          '   📅 Cache timestamp: ${DateTime.fromMillisecondsSinceEpoch(cachedTimestamp)}');
+      print('   🎵 Cached notes count: $cachedNotesCount');
+      print(
+          '   ⏰ Cache age: ${(cacheAge / (1000 * 60 * 60)).toStringAsFixed(1)} hours');
+
+      // MEJORADO: Verificar la base de datos si el cache tiene más de 30 minutos
+      // O si no tenemos notas cargadas actualmente
+      if (cacheAge > (1000 * 60 * 30) || songNotes.isEmpty) {
+        // 30 minutes
+        print('⏰ Cache is old or no notes loaded, checking database...');
+
+        try {
+          // Verificar si tenemos conexión con timeout más corto
+          final timeoutDuration = Duration(seconds: 10);
+          
+          // Intentar obtener datos frescos de la base de datos con timeout
+          final freshNotes = await DatabaseService.getSongNotes(widget.songId!)
+              .timeout(timeoutDuration);
+
+          print('🌐 Database Analysis:');
+          print('   🎵 Database notes count: ${freshNotes.length}');
+
+          // Si no hay datos en la base de datos, mantener cache
+          if (freshNotes.isEmpty) {
+            print('⚠️ Database returned no notes, keeping cache');
+            return false;
+          }
+
+          // Comparar cantidad de notas
+          if (freshNotes.length != cachedNotesCount) {
+            print(
+                '🆕 Note count changed! Cache: $cachedNotesCount, DB: ${freshNotes.length}');
+            return true;
+          }
+
+          // Verificar calidad de datos (ChromaticNote)
+          if (freshNotes.isNotEmpty) {
+            int freshNotesWithChromatic = 0;
+            int cachedNotesWithChromatic = 0;
+
+            for (var note in freshNotes) {
+              if (note.chromaticNote != null) {
+                freshNotesWithChromatic++;
+              }
+            }
+
+            // Verificar las notas cargadas actualmente en lugar de songNotes vacías
+            if (songNotes.isNotEmpty) {
+              for (var note in songNotes) {
+                if (note.chromaticNote != null) {
+                  cachedNotesWithChromatic++;
+                }
+              }
+            } else {
+              // Si no hay notas cargadas, asumir que necesitamos actualizar
+              print('📝 No current notes loaded, need to update');
+              return true;
+            }
+
+            final freshQuality = freshNotesWithChromatic / freshNotes.length;
+            final cachedQuality = songNotes.isNotEmpty
+                ? cachedNotesWithChromatic / songNotes.length
+                : 0.0;
+
+            print('📈 Quality comparison:');
+            print(
+                '   🌐 DB ChromaticNote ratio: ${(freshQuality * 100).toStringAsFixed(1)}%');
+            print(
+                '   💾 Cache ChromaticNote ratio: ${(cachedQuality * 100).toStringAsFixed(1)}%');
+
+            // Si la calidad de la base de datos es significativamente mejor
+            if (freshQuality > cachedQuality + 0.1) {
+              // 10% better
+              print('🆕 Database has better quality data!');
+              return true;
+            }
+          }
+
+          // NUEVO: Actualizar timestamp del cache si los datos están actualizados
+          cachedData['last_checked'] = DateTime.now().millisecondsSinceEpoch;
+          await box.put(songCacheKey, cachedData);
+
+          print('✅ Cache is up to date with database');
+          return false;
+        } catch (e) {
+          print('❌ Error checking database: $e');
+          print('🔄 Assuming cache is current due to network error');
+          return false; // Si no hay conexión, usar cache
+        }
+      } else {
+        print('✅ Cache is recent, no need to check database');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error checking for database updates: $e');
+      return false;
+    }
+  }
+
+  // MEJORADO: Cargar datos frescos de la base de datos y actualizar cache
+  Future<void> _loadFreshDataFromDatabase() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('❌ No song ID to load fresh data');
+      return;
+    }
+
+    try {
+      print('🔄 Loading fresh data from database...');
+      
+      // NUEVO: Timeout para evitar esperas indefinidas
+      final timeoutDuration = Duration(seconds: 15);
+      final freshNotes = await DatabaseService.getSongNotes(widget.songId!)
+          .timeout(timeoutDuration);
+
+      if (freshNotes.isNotEmpty) {
+        print('✅ Fresh data loaded successfully');
+        print('   🎵 Notes loaded: ${freshNotes.length}');
+
+        // Actualizar songNotes con los datos frescos
+        songNotes = freshNotes;
+
+        // Verificar calidad de los datos frescos
+        int notesWithChromatic = 0;
+        int notesWithAudio = 0;
+        for (var note in freshNotes) {
+          if (note.chromaticNote != null) {
+            notesWithChromatic++;
+          }
+          if (note.noteUrl != null && note.noteUrl!.isNotEmpty) {
+            notesWithAudio++;
+          }
+        }
+
+        final chromaticQuality = notesWithChromatic / freshNotes.length;
+        final audioQuality = notesWithAudio / freshNotes.length;
+        
+        print('📈 Fresh data quality analysis:');
+        print('   🎵 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+        print('   🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
+
+        // NUEVO: Solo actualizar cache si los datos son de buena calidad
+        if (chromaticQuality > 0.5 && audioQuality > 0.5) {
+          print('✅ Data quality is good, updating cache...');
+          
+          // Actualizar cache offline con los datos frescos
+          await _cacheSongDataOffline();
+
+          // Reset del índice de notas
+          currentNoteIndex = 0;
+
+          print('🎉 Cache updated successfully with fresh high-quality data');
+          
+          // MEJORADO: Solo precargar audios si están disponibles
+          if (audioQuality > 0.8) { // 80% de cobertura de audio
+            print('🔊 Starting audio precaching...');
+            await _precacheAllAudioFiles();
+          } else {
+            print('⚠️ Audio coverage is low, skipping precache');
+          }
+        } else {
+          print('⚠️ Fresh data quality is poor, keeping existing cache');
+          print('   📊 ChromaticNote: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+          print('   📊 Audio URLs: ${(audioQuality * 100).toStringAsFixed(1)}%');
+        }
+      } else {
+        print('⚠️ No fresh data available from database');
+      }
+    } on TimeoutException {
+      print('⏰ Database query timeout, continuing with cached data');
+    } catch (e) {
+      print('❌ Error loading fresh data from database: $e');
+      print('💾 Continuing with cached data...');
+    }
+  }
+
   // NUEVO: Debug del estado de las notas cargadas desde cache offline
   void _debugOfflineNoteStatus() {
     print('🔍 === DEBUG OFFLINE NOTES STATUS ===');
@@ -943,7 +1160,21 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       print('💾 Caching complete song data for offline use...');
 
-      // Crear estructura completa de datos de la canción para cache offline
+      // MEJORADO: Crear estructura completa de datos de la canción para cache offline
+      final now = DateTime.now().millisecondsSinceEpoch;
+      
+      // Analizar calidad de los datos antes de cachear
+      int notesWithChromatic = 0;
+      int notesWithAudio = 0;
+      
+      for (var note in songNotes) {
+        if (note.chromaticNote != null) notesWithChromatic++;
+        if (note.noteUrl != null && note.noteUrl!.isNotEmpty) notesWithAudio++;
+      }
+      
+      final chromaticQuality = songNotes.isNotEmpty ? notesWithChromatic / songNotes.length : 0.0;
+      final audioQuality = songNotes.isNotEmpty ? notesWithAudio / songNotes.length : 0.0;
+      
       final songCacheData = {
         'song_id': widget.songId,
         'song_name': widget.songName,
@@ -951,8 +1182,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         'song_image_url': widget.songImageUrl,
         'profile_image_url': widget.profileImageUrl,
         'notes_count': songNotes.length,
-        'cached_timestamp': DateTime.now().millisecondsSinceEpoch,
-        'version': '1.0', // Para manejo de versiones futuras
+        'cached_timestamp': now,
+        'last_checked': now,
+        'version': '2.0', // Versión mejorada
+        'quality_metrics': {
+          'chromatic_coverage': chromaticQuality,
+          'audio_coverage': audioQuality,
+          'notes_with_chromatic': notesWithChromatic,
+          'notes_with_audio': notesWithAudio,
+        },
         'notes_data': songNotes
             .map((note) => {
                   'note_id': note.id,
@@ -995,7 +1233,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       print('   📝 Song: ${widget.songName}');
       print('   🆔 ID: ${widget.songId}');
       print('   🎵 Notes: ${songNotes.length}');
-      print('   💾 Cache key: $songCacheKey');
+      print('   � Quality metrics:');
+      print('      🎯 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+      print('      🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
+      print('   �💾 Cache key: $songCacheKey');
+      print('   📅 Timestamp: ${DateTime.fromMillisecondsSinceEpoch(now)}');
     } catch (e) {
       print('❌ Error caching song data offline: $e');
     }
@@ -1651,9 +1893,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // }
 
   // MEJORADO: Verificar si el jugador está tocando la nota correcta con mejor detección de combinaciones
-  void _checkNoteHit(int pistonNumber) {
+
+
+  // NUEVO: Verificar hit con combinación específica (para mejor timing en 3 pistones)
+  void _checkNoteHitWithCombination(Set<int> pistonCombination) {
     bool hitCorrectNote = false;
     bool isInHitZone = false;
+
+    print('🎯 Checking note hit with combination: $pistonCombination');
 
     // Primero verificar si hay alguna nota en la zona de hit
     for (var note in fallingNotes) {
@@ -1681,10 +1928,31 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
           isInHitZone = true;
 
+          // MEJORADO: Debug para combinaciones complejas
+          if (note.requiredPistons.length >= 2) {
+            print('🔍 === MULTI-PISTON COMBINATION DEBUG ===');
+            print('   Note: ${note.noteName}');
+            print('   Required pistons: ${note.requiredPistons}');
+            print('   Combination used: $pistonCombination');
+            print('   Note position Y: ${note.y.toStringAsFixed(1)}');
+            print('   Hit zone Y: ${hitZoneY.toStringAsFixed(1)}');
+            print('   Distance: ${distance.toStringAsFixed(1)}');
+            print('   Press times:');
+            
+            final currentTime = DateTime.now().millisecondsSinceEpoch;
+            for (var piston in pistonCombination) {
+              final pressTime = _pistonPressTime[piston];
+              if (pressTime != null) {
+                final timeDiff = currentTime - pressTime;
+                print('     Pistón $piston: ${timeDiff}ms ago');
+              }
+            }
+          }
+
           // Verificar si los pistones presionados coinciden EXACTAMENTE con la nota
-          if (_exactPistonMatch(note, pressedPistons)) {
+          if (_exactPistonMatch(note, pistonCombination)) {
             print(
-                '✅ EXACT HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Pressed: $pressedPistons');
+                '✅ EXACT HIT! Note: ${note.noteName}, Required: ${note.requiredPistons}, Used: $pistonCombination');
             note.isHit = true;
             hitCorrectNote = true;
 
@@ -1694,7 +1962,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
             // NUEVO: Notificar al controlador que el jugador acertó
             if (_isAudioContinuous) {
-              _audioController.onPlayerHit(pressedPistons);
+              _audioController.onPlayerHit(pistonCombination);
               if (!_playerIsOnTrack) {
                 _playerIsOnTrack = true;
                 print('🔊 Player back on track');
@@ -1704,20 +1972,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             _onNoteHit(note.noteName);
             return;
           } else {
-            // Debug: mostrar qué se esperaba vs qué se presionó
-            print('🔍 PARTIAL MATCH - Note: ${note.noteName}');
+            // Debug: mostrar qué se esperaba vs qué se usó
+            print('🔍 COMBINATION MISMATCH - Note: ${note.noteName}');
             print(
                 '   Required: ${note.requiredPistons} (${note.requiredPistons.length} pistons)');
             print(
-                '   Pressed: $pressedPistons (${pressedPistons.length} pistons)');
+                '   Used: $pistonCombination (${pistonCombination.length} pistons)');
 
-            // Si es una combinación de múltiples pistones, dar un poco más de tiempo
-            final requiredCount = note.requiredPistons.length;
-            if (requiredCount > 1 && pressedPistons.length < requiredCount) {
-              print(
-                  '⏳ Multi-piston note - waiting for complete combination...');
-              // No marcar como error aún, puede que esté presionando gradualmente
-              return;
+            final requiredSet = note.requiredPistons.toSet();
+            final missing = requiredSet.difference(pistonCombination);
+            final extra = pistonCombination.difference(requiredSet);
+            
+            if (missing.isNotEmpty) {
+              print('   Missing: $missing');
+            }
+            if (extra.isNotEmpty) {
+              print('   Extra: $extra');
             }
           }
         }
@@ -1726,22 +1996,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // Solo marcar como error si había una nota en zona de hit Y no se acertó
     if (isInHitZone && !hitCorrectNote && _playerIsOnTrack) {
-      print('❌ MISS! Pressed: $pressedPistons - Player off track');
+      print('❌ MISS! Used combination: $pistonCombination - Player off track');
 
       // NUEVO: Notificar al controlador que el jugador falló
       if (_isAudioContinuous) {
         _audioController.onPlayerMiss();
         _playerIsOnTrack = false;
-        print('🔇 Player off track');
+        print('🔊 Player off track');
       }
 
       _onNoteMissed();
     } else if (!isInHitZone) {
-      print('🎵 FREE PLAY - No notes in hit zone, just playing sound');
+      print('⚪ No note in hit zone for combination: $pistonCombination');
     }
   }
 
-  // NUEVO: Función auxiliar para verificar coincidencia exacta de pistones
+  // MEJORADO: Función auxiliar para verificar coincidencia exacta de pistones con tolerancia temporal
   bool _exactPistonMatch(FallingNote note, Set<int> pressedPistons) {
     final required = note.requiredPistons.toSet();
 
@@ -1750,7 +2020,64 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       return pressedPistons.isEmpty;
     }
 
-    // Para notas que requieren pistones específicos
+    print('🔍 Checking exact match:');
+    print('   Required: $required (${required.length} pistons)');
+    print('   Pressed: $pressedPistons (${pressedPistons.length} pistons)');
+
+    // MEJORADO: Para combinaciones de múltiples pistones - ser más tolerante
+    if (required.length > 1) {
+      // Verificar que TODOS los pistones requeridos estén presionados
+      final hasAllRequired = required.every((piston) => pressedPistons.contains(piston));
+      
+      if (hasAllRequired) {
+        print('✅ All required pistons are pressed');
+        
+        // NUEVO: Para combinaciones de 3 pistones, ser más permisivo
+        if (required.length == 3 && pressedPistons.length >= 3) {
+          // Si tenemos al menos los 3 pistones requeridos, aceptar
+          print('🎯 3-piston combination detected - accepting match');
+          return true;
+        }
+        
+        // Para 2 pistones o casos generales, verificar pistones extra
+        final extraPistons = pressedPistons.difference(required);
+        if (extraPistons.isNotEmpty) {
+          // MEJORADO: Ser más tolerante con pistones extra en combinaciones complejas
+          if (required.length >= 2) {
+            print('⚠️ Extra pistons in multi-piston combination, but accepting');
+            return true;
+          }
+          
+          // Verificar tiempo solo para combinaciones simples
+          final currentTime = DateTime.now().millisecondsSinceEpoch;
+          bool allExtraAreRecent = true;
+          
+          for (var piston in extraPistons) {
+            final pressTime = _pistonPressTime[piston];
+            if (pressTime == null || (currentTime - pressTime) > _multiPistonTimeWindow) {
+              allExtraAreRecent = false;
+              break;
+            }
+          }
+          
+          if (allExtraAreRecent) {
+            print('⚠️ Extra pistons detected but recent, accepting match');
+            return true;
+          } else {
+            print('❌ Extra pistons are too old, rejecting match');
+            return false;
+          }
+        }
+        
+        return true;
+      } else {
+        final missing = required.difference(pressedPistons);
+        print('❌ Missing required pistons: $missing');
+        return false;
+      }
+    }
+
+    // Para notas que requieren un solo pistón - coincidencia exacta
     return required.length == pressedPistons.length &&
         required.every((piston) => pressedPistons.contains(piston));
   }
@@ -3425,54 +3752,167 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Timer para manejar combinaciones de pistones
   Timer? _pistonCombinationTimer;
+  
+  // NUEVO: Mapa para rastrear el tiempo de presión de cada pistón
+  final Map<int, int> _pistonPressTime = {};
+  
+  // NUEVO: Configuración para combinaciones múltiples - AUMENTADO para mejor detección
+  static const int _multiPistonTimeWindow = 500; // 500ms para completar combinación (más tiempo)
+  static const int _audioDelayMs = 100; // 100ms delay para audio (más tiempo para capturar)
 
   void _onPistonPressed(int pistonNumber) {
     // Feedback háptico
     HapticFeedback.lightImpact();
 
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+    
+    // Registrar tiempo de presión del pistón
+    _pistonPressTime[pistonNumber] = currentTime;
+
     // Agregar pistón al conjunto de pistones presionados
     pressedPistons.add(pistonNumber);
 
     print(
-        '🎹 Piston $pistonNumber pressed. Current combination: $pressedPistons');
+        '🎹 Piston $pistonNumber pressed at ${currentTime}. Current combination: $pressedPistons');
 
     // Cancelar timer anterior si existe
     _pistonCombinationTimer?.cancel();
 
-    // Crear un pequeño delay para permitir combinaciones naturales
-    _pistonCombinationTimer = Timer(const Duration(milliseconds: 100), () {
+    // MEJORADO: Determinar si necesitamos esperar más pistones
+    bool needsMorePistons = false;
+    int maxRequiredPistons = 1;
+    
+    // Verificar si hay notas en zona de hit que requieran más pistones
+    if (isGameActive) {
+      for (var note in fallingNotes) {
+        if (!note.isHit && !note.isMissed) {
+          final screenHeight = MediaQuery.of(context).size.height;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final isTablet = screenWidth > 600;
+          final isSmallPhone = screenHeight < 700;
+          
+          double hitZoneBottom;
+          if (isSmallPhone) {
+            hitZoneBottom = 110;
+          } else if (isTablet) {
+            hitZoneBottom = 150;
+          } else {
+            hitZoneBottom = 130;
+          }
+          
+          final hitZoneY = screenHeight - hitZoneBottom;
+          final distance = (note.y - hitZoneY).abs();
+          
+          // Si hay una nota en zona de hit
+          if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
+            final requiredCount = note.requiredPistons.length;
+            maxRequiredPistons = maxRequiredPistons > requiredCount ? maxRequiredPistons : requiredCount;
+            
+            if (requiredCount > pressedPistons.length) {
+              needsMorePistons = true;
+              print('🎯 Found note requiring ${requiredCount} pistons, current: ${pressedPistons.length}');
+            }
+          }
+        }
+      }
+    }
+
+    // MEJORADO: Calcular delay más inteligente basado en el número de pistones requeridos
+    int delay;
+    if (needsMorePistons && pressedPistons.length < maxRequiredPistons) {
+      // Para combinaciones de 3 pistones, esperar más tiempo
+      if (maxRequiredPistons >= 3) {
+        delay = _multiPistonTimeWindow; // 500ms para 3 pistones
+        print('⏳ Waiting for 3-piston combination (${pressedPistons.length}/3)...');
+      } else if (maxRequiredPistons == 2) {
+        delay = _multiPistonTimeWindow ~/ 2; // 250ms para 2 pistones
+        print('⏳ Waiting for 2-piston combination (${pressedPistons.length}/2)...');
+      } else {
+        delay = _audioDelayMs;
+      }
+    } else {
+      // Si ya tenemos suficientes pistones o no necesitamos más, procesar rápidamente
+      delay = _audioDelayMs;
+    }
+
+    print('🕒 Timer delay set to ${delay}ms for ${pressedPistons.length} pistones (max needed: $maxRequiredPistons)');
+
+    // Crear timer con delay apropiado
+    _pistonCombinationTimer = Timer(Duration(milliseconds: delay), () {
+      // Limpiar pistones que fueron presionados hace mucho tiempo
+      _cleanupOldPistonPresses();
+      
+      // MEJORADO: Capturar la combinación actual antes de reproducir
+      final currentCombination = Set<int>.from(pressedPistons);
+      
+      print('⚡ Processing combination: $currentCombination after ${delay}ms delay');
+      
       // Reproducir sonido para la combinación actual
       _playNoteFromPistonCombination();
 
-      // Verificar si hay una nota que golpear (solo para scoring)
+      // MEJORADO: Verificar hit inmediatamente con la combinación capturada
       if (isGameActive) {
-        _checkNoteHit(pistonNumber);
+        _checkNoteHitWithCombination(currentCombination);
       }
     });
 
     debugPrint(
-        'Pistón $pistonNumber presionado - Combination: $pressedPistons');
+        'Pistón $pistonNumber presionado - Combination: $pressedPistons (delay: ${delay}ms)');
   }
+  
+  // MEJORADO: Limpiar pistones presionados hace mucho tiempo - más conservador
+  void _cleanupOldPistonPresses() {
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+    final pistonsToRemove = <int>[];
+    
+    // NUEVO: Usar ventana más amplia para la limpieza en combinaciones complejas
+    final cleanupWindow = pressedPistons.length >= 2 
+        ? _multiPistonTimeWindow * 2  // Doble tiempo para combinaciones múltiples
+        : _multiPistonTimeWindow;     // Tiempo normal para pistones simples
+    
+    for (var entry in _pistonPressTime.entries) {
+      if (currentTime - entry.value > cleanupWindow) {
+        pistonsToRemove.add(entry.key);
+      }
+    }
+    
+    for (var piston in pistonsToRemove) {
+      _pistonPressTime.remove(piston);
+      pressedPistons.remove(piston);
+    }
+    
+    if (pistonsToRemove.isNotEmpty) {
+      print('🧹 Cleaned up old piston presses: $pistonsToRemove (window: ${cleanupWindow}ms)');
+    }
+  }
+
+
 
   void _onPistonReleased(int pistonNumber) {
     // Remover pistón del conjunto de pistones presionados
     pressedPistons.remove(pistonNumber);
+    _pistonPressTime.remove(pistonNumber);
 
     print(
         '🎹 Piston $pistonNumber released. Current combination: $pressedPistons');
 
-    // Cancelar timer de combinación al soltar
-    _pistonCombinationTimer?.cancel();
-
-    // Si aún hay pistones presionados, crear nuevo timer para la nueva combinación
-    if (pressedPistons.isNotEmpty) {
-      _pistonCombinationTimer = Timer(const Duration(milliseconds: 50), () {
-        _playNoteFromPistonCombination();
-        if (isGameActive) {
-          // Solo verificar hit si se soltó en zona de hit activa
-          _checkNoteHit(pistonNumber);
-        }
-      });
+    // MEJORADO: No cancelar inmediatamente si hay otros pistones presionados
+    // Esto permite mantener combinaciones activas
+    
+    // Si no hay pistones presionados, cancelar timer
+    if (pressedPistons.isEmpty) {
+      _pistonCombinationTimer?.cancel();
+      print('🔇 All pistons released - stopping audio');
+    } else {
+      // Si aún hay pistones presionados, verificar si necesitamos actuar
+      print('🎹 Pistons still pressed: $pressedPistons');
+      
+      // Solo crear nuevo timer si no hay uno activo
+      if (_pistonCombinationTimer == null || !_pistonCombinationTimer!.isActive) {
+        _pistonCombinationTimer = Timer(const Duration(milliseconds: 100), () {
+          _playNoteFromPistonCombination();
+        });
+      }
     }
 
     debugPrint('Pistón $pistonNumber liberado - Remaining: $pressedPistons');
@@ -3516,6 +3956,121 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
     } catch (e) {
       print('❌ Error cleaning old offline cache: $e');
+    }
+  }
+
+  // NUEVO: Método para mostrar información de debug del cache
+  Future<void> debugCacheStatus() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('❌ No song ID for cache debug');
+      return;
+    }
+
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+      final cachedData = box.get(songCacheKey, defaultValue: null);
+
+      print('🐛 === CACHE DEBUG STATUS ===');
+      print('   🆔 Song ID: ${widget.songId}');
+      print('   🔑 Cache key: $songCacheKey');
+      
+      if (cachedData != null) {
+        final timestamp = cachedData['cached_timestamp'] ?? 0;
+        final lastChecked = cachedData['last_checked'] ?? 0;
+        final notesCount = cachedData['notes_count'] ?? 0;
+        final qualityMetrics = cachedData['quality_metrics'] as Map<String, dynamic>?;
+
+        print('   📅 Cached: ${DateTime.fromMillisecondsSinceEpoch(timestamp)}');
+        print('   🔍 Last checked: ${DateTime.fromMillisecondsSinceEpoch(lastChecked)}');
+        print('   🎵 Notes count: $notesCount');
+        
+        if (qualityMetrics != null) {
+          final chromaticCoverage = qualityMetrics['chromatic_coverage'] ?? 0.0;
+          final audioCoverage = qualityMetrics['audio_coverage'] ?? 0.0;
+          print('   📈 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
+          print('   🔊 Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
+        } else {
+          print('   ⚠️ No quality metrics available');
+        }
+      } else {
+        print('   📝 No cache found');
+      }
+      
+      print('   🎵 Currently loaded notes: ${songNotes.length}');
+      print('🐛 === END CACHE DEBUG ===');
+    } catch (e) {
+      print('❌ Error during cache debug: $e');
+    }
+  }
+
+  // NUEVO: Método para forzar actualización manual desde la base de datos
+  Future<void> forceUpdateFromDatabase() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('❌ No song ID to force update');
+      return;
+    }
+
+    print('🔄 FORCING database update...');
+    
+    setState(() {
+      isLoadingSong = true;
+    });
+
+    try {
+      // Limpiar cache existente
+      if (Hive.isBoxOpen('offline_data')) {
+        final box = Hive.box('offline_data');
+        final songCacheKey = 'song_${widget.songId}_complete';
+        await box.delete(songCacheKey);
+        print('🗑️ Cleared existing cache');
+      }
+
+      // Cargar datos frescos forzosamente
+      await _loadFreshDataFromDatabase();
+
+      print('✅ Force update completed');
+    } catch (e) {
+      print('❌ Error during force update: $e');
+    } finally {
+      setState(() {
+        isLoadingSong = false;
+      });
+    }
+  }
+
+  // MEJORADO: Método para verificar si necesita actualización basado en tiempo
+  Future<bool> needsPeriodicUpdate() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      return false;
+    }
+
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+      final cachedData = box.get(songCacheKey, defaultValue: null);
+
+      if (cachedData == null) {
+        return true; // No cache, necesita actualización
+      }
+
+      final lastChecked = cachedData['last_checked'] ?? 0;
+      final timeSinceLastCheck = DateTime.now().millisecondsSinceEpoch - lastChecked;
+      
+      // Actualizar cada 6 horas para asegurar datos frescos
+      const sixHours = 6 * 60 * 60 * 1000;
+      return timeSinceLastCheck > sixHours;
+    } catch (e) {
+      print('❌ Error checking if needs periodic update: $e');
+      return false;
     }
   }
 
@@ -3574,57 +4129,67 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
-  // NUEVO: Función para diagnosticar y reparar cache offline
-  Future<void> _repairOfflineCache() async {
-    print('🔧 === STARTING OFFLINE CACHE REPAIR ===');
+  // MEJORADO: Función para validar y reparar cache corrupto o de baja calidad
+  Future<bool> validateAndRepairCache() async {
+    print('🔧 === VALIDATING AND REPAIRING CACHE ===');
 
     if (widget.songId == null || widget.songId!.isEmpty) {
-      print('❌ No song ID to repair');
-      return;
+      print('❌ No song ID to validate');
+      return false;
     }
 
     try {
-      // Verificar si hay conexión a internet
-      print('🌐 Checking internet connection...');
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
 
-      // Intentar cargar datos frescos de la base de datos
-      print('🔄 Attempting fresh database load...');
-      final freshNotes = await DatabaseService.getSongNotes(widget.songId!);
+      final box = Hive.box('offline_data');
+      final songCacheKey = 'song_${widget.songId}_complete';
+      final cachedData = box.get(songCacheKey, defaultValue: null);
 
-      if (freshNotes.isNotEmpty) {
-        // Verificar calidad de los datos frescos
-        int notesWithChromatic = 0;
-        for (var note in freshNotes) {
-          if (note.chromaticNote != null) {
-            notesWithChromatic++;
-          }
-        }
+      if (cachedData == null) {
+        print('� No cache found - attempting fresh load');
+        await _loadFreshDataFromDatabase();
+        return songNotes.isNotEmpty;
+      }
 
-        final qualityRatio = notesWithChromatic / freshNotes.length;
+      // Verificar integridad del cache
+      final qualityMetrics = cachedData['quality_metrics'] as Map<String, dynamic>?;
+      
+      if (qualityMetrics != null) {
+        final chromaticCoverage = qualityMetrics['chromatic_coverage'] ?? 0.0;
+        final audioCoverage = qualityMetrics['audio_coverage'] ?? 0.0;
 
-        print('📊 Fresh data quality check:');
-        print('   🎵 Total notes: ${freshNotes.length}');
-        print('   ✅ Notes with ChromaticNote: $notesWithChromatic');
-        print(
-            '   📈 Quality ratio: ${(qualityRatio * 100).toStringAsFixed(1)}%');
+        print('📊 Cache quality analysis:');
+        print('   🎯 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
+        print('   � Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
 
-        if (qualityRatio > 0.5) {
-          print('✅ Fresh data has good quality, updating cache...');
-          songNotes = freshNotes;
-          await _cacheSongDataOffline(); // Recachear con datos de buena calidad
-          print('🎉 Cache repair completed successfully!');
-        } else {
-          print('⚠️ Fresh data also has poor quality, keeping existing cache');
+        // Si la calidad es muy baja, intentar reparar
+        if (chromaticCoverage < 0.5 || audioCoverage < 0.5) {
+          print('⚠️ Cache quality is poor, attempting repair...');
+          await _loadFreshDataFromDatabase();
+          return songNotes.isNotEmpty;
         }
       } else {
-        print('❌ No fresh data available from database');
+        print('⚠️ No quality metrics found, validating cache data...');
+        // Intentar cargar del cache existente y validar
+        await _loadSongFromOfflineCache();
+        
+        if (songNotes.isEmpty) {
+          print('📝 Cache is empty, attempting fresh load');
+          await _loadFreshDataFromDatabase();
+          return songNotes.isNotEmpty;
+        }
       }
-    } catch (e) {
-      print('❌ Error during cache repair: $e');
-      print('💡 Device might be offline - using existing cache as-is');
-    }
 
-    print('🔧 === END OFFLINE CACHE REPAIR ===');
+      print('✅ Cache validation successful');
+      return true;
+    } catch (e) {
+      print('❌ Error during cache validation: $e');
+      return false;
+    } finally {
+      print('🔧 === END CACHE VALIDATION ===');
+    }
   }
 }
 
