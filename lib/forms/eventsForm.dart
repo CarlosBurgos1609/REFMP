@@ -401,7 +401,7 @@ class _AddEventFormState extends State<AddEventForm> {
                             : 'Seleccionar ubicación en Google Maps',
                         style: TextStyle(
                           color: ubicationUrlController.text.isNotEmpty
-                              ? Colors.black
+                              ? Colors.white
                               : Colors.grey,
                           fontWeight: FontWeight.w500,
                         ),
