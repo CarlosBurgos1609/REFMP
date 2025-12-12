@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -28,6 +30,8 @@ class _LearningPageState extends State<LearningPage> {
   int _selectedIndex = 0;
   int currentUserLevel = 1;
   Map<String, double> levelProgress = {};
+  bool _isOnline = true;
+  bool _isLoadingFromCache = false;
 
   void _onItemTapped(int index) {
     if (_selectedIndex == index) return;
@@ -84,13 +88,307 @@ class _LearningPageState extends State<LearningPage> {
   @override
   void initState() {
     super.initState();
-    _initializeUserLevel();
+    _loadFromCacheFirst(); // Cargar caché primero (instantáneo)
+    _checkNewUserAndInitialize(); // Verificar usuario nuevo y luego inicializar
     fetchUserProfileImage();
   }
 
+  // Verificar si es usuario nuevo y mostrar diálogo de nickname
+  Future<void> _checkNewUserAndInitialize() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final box = Hive.box('offline_data');
+    final isRegisteredKey = 'user_registered_in_games_${user.id}';
+
+    // Verificar en caché si ya está registrado
+    final isAlreadyRegistered = box.get(isRegisteredKey, defaultValue: false);
+
+    if (isAlreadyRegistered) {
+      // Ya está registrado, continuar normalmente
+      _initializeUserLevel();
+      return;
+    }
+
+    // Verificar conexión
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) {
+      _initializeUserLevel();
+      return;
+    }
+
+    try {
+      // Verificar si existe en users_games
+      final existingUser = await supabase
+          .from('users_games')
+          .select('nickname')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existingUser != null) {
+        // Ya existe, guardar en caché y continuar
+        await box.put(isRegisteredKey, true);
+        _initializeUserLevel();
+      } else {
+        // Usuario nuevo, mostrar diálogo de nickname
+        if (mounted) {
+          _showNewUserNicknameDialog();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error verificando usuario en users_games: $e');
+      _initializeUserLevel();
+    }
+  }
+
+  // Diálogo para que el usuario nuevo ingrese su nickname
+  void _showNewUserNicknameDialog() {
+    final TextEditingController nicknameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // No se puede cerrar tocando fuera
+      builder: (context) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icono
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_add_rounded,
+                    color: Colors.blue,
+                    size: 48,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Título
+                const Text(
+                  '¡Bienvenido!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Subtítulo
+                Text(
+                  'Elige un nombre para tu perfil de jugador',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Campo de texto
+                TextField(
+                  controller: nicknameController,
+                  maxLength: 14,
+                  textCapitalization: TextCapitalization.words,
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    hintText: 'Tu nickname (máx. 14 caracteres)',
+                    hintStyle: TextStyle(color: Colors.grey[400]),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Colors.blue, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    counterText: '',
+                    prefixIcon: const Icon(Icons.edit, color: Colors.blue),
+                  ),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Botón de confirmar
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final nickname = nicknameController.text.trim();
+                      if (nickname.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Por favor ingresa un nickname'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (nickname.length > 14) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'El nickname debe tener máximo 14 caracteres'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+
+                      await _registerNewUser(nickname);
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                    child: const Text(
+                      'Comenzar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Registrar usuario nuevo en users_games
+  Future<void> _registerNewUser(String nickname) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final box = Hive.box('offline_data');
+    final isRegisteredKey = 'user_registered_in_games_${user.id}';
+
+    try {
+      // Verificar si el nickname ya existe
+      final existingNickname = await supabase
+          .from('users_games')
+          .select('nickname')
+          .eq('nickname', nickname)
+          .maybeSingle();
+
+      if (existingNickname != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Este nickname ya está en uso. Elige otro.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        // Volver a mostrar el diálogo
+        _showNewUserNicknameDialog();
+        return;
+      }
+
+      // Insertar nuevo usuario
+      await supabase.from('users_games').insert({
+        'user_id': user.id,
+        'nickname': nickname,
+        'points_xp_totally': 0,
+        'points_xp_weekend': 0,
+        'coins': 0,
+      });
+
+      // Guardar en caché que ya está registrado
+      await box.put(isRegisteredKey, true);
+      await box.put('user_nickname_${user.id}', nickname);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('¡Bienvenido $nickname! Tu perfil ha sido creado.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      // Continuar con la inicialización
+      _initializeUserLevel();
+    } catch (e) {
+      debugPrint('Error al registrar usuario: $e');
+
+      if (e.toString().contains('23505')) {
+        // Error de duplicado
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Este nickname ya está en uso. Elige otro.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        _showNewUserNicknameDialog();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al crear perfil: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // Cargar desde caché inmediatamente para mostrar datos al instante
+  void _loadFromCacheFirst() {
+    final cachedLevels = _loadLevelsFromCache();
+    if (cachedLevels.isNotEmpty) {
+      _levelsFuture = Future.value(cachedLevels);
+    }
+  }
+
   Future<void> _initializeUserLevel() async {
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) return; // Si no hay internet, ya mostramos caché
+
     await _checkAndCreateUserLevel();
-    _levelsFuture = fetchLevels();
+
+    // Actualizar con datos frescos del servidor
+    final freshLevels = await fetchLevels();
+    if (mounted && freshLevels.isNotEmpty) {
+      setState(() {
+        _levelsFuture = Future.value(freshLevels);
+        _isLoadingFromCache = false;
+      });
+    }
   }
 
   // Verificar y crear el nivel del usuario si no existe
@@ -137,12 +435,30 @@ class _LearningPageState extends State<LearningPage> {
         }
       }
 
-      // Obtener el nivel actual del usuario
-      await _getCurrentUserLevel();
-      await _calculateLevelProgress();
+      // Obtener el nivel actual del usuario y calcular progreso en paralelo
+      await Future.wait([
+        _getCurrentUserLevel(),
+        _calculateLevelProgress(),
+      ]);
     } catch (e) {
       debugPrint('Error al verificar/crear nivel del usuario: $e');
     }
+  }
+
+  // Cache del instrument ID para evitar consultas repetidas
+  String? _cachedInstrumentId;
+
+  Future<String?> _getInstrumentId() async {
+    if (_cachedInstrumentId != null) return _cachedInstrumentId;
+
+    final response = await supabase
+        .from('instruments')
+        .select('id')
+        .eq('name', widget.instrumentName)
+        .maybeSingle();
+
+    _cachedInstrumentId = response?['id'];
+    return _cachedInstrumentId;
   }
 
   // Obtener el nivel actual del usuario
@@ -151,86 +467,95 @@ class _LearningPageState extends State<LearningPage> {
     if (user == null) return;
 
     try {
-      final instrumentResponse = await supabase
-          .from('instruments')
-          .select('id')
-          .eq('name', widget.instrumentName)
-          .maybeSingle();
+      final instrumentId = await _getInstrumentId();
+      if (instrumentId == null) return;
 
-      if (instrumentResponse != null) {
-        final userLevels = await supabase
-            .from('users_levels')
-            .select('level_id, levels!inner(number)')
-            .eq('user_id', user.id)
-            .eq('levels.instrument_id', instrumentResponse['id'])
-            .order('levels.number', ascending: false)
-            .limit(1)
-            .maybeSingle();
+      // Obtener todos los niveles del usuario para este instrumento
+      final userLevels = await supabase
+          .from('users_levels')
+          .select('level_id, levels!inner(number, instrument_id)')
+          .eq('user_id', user.id)
+          .eq('levels.instrument_id', instrumentId);
 
-        if (userLevels != null) {
-          setState(() {
-            currentUserLevel = userLevels['levels']['number'];
-          });
-          debugPrint('Nivel actual del usuario: $currentUserLevel');
+      if (userLevels.isNotEmpty) {
+        // Encontrar el nivel más alto manualmente
+        int maxLevel = 1;
+        for (var ul in userLevels) {
+          final levelNumber = ul['levels']['number'] as int;
+          if (levelNumber > maxLevel) {
+            maxLevel = levelNumber;
+          }
         }
+
+        if (mounted) {
+          setState(() {
+            currentUserLevel = maxLevel;
+          });
+        }
+        debugPrint('Nivel actual del usuario: $currentUserLevel');
       }
     } catch (e) {
       debugPrint('Error al obtener nivel actual: $e');
     }
   }
 
-  // Calcular el progreso de cada nivel
+  // Calcular el progreso de cada nivel - OPTIMIZADO
   Future<void> _calculateLevelProgress() async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
     try {
-      final instrumentResponse = await supabase
-          .from('instruments')
-          .select('id')
-          .eq('name', widget.instrumentName)
-          .maybeSingle();
+      final instrumentId = await _getInstrumentId();
+      if (instrumentId == null) return;
 
-      if (instrumentResponse != null) {
-        final levels = await supabase
-            .from('levels')
-            .select('id, number')
-            .eq('instrument_id', instrumentResponse['id'])
-            .order('number', ascending: true);
+      // Obtener niveles con sus subniveles en una sola consulta
+      final levels = await supabase
+          .from('levels')
+          .select('id, number, sublevels(id)')
+          .eq('instrument_id', instrumentId)
+          .order('number', ascending: true);
 
-        Map<String, double> progress = {};
+      // Obtener todos los subniveles completados del usuario en una sola consulta
+      final completedSublevels = await supabase
+          .from('users_sublevels')
+          .select('sublevel_id, level_id')
+          .eq('user_id', user.id)
+          .eq('completed', true);
 
-        for (var level in levels) {
-          final levelId = level['id'];
+      // Crear un set de sublevel_ids completados para búsqueda rápida
+      final completedSet = <String>{};
+      for (var cs in completedSublevels) {
+        completedSet.add(cs['sublevel_id']);
+      }
 
-          // Obtener total de subniveles para este nivel
-          final totalSublevels = await supabase
-              .from('sublevels')
-              .select('id')
-              .eq('level_id', levelId)
-              .count();
+      Map<String, double> progress = {};
 
-          if (totalSublevels.count > 0) {
-            // Obtener subniveles completados por el usuario para este nivel específico
-            final completedSublevels = await supabase
-                .from('users_sublevels')
-                .select('sublevel_id')
-                .eq('user_id', user.id)
-                .eq('level_id', levelId)
-                .eq('completed', true)
-                .count();
+      for (var level in levels) {
+        final levelId = level['id'];
+        final sublevels = level['sublevels'] as List;
+        final totalCount = sublevels.length;
 
-            progress[levelId] = completedSublevels.count / totalSublevels.count;
-
-            // Si completó todos los subniveles, marcar el nivel como completado
-            if (completedSublevels.count == totalSublevels.count) {
-              await _markLevelAsCompleted(levelId);
+        if (totalCount > 0) {
+          // Contar cuántos subniveles de este nivel están completados
+          int completedCount = 0;
+          for (var sublevel in sublevels) {
+            if (completedSet.contains(sublevel['id'])) {
+              completedCount++;
             }
-          } else {
-            progress[levelId] = 0.0;
           }
-        }
 
+          progress[levelId] = completedCount / totalCount;
+
+          // Si completó todos los subniveles, marcar el nivel como completado
+          if (completedCount == totalCount && completedCount > 0) {
+            _markLevelAsCompleted(levelId); // Sin await para no bloquear
+          }
+        } else {
+          progress[levelId] = 0.0;
+        }
+      }
+
+      if (mounted) {
         setState(() {
           levelProgress = progress;
         });
@@ -291,9 +616,11 @@ class _LearningPageState extends State<LearningPage> {
             });
           }
 
-          setState(() {
-            currentUserLevel = currentLevel['number'] + 1;
-          });
+          if (mounted) {
+            setState(() {
+              currentUserLevel = currentLevel['number'] + 1;
+            });
+          }
           debugPrint('Nivel ${currentLevel['number'] + 1} desbloqueado');
         }
       }
@@ -307,29 +634,92 @@ class _LearningPageState extends State<LearningPage> {
     return levelNumber <= currentUserLevel;
   }
 
+  // Clave para guardar niveles en caché
+  String get _levelsCacheKey => 'levels_${widget.instrumentName}';
+  String get _userLevelCacheKey => 'user_level_${widget.instrumentName}';
+  String get _levelProgressCacheKey =>
+      'level_progress_${widget.instrumentName}';
+
   Future<List<Map<String, dynamic>>> fetchLevels() async {
-    // Primero obtenemos el id del instrumento
-    final instrumentResponse = await supabase
-        .from('instruments') // Traemos los instrumentos
-        .select('id')
-        .eq('name',
-            widget.instrumentName) // Buscamos el instrumento por su nombre
-        .maybeSingle(); // Si el instrumento no se encuentra, devolvemos null
+    final box = Hive.box('offline_data');
+    final isOnline = await _checkConnectivity();
 
-    if (instrumentResponse == null)
-      return []; // Si no encontramos el instrumento
+    if (mounted) {
+      setState(() {
+        _isOnline = isOnline;
+      });
+    }
 
-    final instrumentId = instrumentResponse['id'];
+    // Si no hay internet, cargar desde caché
+    if (!isOnline) {
+      return _loadLevelsFromCache();
+    }
 
-    // Obtener los niveles asociados a este instrumento
-    final levelsResponse = await supabase
-        .from('levels') // Ahora consultamos en la tabla levels
-        .select('id, name, description, image, number')
-        .eq('instrument_id',
-            instrumentId) // Filtramos por el id del instrumento
-        .order('number', ascending: true); // orden ascendente
+    try {
+      final instrumentId = await _getInstrumentId();
+      if (instrumentId == null) {
+        return _loadLevelsFromCache();
+      }
 
-    return levelsResponse;
+      // Obtener los niveles asociados a este instrumento
+      final levelsResponse = await supabase
+          .from('levels')
+          .select('id, name, description, image, number')
+          .eq('instrument_id', instrumentId)
+          .order('number', ascending: true);
+
+      // Guardar en caché en background (sin await)
+      box.put(_levelsCacheKey, jsonEncode(levelsResponse));
+      box.put(_userLevelCacheKey, currentUserLevel);
+      box.put(_levelProgressCacheKey,
+          jsonEncode(levelProgress.map((key, value) => MapEntry(key, value))));
+
+      return levelsResponse;
+    } catch (e) {
+      debugPrint('Error al obtener niveles: $e');
+      // Si hay error, intentar cargar desde caché
+      return _loadLevelsFromCache();
+    }
+  }
+
+  // Cargar niveles desde caché
+  List<Map<String, dynamic>> _loadLevelsFromCache() {
+    final box = Hive.box('offline_data');
+    final cachedData = box.get(_levelsCacheKey);
+
+    // Cargar nivel y progreso del caché
+    final cachedUserLevel = box.get(_userLevelCacheKey);
+    final cachedProgress = box.get(_levelProgressCacheKey);
+
+    if (cachedUserLevel != null) {
+      currentUserLevel = cachedUserLevel;
+    }
+
+    if (cachedProgress != null) {
+      try {
+        final Map<String, dynamic> progressMap = jsonDecode(cachedProgress);
+        levelProgress = progressMap
+            .map((key, value) => MapEntry(key, (value as num).toDouble()));
+      } catch (e) {
+        debugPrint('Error al cargar progreso del caché: $e');
+      }
+    }
+
+    if (cachedData != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(cachedData);
+        if (mounted) {
+          setState(() {
+            _isLoadingFromCache = true;
+          });
+        }
+        return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+      } catch (e) {
+        debugPrint('Error al decodificar caché: $e');
+      }
+    }
+
+    return [];
   }
 
   Future<void> _refreshLevels() async {
@@ -337,9 +727,11 @@ class _LearningPageState extends State<LearningPage> {
     await _getCurrentUserLevel();
     await _calculateLevelProgress();
     final newLevels = await fetchLevels();
-    setState(() {
-      _levelsFuture = Future.value(newLevels);
-    });
+    if (mounted) {
+      setState(() {
+        _levelsFuture = Future.value(newLevels);
+      });
+    }
   }
 
   Future<bool> _checkConnectivity() async {
@@ -360,9 +752,11 @@ class _LearningPageState extends State<LearningPage> {
         const cacheKey = 'user_profile_image';
         final cachedProfileImage = box.get(cacheKey, defaultValue: null);
         if (cachedProfileImage != null) {
-          setState(() {
-            profileImageUrl = cachedProfileImage;
-          });
+          if (mounted) {
+            setState(() {
+              profileImageUrl = cachedProfileImage;
+            });
+          }
         }
         return;
       }
@@ -384,9 +778,11 @@ class _LearningPageState extends State<LearningPage> {
             .maybeSingle();
 
         if (response != null && response['profile_image'] != null) {
-          setState(() {
-            profileImageUrl = response['profile_image'];
-          });
+          if (mounted) {
+            setState(() {
+              profileImageUrl = response['profile_image'];
+            });
+          }
 
           final box = Hive.box('offline_data');
           await box.put('user_profile_image', response['profile_image']);
@@ -504,6 +900,46 @@ class _LearningPageState extends State<LearningPage> {
                   child: CircularProgressIndicator(color: Colors.blue));
             }
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              // Mostrar mensaje diferente si no hay conexión
+              if (!_isOnline) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.wifi_off,
+                        size: 80,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Sin conexión a internet",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "No hay niveles guardados en caché.\nConéctate a internet para cargar los niveles.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: _refreshLevels,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Reintentar"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
               return const Center(child: Text("No hay niveles disponibles"));
             }
 
@@ -516,212 +952,298 @@ class _LearningPageState extends State<LearningPage> {
             return RefreshIndicator(
               onRefresh: _refreshLevels,
               color: Colors.blue,
-              child: ListView.builder(
-                itemCount: levels.length,
-                itemBuilder: (context, index) {
-                  final level = levels[index];
-                  final levelNumber = level['number'] ?? (index + 1);
-                  final canAccess = _canAccessLevel(levelNumber);
-                  final progress = levelProgress[level['id']] ?? 0.0;
-                  final isCompleted = progress >= 1.0;
-
-                  return Card(
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    child: Stack(
-                      children: [
-                        // Overlay para niveles bloqueados
-                        if (!canAccess)
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Icon(
-                                  Icons.lock,
-                                  size: 40,
-                                  color: Colors.white,
-                                ),
+              child: Column(
+                children: [
+                  // Banner de modo offline
+                  if (!_isOnline || _isLoadingFromCache)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 16),
+                      color: Colors.orange.shade100,
+                      child: Row(
+                        children: [
+                          Icon(Icons.wifi_off,
+                              color: Colors.orange.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "Modo sin conexión - Mostrando datos guardados",
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontSize: 13,
                               ),
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: levels.length,
+                      itemBuilder: (context, index) {
+                        final level = levels[index];
+                        final levelNumber = level['number'] ?? (index + 1);
+                        final canAccess = _canAccessLevel(levelNumber);
+                        final progress = levelProgress[level['id']] ?? 0.0;
+                        final isCompleted = progress >= 1.0;
 
-                        // Contenido principal
-                        Column(
-                          children: [
-                            ListTile(
-                              leading: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: level['image'] != null &&
-                                            level['image'].toString().isNotEmpty
-                                        ? Image.network(
-                                            level['image'],
-                                            width: 60,
-                                            height: 60,
-                                            fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    const Icon(Icons.school,
-                                                        size: 60),
-                                          )
-                                        : const Icon(Icons.school, size: 60),
-                                  ),
-                                  // Indicador de completado
-                                  if (isCompleted)
-                                    Positioned(
-                                      bottom: 0,
-                                      right: 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                              color: Colors.white, width: 2),
-                                        ),
-                                        child: const Icon(
-                                          Icons.check,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                      ),
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          child: Stack(
+                            children: [
+                              // Overlay para niveles bloqueados
+                              if (!canAccess)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withOpacity(0.7),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                ],
-                              ),
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Nivel $levelNumber: ${level['name']}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: canAccess
-                                            ? Colors.blue
-                                            : Colors.grey,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.lock,
+                                        size: 40,
+                                        color: Colors.white,
                                       ),
                                     ),
                                   ),
-                                  if (canAccess)
-                                    Text(
-                                      '${(progress * 100).toInt()}%',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isCompleted
-                                            ? Colors.green
-                                            : Colors.orange,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                ),
+
+                              // Contenido principal
+                              Column(
                                 children: [
-                                  Text(
-                                    level['description'],
-                                    style: TextStyle(
-                                      color: canAccess
-                                          ? Colors.black87
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  // Barra de progreso
-                                  if (canAccess) ...[
-                                    LinearProgressIndicator(
-                                      value: progress,
-                                      backgroundColor: Colors.grey[300],
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        isCompleted
-                                            ? Colors.green
-                                            : Colors.blue,
-                                      ),
-                                      minHeight: 6,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      isCompleted
-                                          ? '¡Nivel completado!'
-                                          : levelNumber == currentUserLevel
-                                              ? 'Nivel actual'
-                                              : 'Completado',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: isCompleted
-                                            ? Colors.green
-                                            : levelNumber == currentUserLevel
-                                                ? Colors.blue
-                                                : Colors.grey,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    Container(
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[300],
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Completa el nivel anterior para desbloquear',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              trailing: canAccess
-                                  ? Icon(Icons.arrow_forward_ios,
-                                      color: Colors.blue)
-                                  : Icon(Icons.lock_outline,
-                                      color: Colors.grey),
-                              onTap: canAccess
-                                  ? () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => SubnivelesPage(
-                                            levelId:
-                                                level['id'], // UUID del nivel
-                                            levelTitle: level[
-                                                'name'], // Opcional: título para AppBar
+                                  ListTile(
+                                    leading: Stack(
+                                      children: [
+                                        Container(
+                                          width: 60,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            color: Colors.grey[200],
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: level['image'] != null &&
+                                                    level['image']
+                                                        .toString()
+                                                        .isNotEmpty
+                                                ? CachedNetworkImage(
+                                                    imageUrl: level['image'],
+                                                    width: 60,
+                                                    height: 60,
+                                                    fit: BoxFit.cover,
+                                                    placeholder:
+                                                        (context, url) =>
+                                                            Container(
+                                                      width: 60,
+                                                      height: 60,
+                                                      color: Colors.grey[300],
+                                                      child: const Center(
+                                                        child: SizedBox(
+                                                          width: 20,
+                                                          height: 20,
+                                                          child:
+                                                              CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                            color: Colors.blue,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    errorWidget:
+                                                        (context, url, error) =>
+                                                            Container(
+                                                      width: 60,
+                                                      height: 60,
+                                                      color:
+                                                          Colors.blue.shade100,
+                                                      child: const Icon(
+                                                        Icons.school,
+                                                        size: 30,
+                                                        color: Colors.blue,
+                                                      ),
+                                                    ),
+                                                  )
+                                                : Container(
+                                                    width: 60,
+                                                    height: 60,
+                                                    color: Colors.blue.shade100,
+                                                    child: const Icon(
+                                                      Icons.school,
+                                                      size: 30,
+                                                      color: Colors.blue,
+                                                    ),
+                                                  ),
                                           ),
                                         ),
-                                      ).then((_) {
-                                        // Refrescar progreso cuando regrese de subniveles
-                                        _calculateLevelProgress();
-                                      });
-                                    }
-                                  : () {
-                                      // Mostrar mensaje de nivel bloqueado
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                              'Debes completar el nivel ${levelNumber - 1} primero'),
-                                          backgroundColor: Colors.orange,
-                                          duration: const Duration(seconds: 2),
+                                        // Indicador de completado
+                                        if (isCompleted)
+                                          Positioned(
+                                            bottom: 0,
+                                            right: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                    color: Colors.white,
+                                                    width: 2),
+                                              ),
+                                              child: const Icon(
+                                                Icons.check,
+                                                color: Colors.white,
+                                                size: 16,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'Nivel $levelNumber: ${level['name']}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: canAccess
+                                                  ? Colors.blue
+                                                  : Colors.grey,
+                                            ),
+                                          ),
                                         ),
-                                      );
-                                    },
-                            ),
-                          ],
-                        ),
-                      ],
+                                        if (canAccess)
+                                          Text(
+                                            '${(progress * 100).toInt()}%',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isCompleted
+                                                  ? Colors.green
+                                                  : Colors.orange,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          level['description'],
+                                          style: TextStyle(
+                                            color: canAccess
+                                                ? Colors.black87
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // Barra de progreso
+                                        if (canAccess) ...[
+                                          LinearProgressIndicator(
+                                            value: progress,
+                                            backgroundColor: Colors.grey[300],
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                              isCompleted
+                                                  ? Colors.green
+                                                  : Colors.blue,
+                                            ),
+                                            minHeight: 6,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            isCompleted
+                                                ? '¡Nivel completado!'
+                                                : levelNumber ==
+                                                        currentUserLevel
+                                                    ? 'Nivel actual'
+                                                    : 'Completado',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isCompleted
+                                                  ? Colors.green
+                                                  : levelNumber ==
+                                                          currentUserLevel
+                                                      ? Colors.blue
+                                                      : Colors.grey,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          Container(
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey[300],
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Completa el nivel anterior para desbloquear',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    trailing: canAccess
+                                        ? Icon(Icons.arrow_forward_ios,
+                                            color: Colors.blue)
+                                        : Icon(Icons.lock_outline,
+                                            color: Colors.grey),
+                                    onTap: canAccess
+                                        ? () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    SubnivelesPage(
+                                                  levelId: level[
+                                                      'id'], // UUID del nivel
+                                                  levelTitle: level[
+                                                      'name'], // Opcional: título para AppBar
+                                                ),
+                                              ),
+                                            ).then((_) {
+                                              // Refrescar progreso cuando regrese de subniveles
+                                              _calculateLevelProgress();
+                                            });
+                                          }
+                                        : () {
+                                            // Mostrar mensaje de nivel bloqueado
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                    'Debes completar el nivel ${levelNumber - 1} primero'),
+                                                backgroundColor: Colors.orange,
+                                                duration:
+                                                    const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             );
           },
