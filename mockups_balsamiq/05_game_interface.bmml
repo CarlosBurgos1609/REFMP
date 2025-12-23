@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mockup version="1.0" skin="sketch" fontFace="Balsamiq Sans" measuredW="375" measuredH="812">
+  <controls>
+    <!-- Background -->
+    <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="375" h="812" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+      </controlProperties>
+    </control>
+    
+    <!-- App Bar -->
+    <control controlID="1" controlTypeID="Canvas" x="0" y="0" w="375" h="80" measuredW="100" measuredH="70" zOrder="1" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>2848996</color>
+      </controlProperties>
+    </control>
+    
+    <!-- Back Button -->
+    <control controlID="2" controlTypeID="Icon" x="20" y="28" w="24" h="24" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+        <icon>LeftArrowIcon%7Cmedium</icon>
+      </controlProperties>
+    </control>
+    
+    <!-- Title -->
+    <control controlID="3" controlTypeID="Label" x="60" y="30" w="200" h="20" measuredW="100" measuredH="20" zOrder="3" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>16777215</color>
+        <size>18</size>
+        <text>Trompeta%20-%20Aprender</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Game Background Image -->
+    <control controlID="4" controlTypeID="Image" x="0" y="80" w="375" h="200" measuredW="77" measuredH="79" zOrder="4" locked="false" isInGroup="-1">
+      <controlProperties>
+        <src>assets%3A/images/trumpet.png</src>
+        <text>Trumpet%20Background</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Level Progress -->
+    <control controlID="5" controlTypeID="__group__" x="20" y="300" w="335" h="80" measuredW="335" measuredH="80" zOrder="5" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Label" x="0" y="0" w="100" h="25" measuredW="100" measuredH="25" zOrder="0" locked="false" isInGroup="5">
+          <controlProperties>
+            <bold>true</bold>
+            <color>2848996</color>
+            <size>16</size>
+            <text>Nivel%203</text>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="ProgressBar" x="0" y="30" w="300" h="20" measuredW="100" measuredH="20" zOrder="1" locked="false" isInGroup="5">
+          <controlProperties>
+            <color>2848996</color>
+            <value>65</value>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="310" y="30" w="25" h="20" measuredW="25" measuredH="20" zOrder="2" locked="false" isInGroup="5">
+          <controlProperties>
+            <size>12</size>
+            <text>65%25</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Label" x="0" y="55" w="200" h="20" measuredW="150" measuredH="20" zOrder="3" locked="false" isInGroup="5">
+          <controlProperties>
+            <size>12</size>
+            <text>1250%20/%201920%20XP%20para%20siguiente%20nivel</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Statistics -->
+    <control controlID="6" controlTypeID="__group__" x="20" y="400" w="335" h="100" measuredW="335" measuredH="100" zOrder="6" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="100" h="80" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="6">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="38" y="15" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="6">
+          <controlProperties>
+            <color>255215000</color>
+            <icon>CoinIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="10" y="45" w="80" h="20" measuredW="50" measuredH="20" zOrder="2" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <bold>true</bold>
+            <size>14</size>
+            <text>1250</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Label" x="10" y="60" w="80" h="15" measuredW="50" measuredH="15" zOrder="3" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <size>10</size>
+            <text>Monedas</text>
+          </controlProperties>
+        </control>
+        
+        <!-- Trophies -->
+        <control controlID="4" controlTypeID="Canvas" x="117" y="0" w="100" h="80" measuredW="100" measuredH="70" zOrder="4" locked="false" isInGroup="6">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="5" controlTypeID="Icon" x="155" y="15" w="24" h="24" measuredW="24" measuredH="24" zOrder="5" locked="false" isInGroup="6">
+          <controlProperties>
+            <color>255215000</color>
+            <icon>TrophyIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="6" controlTypeID="Label" x="127" y="45" w="80" h="20" measuredW="30" measuredH="20" zOrder="6" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <bold>true</bold>
+            <size>14</size>
+            <text>15</text>
+          </controlProperties>
+        </control>
+        <control controlID="7" controlTypeID="Label" x="127" y="60" w="80" h="15" measuredW="50" measuredH="15" zOrder="7" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <size>10</size>
+            <text>Trofeos</text>
+          </controlProperties>
+        </control>
+        
+        <!-- Streak -->
+        <control controlID="8" controlTypeID="Canvas" x="235" y="0" w="100" h="80" measuredW="100" measuredH="70" zOrder="8" locked="false" isInGroup="6">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="9" controlTypeID="Icon" x="273" y="15" w="24" h="24" measuredW="24" measuredH="24" zOrder="9" locked="false" isInGroup="6">
+          <controlProperties>
+            <color>16711680</color>
+            <icon>FireIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="10" controlTypeID="Label" x="245" y="45" w="80" h="20" measuredW="20" measuredH="20" zOrder="10" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <bold>true</bold>
+            <size>14</size>
+            <text>7</text>
+          </controlProperties>
+        </control>
+        <control controlID="11" controlTypeID="Label" x="245" y="60" w="80" h="15" measuredW="50" measuredH="15" zOrder="11" locked="false" isInGroup="6">
+          <controlProperties>
+            <align>center</align>
+            <size>10</size>
+            <text>D%EDas%20seguidos</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Game Modes -->
+    <control controlID="7" controlTypeID="Label" x="30" y="520" w="150" h="25" measuredW="150" measuredH="25" zOrder="7" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>2848996</color>
+        <size>18</size>
+        <text>Modos%20de%20Juego</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Practice Mode -->
+    <control controlID="8" controlTypeID="__group__" x="20" y="560" w="335" h="60" measuredW="335" measuredH="60" zOrder="8" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="335" h="60" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="8">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="15" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="8">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>MusicIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="55" y="10" w="100" h="20" measuredW="100" measuredH="20" zOrder="2" locked="false" isInGroup="8">
+          <controlProperties>
+            <bold>true</bold>
+            <size>14</size>
+            <text>Modo%20Pr%E1ctica</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Label" x="55" y="30" w="200" h="20" measuredW="150" measuredH="20" zOrder="3" locked="false" isInGroup="8">
+          <controlProperties>
+            <size>12</size>
+            <text>Practica%20notas%20y%20escalas%20b%E1sicas</text>
+          </controlProperties>
+        </control>
+        <control controlID="4" controlTypeID="Icon" x="300" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="4" locked="false" isInGroup="8">
+          <controlProperties>
+            <icon>RightArrowIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Tournament Mode -->
+    <control controlID="9" controlTypeID="__group__" x="20" y="630" w="335" h="60" measuredW="335" measuredH="60" zOrder="9" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="335" h="60" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="9">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="15" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="9">
+          <controlProperties>
+            <color>255215000</color>
+            <icon>TrophyIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="55" y="10" w="100" h="20" measuredW="100" measuredH="20" zOrder="2" locked="false" isInGroup="9">
+          <controlProperties>
+            <bold>true</bold>
+            <size>14</size>
+            <text>Torneo</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Label" x="55" y="30" w="200" h="20" measuredW="150" measuredH="20" zOrder="3" locked="false" isInGroup="9">
+          <controlProperties>
+            <size>12</size>
+            <text>Compite%20con%20otros%20estudiantes</text>
+          </controlProperties>
+        </control>
+        <control controlID="4" controlTypeID="Icon" x="300" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="4" locked="false" isInGroup="9">
+          <controlProperties>
+            <icon>RightArrowIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Music Mode -->
+    <control controlID="10" controlTypeID="__group__" x="20" y="700" w="335" h="60" measuredW="335" measuredH="60" zOrder="10" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="335" h="60" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="10">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="15" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="10">
+          <controlProperties>
+            <color>16711935</color>
+            <icon>MusicNoteIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="55" y="10" w="100" h="20" measuredW="100" measuredH="20" zOrder="2" locked="false" isInGroup="10">
+          <controlProperties>
+            <bold>true</bold>
+            <size>14</size>
+            <text>M%FAsica</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Label" x="55" y="30" w="200" h="20" measuredW="150" measuredH="20" zOrder="3" locked="false" isInGroup="10">
+          <controlProperties>
+            <size>12</size>
+            <text>Toca%20canciones%20completas</text>
+          </controlProperties>
+        </control>
+        <control controlID="4" controlTypeID="Icon" x="300" y="18" w="24" h="24" measuredW="24" measuredH="24" zOrder="4" locked="false" isInGroup="10">
+          <controlProperties>
+            <icon>RightArrowIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Bottom Navigation -->
+    <control controlID="11" controlTypeID="__group__" x="0" y="772" w="375" h="40" measuredW="375" measuredH="40" zOrder="11" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="375" h="40" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="11">
+          <controlProperties>
+            <color>15658734</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="30" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="11">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>BookIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Icon" x="105" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="11">
+          <controlProperties>
+            <icon>MusicIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Icon" x="180" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="3" locked="false" isInGroup="11">
+          <controlProperties>
+            <icon>TrophyIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="4" controlTypeID="Icon" x="255" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="4" locked="false" isInGroup="11">
+          <controlProperties>
+            <icon>ShoppingBagIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+        <control controlID="5" controlTypeID="Icon" x="320" y="8" w="24" h="24" measuredW="24" measuredH="24" zOrder="5" locked="false" isInGroup="11">
+          <controlProperties>
+            <icon>PersonIcon%7Cmedium</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+  </controls>
+</mockup>
