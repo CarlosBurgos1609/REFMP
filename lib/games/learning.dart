@@ -1140,7 +1140,7 @@ class _LearningPageState extends State<LearningPage> {
                                           level['description'],
                                           style: TextStyle(
                                             color: canAccess
-                                                ? Colors.black87
+                                                ? Colors.grey
                                                 : Colors.grey,
                                           ),
                                         ),
