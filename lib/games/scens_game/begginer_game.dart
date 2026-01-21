@@ -89,7 +89,7 @@ class FallingNote {
   // Obtener el texto a mostrar en la nota
   String get displayText {
     if (chromaticNote != null) {
-      return chromaticNote!.spanishName;
+      return chromaticNote!.englishName;
     }
     return noteName;
   }
@@ -144,23 +144,22 @@ class BegginnerGamePage extends StatefulWidget {
 
   @override
   State<BegginnerGamePage> createState() => _BegginnerGamePageState();
-  
+
   // NUEVO: Método estático para forzar actualización de una canción específica
   static Future<void> forceUpdateSong(String songId) async {
     try {
       print('🔄 Static force update for song: $songId');
-      
+
       if (Hive.isBoxOpen('offline_data')) {
         final box = Hive.box('offline_data');
         final songCacheKey = 'song_${songId}_complete';
         await box.delete(songCacheKey);
         print('🗑️ Cleared cache for song: $songId');
       }
-      
+
       // Cargar datos frescos
       final freshNotes = await DatabaseService.getSongNotes(songId);
       print('✅ Loaded ${freshNotes.length} fresh notes for song: $songId');
-      
     } catch (e) {
       print('❌ Error in static force update: $e');
     }
@@ -211,6 +210,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   int gameStartTime = 0; // Tiempo cuando empezó el juego (en milisegundos)
   String?
       lastPlayedNote; // Última nota musical tocada (para mostrar en el contenedor)
+
+  // NUEVO: Sistema de feedback visual
+  String? feedbackText; // "Perfecto", "Bien", "Erronea"
+  Color? feedbackColor; // Color del feedback
+  double feedbackOpacity = 0.0; // Opacidad para animación
+  Timer? feedbackTimer; // Timer para ocultar feedback
 
   // NUEVO: Controlador de audio continuo
   final ContinuousAudioController _audioController =
@@ -462,7 +467,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         // NUEVO: Validar calidad del cache antes de usarlo
         print('🔍 Validating cache quality...');
         final isValid = await validateAndRepairCache();
-        
+
         if (isValid && songNotes.isNotEmpty) {
           print('✅ Using validated song data (${songNotes.length} notes)');
           setState(() {
@@ -773,7 +778,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         try {
           // Verificar si tenemos conexión con timeout más corto
           final timeoutDuration = Duration(seconds: 10);
-          
+
           // Intentar obtener datos frescos de la base de datos con timeout
           final freshNotes = await DatabaseService.getSongNotes(widget.songId!)
               .timeout(timeoutDuration);
@@ -867,7 +872,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     try {
       print('🔄 Loading fresh data from database...');
-      
+
       // NUEVO: Timeout para evitar esperas indefinidas
       final timeoutDuration = Duration(seconds: 15);
       final freshNotes = await DatabaseService.getSongNotes(widget.songId!)
@@ -894,15 +899,17 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         final chromaticQuality = notesWithChromatic / freshNotes.length;
         final audioQuality = notesWithAudio / freshNotes.length;
-        
+
         print('📈 Fresh data quality analysis:');
-        print('   🎵 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
-        print('   🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
+        print(
+            '   🎵 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+        print(
+            '   🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
 
         // NUEVO: Solo actualizar cache si los datos son de buena calidad
         if (chromaticQuality > 0.5 && audioQuality > 0.5) {
           print('✅ Data quality is good, updating cache...');
-          
+
           // Actualizar cache offline con los datos frescos
           await _cacheSongDataOffline();
 
@@ -910,9 +917,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           currentNoteIndex = 0;
 
           print('🎉 Cache updated successfully with fresh high-quality data');
-          
+
           // MEJORADO: Solo precargar audios si están disponibles
-          if (audioQuality > 0.8) { // 80% de cobertura de audio
+          if (audioQuality > 0.8) {
+            // 80% de cobertura de audio
             print('🔊 Starting audio precaching...');
             await _precacheAllAudioFiles();
           } else {
@@ -920,8 +928,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           }
         } else {
           print('⚠️ Fresh data quality is poor, keeping existing cache');
-          print('   📊 ChromaticNote: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
-          print('   📊 Audio URLs: ${(audioQuality * 100).toStringAsFixed(1)}%');
+          print(
+              '   📊 ChromaticNote: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+          print(
+              '   📊 Audio URLs: ${(audioQuality * 100).toStringAsFixed(1)}%');
         }
       } else {
         print('⚠️ No fresh data available from database');
@@ -1162,19 +1172,21 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       // MEJORADO: Crear estructura completa de datos de la canción para cache offline
       final now = DateTime.now().millisecondsSinceEpoch;
-      
+
       // Analizar calidad de los datos antes de cachear
       int notesWithChromatic = 0;
       int notesWithAudio = 0;
-      
+
       for (var note in songNotes) {
         if (note.chromaticNote != null) notesWithChromatic++;
         if (note.noteUrl != null && note.noteUrl!.isNotEmpty) notesWithAudio++;
       }
-      
-      final chromaticQuality = songNotes.isNotEmpty ? notesWithChromatic / songNotes.length : 0.0;
-      final audioQuality = songNotes.isNotEmpty ? notesWithAudio / songNotes.length : 0.0;
-      
+
+      final chromaticQuality =
+          songNotes.isNotEmpty ? notesWithChromatic / songNotes.length : 0.0;
+      final audioQuality =
+          songNotes.isNotEmpty ? notesWithAudio / songNotes.length : 0.0;
+
       final songCacheData = {
         'song_id': widget.songId,
         'song_name': widget.songName,
@@ -1234,8 +1246,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       print('   🆔 ID: ${widget.songId}');
       print('   🎵 Notes: ${songNotes.length}');
       print('   � Quality metrics:');
-      print('      🎯 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
-      print('      🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
+      print(
+          '      🎯 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+      print(
+          '      🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
       print('   �💾 Cache key: $songCacheKey');
       print('   📅 Timestamp: ${DateTime.fromMillisecondsSinceEpoch(now)}');
     } catch (e) {
@@ -1251,6 +1265,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     gameUpdateTimer?.cancel();
     _logoExitTimer?.cancel(); // NUEVO: Cancelar timer de salida del logo
     _endGameTimer?.cancel(); // NUEVO: Cancelar timer de diálogo final
+    feedbackTimer?.cancel(); // NUEVO: Cancelar timer de feedback visual
     _pistonCombinationTimer
         ?.cancel(); // NUEVO: Cancelar timer de combinaciones de pistones
 
@@ -1672,7 +1687,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                     '🔇 Audio continuo activo - no reproducir nota de aire automática');
               }
 
-              _onNoteHit(note.noteName); // Contar como acierto
+              // NUEVO: Calcular calidad del timing (qué tan cerca del centro)
+              final hitZoneY = screenHeight * 0.77; // Centro de la zona de hit
+              final distanceFromCenter = (note.y - hitZoneY).abs();
+              final timingQuality =
+                  (distanceFromCenter / hitTolerance).clamp(0.0, 1.0);
+
+              _onNoteHit(note.noteName,
+                  timingQuality); // Contar como acierto con calidad
               continue; // Pasar a la siguiente nota
             }
 
@@ -1894,7 +1916,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // MEJORADO: Verificar si el jugador está tocando la nota correcta con mejor detección de combinaciones
 
-
   // NUEVO: Verificar hit con combinación específica (para mejor timing en 3 pistones)
   void _checkNoteHitWithCombination(Set<int> pistonCombination) {
     bool hitCorrectNote = false;
@@ -1938,7 +1959,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             print('   Hit zone Y: ${hitZoneY.toStringAsFixed(1)}');
             print('   Distance: ${distance.toStringAsFixed(1)}');
             print('   Press times:');
-            
+
             final currentTime = DateTime.now().millisecondsSinceEpoch;
             for (var piston in pistonCombination) {
               final pressTime = _pistonPressTime[piston];
@@ -1969,7 +1990,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               }
             }
 
-            _onNoteHit(note.noteName);
+            // NUEVO: Calcular calidad del timing (qué tan cerca del centro)
+            final screenHeight = MediaQuery.of(context).size.height;
+            final hitZoneY = screenHeight * 0.77; // Centro de la zona de hit
+            final distanceFromCenter = (note.y - hitZoneY).abs();
+            final timingQuality =
+                (distanceFromCenter / hitTolerance).clamp(0.0, 1.0);
+
+            _onNoteHit(note.noteName, timingQuality);
             return;
           } else {
             // Debug: mostrar qué se esperaba vs qué se usó
@@ -1982,7 +2010,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             final requiredSet = note.requiredPistons.toSet();
             final missing = requiredSet.difference(pistonCombination);
             final extra = pistonCombination.difference(requiredSet);
-            
+
             if (missing.isNotEmpty) {
               print('   Missing: $missing');
             }
@@ -2005,13 +2033,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print('🔊 Player off track');
       }
 
+      // NUEVO: Mostrar feedback "Erronea"
+      _showFeedback('Erronea', Colors.red);
+
       _onNoteMissed();
     } else if (!isInHitZone) {
       print('⚪ No note in hit zone for combination: $pistonCombination');
     }
   }
 
-  // MEJORADO: Función auxiliar para verificar coincidencia exacta de pistones con tolerancia temporal
+  // MEJORADO: Función auxiliar para verificar coincidencia exacta de pistones
   bool _exactPistonMatch(FallingNote note, Set<int> pressedPistons) {
     final required = note.requiredPistons.toSet();
 
@@ -2024,42 +2055,63 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     print('   Required: $required (${required.length} pistons)');
     print('   Pressed: $pressedPistons (${pressedPistons.length} pistons)');
 
-    // MEJORADO: Para combinaciones de múltiples pistones - ser más tolerante
+    // CORREGIDO: Verificar coincidencia EXACTA sin tolerancia para evitar errores
+    // Si requiere pistones 1 y 3, SOLO acepta 1 y 3, NO acepta 1, 2 y 3
+    final match = required.length == pressedPistons.length &&
+        required.every((piston) => pressedPistons.contains(piston));
+
+    print('   Match result: ${match ? "✅ EXACT MATCH" : "❌ NO MATCH"}');
+    return match;
+  }
+
+  // ELIMINADO: Lógica antigua con tolerancia que causaba problemas
+  // ignore: unused_element
+  bool _exactPistonMatch_OLD(FallingNote note, Set<int> pressedPistons) {
+    final required = note.requiredPistons.toSet();
+
+    if (required.isEmpty) {
+      return pressedPistons.isEmpty;
+    }
+
+    // Para combinaciones de múltiples pistones - tolerancia antigua (ELIMINADA)
     if (required.length > 1) {
       // Verificar que TODOS los pistones requeridos estén presionados
-      final hasAllRequired = required.every((piston) => pressedPistons.contains(piston));
-      
+      final hasAllRequired =
+          required.every((piston) => pressedPistons.contains(piston));
+
       if (hasAllRequired) {
         print('✅ All required pistons are pressed');
-        
+
         // NUEVO: Para combinaciones de 3 pistones, ser más permisivo
         if (required.length == 3 && pressedPistons.length >= 3) {
           // Si tenemos al menos los 3 pistones requeridos, aceptar
           print('🎯 3-piston combination detected - accepting match');
           return true;
         }
-        
+
         // Para 2 pistones o casos generales, verificar pistones extra
         final extraPistons = pressedPistons.difference(required);
         if (extraPistons.isNotEmpty) {
           // MEJORADO: Ser más tolerante con pistones extra en combinaciones complejas
           if (required.length >= 2) {
-            print('⚠️ Extra pistons in multi-piston combination, but accepting');
+            print(
+                '⚠️ Extra pistons in multi-piston combination, but accepting');
             return true;
           }
-          
+
           // Verificar tiempo solo para combinaciones simples
           final currentTime = DateTime.now().millisecondsSinceEpoch;
           bool allExtraAreRecent = true;
-          
+
           for (var piston in extraPistons) {
             final pressTime = _pistonPressTime[piston];
-            if (pressTime == null || (currentTime - pressTime) > _multiPistonTimeWindow) {
+            if (pressTime == null ||
+                (currentTime - pressTime) > _multiPistonTimeWindow) {
               allExtraAreRecent = false;
               break;
             }
           }
-          
+
           if (allExtraAreRecent) {
             print('⚠️ Extra pistons detected but recent, accepting match');
             return true;
@@ -2068,7 +2120,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             return false;
           }
         }
-        
+
         return true;
       } else {
         final missing = required.difference(pressedPistons);
@@ -2281,8 +2333,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
-  // Cuando se acierta una nota (solo actualizar puntuación)
-  void _onNoteHit([String? noteName]) {
+  // Cuando se acierta una nota con calidad de timing
+  void _onNoteHit([String? noteName, double timingQuality = 0.5]) {
     setState(() {
       totalNotes++;
       correctNotes++;
@@ -2290,13 +2342,18 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       experiencePoints += experiencePerCorrectNote;
     });
 
-    // NO reproducir sonido aquí - el sonido se reproduce en _onPistonPressed
-    // if (noteName != null) {
-    //   _playNoteSound(noteName);
-    // }
-
-    // Feedback háptico
-    HapticFeedback.lightImpact();
+    // NUEVO: Mostrar feedback basado en la precisión del timing
+    // timingQuality: 0.0 = centro perfecto, 1.0 = borde de tolerancia
+    if (timingQuality <= 0.3) {
+      _showFeedback('Perfecto', Colors.green);
+      HapticFeedback.mediumImpact();
+    } else if (timingQuality <= 0.7) {
+      _showFeedback('Bien', Colors.blue);
+      HapticFeedback.lightImpact();
+    } else {
+      _showFeedback('Bien', Colors.orange);
+      HapticFeedback.lightImpact();
+    }
   }
 
   // Cuando se falla una nota
@@ -2305,6 +2362,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       totalNotes++;
       // No incrementar correctNotes
       currentScore = (currentScore - 5).clamp(0, double.infinity).toInt();
+    });
+
+    HapticFeedback.heavyImpact();
+  }
+
+  // NUEVO: Método para mostrar feedback visual temporal
+  void _showFeedback(String text, Color color) {
+    feedbackTimer?.cancel();
+
+    setState(() {
+      feedbackText = text;
+      feedbackColor = color;
+      feedbackOpacity = 1.0;
+    });
+
+    // Ocultar después de 0.8 segundos
+    feedbackTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          feedbackOpacity = 0.0;
+        });
+      }
     });
   }
 
@@ -2636,6 +2715,54 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               child: _buildPistonControls(),
             ),
           ),
+
+          // NUEVO: Feedback overlay (Perfecto, Bien, Erronea) - DEBAJO DEL NOMBRE DE LA CANCIÓN
+          if (feedbackText != null)
+            Positioned(
+              top: 70, // Debajo del header/nombre de la canción
+              left: 0,
+              right: 0,
+              child: Center(
+                child: AnimatedOpacity(
+                  opacity: feedbackOpacity,
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      // Fondo muy transparente solo para "Bien", más visible para otros
+                      color: feedbackText == 'Bien'
+                          ? Colors.transparent
+                          : feedbackColor?.withOpacity(0.3) ?? Colors.black26,
+                      borderRadius: BorderRadius.circular(12),
+                      border: feedbackText == 'Bien'
+                          ? null
+                          : Border.all(
+                              color: feedbackColor?.withOpacity(0.5) ??
+                                  Colors.white54,
+                              width: 1,
+                            ),
+                    ),
+                    child: Text(
+                      feedbackText!,
+                      style: TextStyle(
+                        fontSize: 24, // Más pequeño
+                        fontWeight: FontWeight.bold,
+                        color: feedbackColor ?? Colors.white,
+                        letterSpacing: 1,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.8),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -3490,9 +3617,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       );
     }
 
-    // Calcular el rango de pistones a cubrir
-    final minPiston = requiredPistons.reduce((a, b) => a < b ? a : b);
-    final maxPiston = requiredPistons.reduce((a, b) => a > b ? a : b);
+    // NUEVO: Verificar si los pistones son consecutivos o separados
+    final sortedPistons = requiredPistons.toList()..sort();
+    final areConsecutive = _arePistonsConsecutive(sortedPistons);
+
+    // Si son pistones SEPARADOS (ej: 1 y 3), crear notas individuales
+    if (!areConsecutive && requiredPistons.length > 1) {
+      return Stack(
+        children: requiredPistons.map((piston) {
+          final pistonX =
+              _getPistonCenterX(piston, startX, pistonSize, pixelSeparation);
+          return Positioned(
+            left: pistonX - 30,
+            top: note.y,
+            child: _buildSinglePistonNote(note, 60),
+          );
+        }).toList(),
+      );
+    }
+
+    // Si son CONSECUTIVOS (ej: 1 y 2, o 2 y 3), crear barra que los une
+    final minPiston = sortedPistons.first;
+    final maxPiston = sortedPistons.last;
 
     // Calcular posición inicial y ancho del rectángulo
     double rectStartX =
@@ -3506,6 +3652,18 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       top: note.y,
       child: _buildRectangularNoteWidget(note, rectWidth),
     );
+  }
+
+  // NUEVO: Verificar si los pistones son consecutivos
+  bool _arePistonsConsecutive(List<int> sortedPistons) {
+    if (sortedPistons.length <= 1) return true;
+
+    for (int i = 0; i < sortedPistons.length - 1; i++) {
+      if (sortedPistons[i + 1] - sortedPistons[i] != 1) {
+        return false; // Hay un salto, no son consecutivos
+      }
+    }
+    return true; // Todos son consecutivos
   }
 
   // Obtener la posición X del centro de un pistón
@@ -3549,6 +3707,37 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           style: TextStyle(
             color: Colors.white,
             fontSize: note.displayText.length > 8 ? 12 : 14,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  // NUEVO: Construir nota individual para pistón (cuando son separados)
+  Widget _buildSinglePistonNote(FallingNote note, double width) {
+    return Container(
+      width: width,
+      height: 60,
+      decoration: BoxDecoration(
+        color: note.noteColor,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: note.noteColor.withOpacity(0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          note.displayText,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: note.displayText.length > 8 ? 10 : 12,
             fontWeight: FontWeight.bold,
           ),
           textAlign: TextAlign.center,
@@ -3752,20 +3941,22 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Timer para manejar combinaciones de pistones
   Timer? _pistonCombinationTimer;
-  
+
   // NUEVO: Mapa para rastrear el tiempo de presión de cada pistón
   final Map<int, int> _pistonPressTime = {};
-  
+
   // NUEVO: Configuración para combinaciones múltiples - AUMENTADO para mejor detección
-  static const int _multiPistonTimeWindow = 500; // 500ms para completar combinación (más tiempo)
-  static const int _audioDelayMs = 100; // 100ms delay para audio (más tiempo para capturar)
+  static const int _multiPistonTimeWindow =
+      500; // 500ms para completar combinación (más tiempo)
+  static const int _audioDelayMs =
+      100; // 100ms delay para audio (más tiempo para capturar)
 
   void _onPistonPressed(int pistonNumber) {
     // Feedback háptico
     HapticFeedback.lightImpact();
 
     final currentTime = DateTime.now().millisecondsSinceEpoch;
-    
+
     // Registrar tiempo de presión del pistón
     _pistonPressTime[pistonNumber] = currentTime;
 
@@ -3781,7 +3972,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // MEJORADO: Determinar si necesitamos esperar más pistones
     bool needsMorePistons = false;
     int maxRequiredPistons = 1;
-    
+
     // Verificar si hay notas en zona de hit que requieran más pistones
     if (isGameActive) {
       for (var note in fallingNotes) {
@@ -3790,7 +3981,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           final screenWidth = MediaQuery.of(context).size.width;
           final isTablet = screenWidth > 600;
           final isSmallPhone = screenHeight < 700;
-          
+
           double hitZoneBottom;
           if (isSmallPhone) {
             hitZoneBottom = 110;
@@ -3799,18 +3990,21 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           } else {
             hitZoneBottom = 130;
           }
-          
+
           final hitZoneY = screenHeight - hitZoneBottom;
           final distance = (note.y - hitZoneY).abs();
-          
+
           // Si hay una nota en zona de hit
           if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
             final requiredCount = note.requiredPistons.length;
-            maxRequiredPistons = maxRequiredPistons > requiredCount ? maxRequiredPistons : requiredCount;
-            
+            maxRequiredPistons = maxRequiredPistons > requiredCount
+                ? maxRequiredPistons
+                : requiredCount;
+
             if (requiredCount > pressedPistons.length) {
               needsMorePistons = true;
-              print('🎯 Found note requiring ${requiredCount} pistons, current: ${pressedPistons.length}');
+              print(
+                  '🎯 Found note requiring ${requiredCount} pistons, current: ${pressedPistons.length}');
             }
           }
         }
@@ -3823,10 +4017,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       // Para combinaciones de 3 pistones, esperar más tiempo
       if (maxRequiredPistons >= 3) {
         delay = _multiPistonTimeWindow; // 500ms para 3 pistones
-        print('⏳ Waiting for 3-piston combination (${pressedPistons.length}/3)...');
+        print(
+            '⏳ Waiting for 3-piston combination (${pressedPistons.length}/3)...');
       } else if (maxRequiredPistons == 2) {
         delay = _multiPistonTimeWindow ~/ 2; // 250ms para 2 pistones
-        print('⏳ Waiting for 2-piston combination (${pressedPistons.length}/2)...');
+        print(
+            '⏳ Waiting for 2-piston combination (${pressedPistons.length}/2)...');
       } else {
         delay = _audioDelayMs;
       }
@@ -3835,18 +4031,20 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       delay = _audioDelayMs;
     }
 
-    print('🕒 Timer delay set to ${delay}ms for ${pressedPistons.length} pistones (max needed: $maxRequiredPistons)');
+    print(
+        '🕒 Timer delay set to ${delay}ms for ${pressedPistons.length} pistones (max needed: $maxRequiredPistons)');
 
     // Crear timer con delay apropiado
     _pistonCombinationTimer = Timer(Duration(milliseconds: delay), () {
       // Limpiar pistones que fueron presionados hace mucho tiempo
       _cleanupOldPistonPresses();
-      
+
       // MEJORADO: Capturar la combinación actual antes de reproducir
       final currentCombination = Set<int>.from(pressedPistons);
-      
-      print('⚡ Processing combination: $currentCombination after ${delay}ms delay');
-      
+
+      print(
+          '⚡ Processing combination: $currentCombination after ${delay}ms delay');
+
       // Reproducir sonido para la combinación actual
       _playNoteFromPistonCombination();
 
@@ -3859,34 +4057,34 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     debugPrint(
         'Pistón $pistonNumber presionado - Combination: $pressedPistons (delay: ${delay}ms)');
   }
-  
+
   // MEJORADO: Limpiar pistones presionados hace mucho tiempo - más conservador
   void _cleanupOldPistonPresses() {
     final currentTime = DateTime.now().millisecondsSinceEpoch;
     final pistonsToRemove = <int>[];
-    
+
     // NUEVO: Usar ventana más amplia para la limpieza en combinaciones complejas
-    final cleanupWindow = pressedPistons.length >= 2 
-        ? _multiPistonTimeWindow * 2  // Doble tiempo para combinaciones múltiples
-        : _multiPistonTimeWindow;     // Tiempo normal para pistones simples
-    
+    final cleanupWindow = pressedPistons.length >= 2
+        ? _multiPistonTimeWindow *
+            2 // Doble tiempo para combinaciones múltiples
+        : _multiPistonTimeWindow; // Tiempo normal para pistones simples
+
     for (var entry in _pistonPressTime.entries) {
       if (currentTime - entry.value > cleanupWindow) {
         pistonsToRemove.add(entry.key);
       }
     }
-    
+
     for (var piston in pistonsToRemove) {
       _pistonPressTime.remove(piston);
       pressedPistons.remove(piston);
     }
-    
+
     if (pistonsToRemove.isNotEmpty) {
-      print('🧹 Cleaned up old piston presses: $pistonsToRemove (window: ${cleanupWindow}ms)');
+      print(
+          '🧹 Cleaned up old piston presses: $pistonsToRemove (window: ${cleanupWindow}ms)');
     }
   }
-
-
 
   void _onPistonReleased(int pistonNumber) {
     // Remover pistón del conjunto de pistones presionados
@@ -3898,7 +4096,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // MEJORADO: No cancelar inmediatamente si hay otros pistones presionados
     // Esto permite mantener combinaciones activas
-    
+
     // Si no hay pistones presionados, cancelar timer
     if (pressedPistons.isEmpty) {
       _pistonCombinationTimer?.cancel();
@@ -3906,9 +4104,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     } else {
       // Si aún hay pistones presionados, verificar si necesitamos actuar
       print('🎹 Pistons still pressed: $pressedPistons');
-      
+
       // Solo crear nuevo timer si no hay uno activo
-      if (_pistonCombinationTimer == null || !_pistonCombinationTimer!.isActive) {
+      if (_pistonCombinationTimer == null ||
+          !_pistonCombinationTimer!.isActive) {
         _pistonCombinationTimer = Timer(const Duration(milliseconds: 100), () {
           _playNoteFromPistonCombination();
         });
@@ -3978,29 +4177,34 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       print('🐛 === CACHE DEBUG STATUS ===');
       print('   🆔 Song ID: ${widget.songId}');
       print('   🔑 Cache key: $songCacheKey');
-      
+
       if (cachedData != null) {
         final timestamp = cachedData['cached_timestamp'] ?? 0;
         final lastChecked = cachedData['last_checked'] ?? 0;
         final notesCount = cachedData['notes_count'] ?? 0;
-        final qualityMetrics = cachedData['quality_metrics'] as Map<String, dynamic>?;
+        final qualityMetrics =
+            cachedData['quality_metrics'] as Map<String, dynamic>?;
 
-        print('   📅 Cached: ${DateTime.fromMillisecondsSinceEpoch(timestamp)}');
-        print('   🔍 Last checked: ${DateTime.fromMillisecondsSinceEpoch(lastChecked)}');
+        print(
+            '   📅 Cached: ${DateTime.fromMillisecondsSinceEpoch(timestamp)}');
+        print(
+            '   🔍 Last checked: ${DateTime.fromMillisecondsSinceEpoch(lastChecked)}');
         print('   🎵 Notes count: $notesCount');
-        
+
         if (qualityMetrics != null) {
           final chromaticCoverage = qualityMetrics['chromatic_coverage'] ?? 0.0;
           final audioCoverage = qualityMetrics['audio_coverage'] ?? 0.0;
-          print('   📈 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
-          print('   🔊 Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
+          print(
+              '   📈 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
+          print(
+              '   🔊 Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
         } else {
           print('   ⚠️ No quality metrics available');
         }
       } else {
         print('   📝 No cache found');
       }
-      
+
       print('   🎵 Currently loaded notes: ${songNotes.length}');
       print('🐛 === END CACHE DEBUG ===');
     } catch (e) {
@@ -4016,7 +4220,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
 
     print('🔄 FORCING database update...');
-    
+
     setState(() {
       isLoadingSong = true;
     });
@@ -4063,8 +4267,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
 
       final lastChecked = cachedData['last_checked'] ?? 0;
-      final timeSinceLastCheck = DateTime.now().millisecondsSinceEpoch - lastChecked;
-      
+      final timeSinceLastCheck =
+          DateTime.now().millisecondsSinceEpoch - lastChecked;
+
       // Actualizar cada 6 horas para asegurar datos frescos
       const sixHours = 6 * 60 * 60 * 1000;
       return timeSinceLastCheck > sixHours;
@@ -4154,15 +4359,18 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       }
 
       // Verificar integridad del cache
-      final qualityMetrics = cachedData['quality_metrics'] as Map<String, dynamic>?;
-      
+      final qualityMetrics =
+          cachedData['quality_metrics'] as Map<String, dynamic>?;
+
       if (qualityMetrics != null) {
         final chromaticCoverage = qualityMetrics['chromatic_coverage'] ?? 0.0;
         final audioCoverage = qualityMetrics['audio_coverage'] ?? 0.0;
 
         print('📊 Cache quality analysis:');
-        print('   🎯 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
-        print('   � Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
+        print(
+            '   🎯 ChromaticNote coverage: ${(chromaticCoverage * 100).toStringAsFixed(1)}%');
+        print(
+            '   � Audio coverage: ${(audioCoverage * 100).toStringAsFixed(1)}%');
 
         // Si la calidad es muy baja, intentar reparar
         if (chromaticCoverage < 0.5 || audioCoverage < 0.5) {
@@ -4174,7 +4382,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print('⚠️ No quality metrics found, validating cache data...');
         // Intentar cargar del cache existente y validar
         await _loadSongFromOfflineCache();
-        
+
         if (songNotes.isEmpty) {
           print('📝 Cache is empty, attempting fresh load');
           await _loadFreshDataFromDatabase();
