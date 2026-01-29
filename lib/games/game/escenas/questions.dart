@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:refmp/games/scens_game/begginer_game.dart';
 import 'package:refmp/games/scens_game/educational_game.dart';
 
 class QuestionPage extends StatefulWidget {

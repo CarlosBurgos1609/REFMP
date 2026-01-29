@@ -1,12 +1,11 @@
+// ignore_for_file: unused_local_variable
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../game/dialogs/pause_dialog.dart';
-import '../game/dialogs/back_dialog.dart';
-import '../game/dialogs/congratulations_dialog.dart';
 
 /// Juego educativo que muestra una partitura y hace caer notas
 /// El estudiante debe presionar los pistones correctos sin reproducir sonido
@@ -70,6 +69,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isAudioPlaying = false;
   int audioDurationMs = 0;
+
+  // Control de fin de juego
+  bool _isCheckingGameEnd = false;
 
   // Animación
   late AnimationController _noteAnimationController;
@@ -177,8 +179,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           );
         }).toList();
 
+        // Ordenar notas por tiempo de inicio (CRÍTICO)
+        gameNotes.sort((a, b) => a.startTimeMs.compareTo(b.startTimeMs));
+
         totalNotes = gameNotes.length;
         debugPrint('✅ Cargadas ${gameNotes.length} notas del juego');
+        debugPrint(
+            '⏱️ Primera nota: ${gameNotes.first.startTimeMs}ms, Última nota: ${gameNotes.last.startTimeMs}ms');
 
         // Iniciar el juego después de cargar
         setState(() {
@@ -316,11 +323,15 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       debugPrint('🔊 Iniciando reproducción de audio...');
       debugPrint('🔗 URL: ${widget.backgroundAudioUrl}');
 
-      await _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
+      // Configurar modo de reproducción
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
 
-      // Obtener duración del audio
+      await _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
+      debugPrint('✅ Comando de reproducción enviado');
+
+      // Obtener duración del audio (solo una vez)
       _audioPlayer.onDurationChanged.listen((Duration duration) {
-        if (mounted) {
+        if (mounted && audioDurationMs == 0) {
           setState(() {
             audioDurationMs = duration.inMilliseconds;
           });
@@ -328,11 +339,15 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         }
       });
 
-      // Detectar cuando termina el audio
+      // Detectar cuando termina el audio (evitar múltiples llamadas)
       _audioPlayer.onPlayerComplete.listen((event) {
         debugPrint('🎵 Audio terminado - finalizando juego');
-        if (mounted && isGameActive) {
-          _endGame();
+        if (mounted && isGameActive && !isGamePaused) {
+          Future.delayed(Duration(milliseconds: 500), () {
+            if (mounted && isGameActive) {
+              _endGame();
+            }
+          });
         }
       });
 
@@ -385,11 +400,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           }
         });
         _scheduledNoteTimers.add(timer);
-      } else if (spawnTime > -1000) {
-        // Aparecer inmediatamente
-        _spawnSingleNote(note, i);
       } else {
-        debugPrint('   ⚠️ Nota omitida');
+        // Aparecer inmediatamente (incluso con tiempo negativo)
+        _spawnSingleNote(note, i);
       }
     }
 
@@ -453,7 +466,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         hitZoneBottom = 130;
       }
 
-      final hitZoneY = screenHeight - hitZoneBottom;
+      // Calcular zona de hit en el borde superior de la zona visual
+      final hitZoneHeight = isSmallPhone ? 80.0 : (isTablet ? 120.0 : 100.0);
+      final hitZoneY = screenHeight - hitZoneBottom - hitZoneHeight;
 
       setState(() {
         for (var note in fallingNotes) {
@@ -471,7 +486,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
               debugPrint('🌬️ AUTO-HIT: ${note.gameNote.noteName}');
               note.isHit = true;
               correctNotes++;
-              totalNotes++;
               currentScore += 150;
               perfectHits++;
               _showFeedback('¡Perfecto!', Colors.green);
@@ -512,7 +526,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
                 note.isHit = true;
                 correctNotes++;
-                totalNotes++;
                 currentScore += points;
                 lastPlayedNote = note.gameNote.noteName;
                 debugPrint(
@@ -526,7 +539,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
             // Nota perdida
             if (note.y > hitZoneY + hitTolerance + 50) {
               note.isMissed = true;
-              totalNotes++;
               _showFeedback('¡Fallaste!', Colors.red);
               HapticFeedback.heavyImpact();
               debugPrint('❌ Perdida: ${note.gameNote.noteName}');
@@ -534,9 +546,14 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           }
         }
 
-        // Limpiar notas fuera de pantalla
-        fallingNotes.removeWhere(
-            (note) => note.y > hitZoneY + 200 && (note.isHit || note.isMissed));
+        // Limpiar notas fuera de pantalla y completadas
+        fallingNotes.removeWhere((note) {
+          // Eliminar si está muy debajo de la pantalla
+          final isFarBelowScreen = note.y > screenHeight + 50;
+          // O si ya fue procesada (tocada o perdida) - eliminar inmediatamente
+          final isProcessed = note.isHit || note.isMissed;
+          return isFarBelowScreen || isProcessed;
+        });
       });
 
       _checkGameEnd();
@@ -544,7 +561,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _checkGameEnd() {
-    if (gameNotes.isEmpty) return;
+    if (gameNotes.isEmpty || _isCheckingGameEnd) return;
 
     final currentGameTime =
         DateTime.now().millisecondsSinceEpoch - gameStartTime;
@@ -555,7 +572,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     final expectedEndTime = lastNoteTime + lastNoteDuration;
     final gameTimePassed = currentGameTime >= expectedEndTime;
 
-    if (gameTimePassed) {
+    if (gameTimePassed && !_isCheckingGameEnd) {
+      _isCheckingGameEnd = true;
       debugPrint(
           '⏱️ Juego terminado: ${currentGameTime}ms >= ${expectedEndTime}ms');
       _endGame();
@@ -568,10 +586,17 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     setState(() {
       isGameActive = false;
       isGamePaused = false;
+      _isCheckingGameEnd = false;
     });
 
     gameUpdateTimer?.cancel();
-    _audioPlayer.stop();
+
+    // Detener audio de forma segura
+    try {
+      _audioPlayer.stop();
+    } catch (e) {
+      debugPrint('⚠️ Error al detener audio: $e');
+    }
 
     // Calcular puntuación y experiencia
     final accuracy = totalNotes > 0 ? correctNotes / totalNotes : 0;
@@ -585,6 +610,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     debugPrint('   - Puntos XP: $experiencePoints');
 
     // Esperar 2 segundos antes de mostrar diálogo (como begginer_game)
+    _endGameTimer?.cancel();
     _endGameTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
         _showResultsDialog();
@@ -668,6 +694,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     setState(() {
       isGameActive = false;
       isGamePaused = false;
+      _isCheckingGameEnd = false;
       fallingNotes.clear();
       totalNotes = 0;
       correctNotes = 0;
@@ -681,6 +708,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       feedbackText = null;
       feedbackColor = null;
       feedbackOpacity = 0.0;
+      lastPlayedNote = null;
+      audioDurationMs = 0;
+      isAudioPlaying = false;
     });
 
     // Cancelar TODOS los timers
@@ -688,7 +718,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     feedbackTimer?.cancel();
     countdownTimer?.cancel();
     _endGameTimer?.cancel();
-    _audioPlayer.stop();
+
+    // Detener audio de forma segura
+    try {
+      _audioPlayer.stop();
+    } catch (e) {
+      debugPrint('⚠️ Error al detener audio en restart: $e');
+    }
 
     // Cancelar todos los timers programados de notas
     for (final timer in _scheduledNoteTimers) {
@@ -696,8 +732,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     }
     _scheduledNoteTimers.clear();
 
-    // Reiniciar tiempo de inicio
+    // Reiniciar tiempo de inicio y duración de audio
     gameStartTime = 0;
+    audioDurationMs = 0;
 
     // Iniciar countdown nuevamente
     setState(() {
@@ -712,134 +749,252 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return AlertDialog(
+        // Determinar tema (claro u oscuro)
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+        return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
-          title: Row(
-            children: [
-              Icon(Icons.emoji_events, color: Colors.amber, size: 32),
-              SizedBox(width: 12),
-              Text('¡Juego Completado!'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Puntuación: $currentScore',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text('Notas correctas: $correctNotes/$totalNotes'),
-              SizedBox(height: 4),
-              Text(
-                'Precisión: ${totalNotes > 0 ? ((correctNotes / totalNotes * 100).toStringAsFixed(1)) : "0"}%',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              SizedBox(height: 12),
-              // Desglose de calidad
-              Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.stars, color: Colors.green, size: 18),
-                            SizedBox(width: 6),
-                            Text('Perfectos:', style: TextStyle(fontSize: 14)),
-                          ],
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 400),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Icono de check animado
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 800),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.green, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.check_circle_rounded,
+                            color: Colors.green,
+                            size: 30,
+                          ),
                         ),
-                        Text('$perfectHits',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14)),
-                      ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Título
+                  Text(
+                    '¡Felicitaciones!',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode ? Colors.white : Colors.black87,
                     ),
-                    SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.check_circle,
-                                color: Colors.blue, size: 18),
-                            SizedBox(width: 6),
-                            Text('Buenos:', style: TextStyle(fontSize: 14)),
-                          ],
-                        ),
-                        Text('$goodHits',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14)),
-                      ],
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+
+                  Text(
+                    'Has completado el juego',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDarkMode ? Colors.grey[300] : Colors.grey[600],
                     ),
-                    SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.adjust, color: Colors.orange, size: 18),
-                            SizedBox(width: 6),
-                            Text('Regulares:', style: TextStyle(fontSize: 14)),
-                          ],
-                        ),
-                        Text('$regularHits',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 12),
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber[50],
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber[300]!),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.stars, color: Colors.amber[700], size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      '+$experiencePoints XP',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber[700],
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Estadísticas en una fila
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDarkMode
+                          ? Colors.grey[800]?.withOpacity(0.3)
+                          : Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDarkMode
+                            ? Colors.grey[600]!.withOpacity(0.3)
+                            : Colors.grey.withOpacity(0.3),
                       ),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      children: [
+                        // Experiencia
+                        Expanded(
+                          child: _buildStatCard(
+                            icon: Icons.star,
+                            iconColor: Colors.purple,
+                            title: 'XP',
+                            value: '+$experiencePoints',
+                            valueColor: Colors.purple,
+                            isDarkMode: isDarkMode,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+
+                        // Puntos
+                        Expanded(
+                          child: _buildStatCard(
+                            icon: Icons.score_rounded,
+                            iconColor: Colors.blue,
+                            title: 'Puntos',
+                            value: '$currentScore',
+                            valueColor: Colors.blue,
+                            isDarkMode: isDarkMode,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+
+                        // Notas acertadas
+                        Expanded(
+                          child: _buildStatCard(
+                            icon: Icons.check_rounded,
+                            iconColor: Colors.green,
+                            title: 'Correctas',
+                            value: '$correctNotes',
+                            valueColor: Colors.green,
+                            isDarkMode: isDarkMode,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+
+                        // Notas falladas
+                        Expanded(
+                          child: _buildStatCard(
+                            icon: Icons.close_rounded,
+                            iconColor: Colors.red,
+                            title: 'Fallos',
+                            value: '${totalNotes - correctNotes}',
+                            valueColor: Colors.red,
+                            isDarkMode: isDarkMode,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Botón Continuar
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: 2,
+                    ),
+                    onPressed: () async {
+                      // Guardar puntos de experiencia si hubo notas correctas
+                      if (experiencePoints > 0) {
+                        await _saveExperiencePoints();
+                      }
+                      // Cerrar diálogo primero
+                      if (mounted) {
+                        Navigator.of(context).pop(); // Cerrar diálogo
+                        // Pequeño delay para asegurar que el contexto es estable
+                        await Future.delayed(Duration(milliseconds: 100));
+                        // Ahora cerrar la página del juego
+                        if (mounted) {
+                          Navigator.of(context).pop(correctNotes > 0);
+                        }
+                      }
+                    },
+                    child: const Text(
+                      'Continuar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                // Guardar puntos de experiencia si hubo notas correctas
-                if (experiencePoints > 0) {
-                  await _saveExperiencePoints();
-                }
-                Navigator.pop(context); // Cerrar diálogo
-                Navigator.pop(
-                    context, correctNotes > 0); // Volver con resultado
-              },
-              child: Text('Continuar'),
             ),
-          ],
+          ),
         );
       },
+    );
+  }
+
+  // Widget helper para crear tarjetas de estadísticas
+  Widget _buildStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String value,
+    required Color valueColor,
+    required bool isDarkMode,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: iconColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: iconColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Icono
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: iconColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // Título
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 9,
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+
+          // Valor
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1199,9 +1354,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
             ),
           ),
 
-          // Feedback visual
-          if (feedbackText != null) _buildFeedbackEffects(),
-
           // Controles de pistones en la parte inferior
           Positioned(
             bottom: 0,
@@ -1483,27 +1635,171 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   Widget _buildGameArea() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
-        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+    return Stack(
+      children: [
+        // Área principal de juego
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            border: Border.all(color: Colors.blue.withOpacity(0.2)),
+          ),
+          child: Stack(
+            children: [
+              // Líneas guía
+              _buildPistonGuides(),
+              // Zona de hit
+              _buildHitZone(),
+              // Notas cayendo
+              ..._buildFallingNotes(),
+            ],
+          ),
+        ),
+
+        // Contenedor de nota musical (lado izquierdo)
+        if (lastPlayedNote != null) _buildMusicalNoteDisplay(),
+
+        // Barra de progreso vertical (lado derecho)
+        _buildVerticalProgressBar(),
+
+        // Feedback de texto simple (debajo del header)
+        if (feedbackText != null) _buildSimpleFeedback(),
+      ],
+    );
+  }
+
+  // Contenedor de nota musical tocada
+  Widget _buildMusicalNoteDisplay() {
+    return Positioned(
+      left: 20,
+      top: MediaQuery.of(context).size.height / 2 - 60,
+      child: AnimatedOpacity(
+        opacity: lastPlayedNote != null ? 1.0 : 0.0,
+        duration: Duration(milliseconds: 300),
+        child: Container(
+          width: 80,
+          height: 120,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.blue.shade700.withOpacity(0.9),
+                Colors.blue.shade900.withOpacity(0.9),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.5),
+                blurRadius: 15,
+                spreadRadius: 3,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.music_note,
+                color: Colors.white,
+                size: 32,
+              ),
+              SizedBox(height: 8),
+              Text(
+                lastPlayedNote ?? '',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Stack(
-        children: [
-          // Líneas guía para los pistones
-          _buildPistonGuides(),
+    );
+  }
 
-          // Zona de hit (donde deben presionarse las notas)
-          _buildHitZone(),
+  // Barra de progreso vertical del rendimiento
+  Widget _buildVerticalProgressBar() {
+    final accuracy = totalNotes > 0 ? (correctNotes / totalNotes) : 1.0;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final barHeight = screenHeight * 0.5;
 
-          // Notas cayendo
-          ..._buildFallingNotes(),
-
-          // Efectos de feedback
-          if (feedbackText != null) _buildFeedbackEffects(),
-        ],
+    return Positioned(
+      right: 20,
+      top: (screenHeight - barHeight) / 2,
+      child: Container(
+        width: 50,
+        height: barHeight,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(25),
+          border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+        ),
+        child: Column(
+          children: [
+            // Sección superior - Indicador de progreso
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.all(4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      // Fondo
+                      Container(
+                        color: Colors.grey.shade800,
+                      ),
+                      // Barra de progreso
+                      FractionallySizedBox(
+                        heightFactor: accuracy,
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                accuracy >= 0.7
+                                    ? Colors.green
+                                    : accuracy >= 0.4
+                                        ? Colors.orange
+                                        : Colors.red,
+                                accuracy >= 0.7
+                                    ? Colors.green.shade300
+                                    : accuracy >= 0.4
+                                        ? Colors.orange.shade300
+                                        : Colors.red.shade300,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Porcentaje
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '${(accuracy * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1566,72 +1862,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   List<Widget> _buildFallingNotes() {
-    return fallingNotes.map((note) => _buildNote(note)).toList();
-  }
-
-  Widget _buildNote(FallingGameNote note) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final pistons = note.gameNote.requiredPistons;
-
-    // Calcular posición X basada en los pistones
-    double centerX;
-    if (pistons.isEmpty) {
-      // Nota de aire - centro
-      centerX = screenWidth / 2;
-    } else if (pistons.length == 1) {
-      // Un solo pistón
-      centerX = _getPistonX(pistons[0], screenWidth);
-    } else {
-      // Múltiples pistones - promedio
-      final positions = pistons.map((p) => _getPistonX(p, screenWidth));
-      centerX = positions.reduce((a, b) => a + b) / positions.length;
-    }
-
-    // Color basado en si fue tocada correctamente
-    Color noteColor = note.isHit
-        ? Colors.green.withOpacity(0.7)
-        : note.isMissed
-            ? Colors.red.withOpacity(0.7)
-            : Colors.blue;
-
-    return Positioned(
-      left: centerX - 30,
-      top: note.y,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: noteColor,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: noteColor.withOpacity(0.5),
-              blurRadius: 10,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            note.gameNote.noteName,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  double _getPistonX(int pistonNumber, double screenWidth) {
     final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = screenWidth > 600;
     final isSmallPhone = screenHeight < 700;
 
-    // Tamaños responsive para los pistones (mismo que en _buildPistonControls)
+    // Tamaños responsive de pistones
     final double pistonSize;
     final double realPistonSeparation;
 
@@ -1647,18 +1883,78 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     }
 
     const double realPistonDiameter = 18.0;
-
-    // Calcular la separación proporcional en pixels
     final double pixelSeparation =
         (realPistonSeparation / realPistonDiameter) * pistonSize;
-
-    // Ancho total del contenedor de pistones
     final double totalPistonWidth =
-        (pistonSize * 3) + (pixelSeparation * 2) + 40; // +40 por padding
-    final double startX =
-        (screenWidth - totalPistonWidth) / 2 + 20; // +20 por padding izquierdo
+        (pistonSize * 3) + (pixelSeparation * 2) + 40;
+    final double startX = (screenWidth - totalPistonWidth) / 2 + 20;
 
-    // Calcular posición X para cada pistón
+    return fallingNotes
+        .map((note) =>
+            _buildRectangularNote(note, startX, pistonSize, pixelSeparation))
+        .toList();
+  }
+
+  // Construir nota rectangular que abarca los pistones requeridos
+  Widget _buildRectangularNote(FallingGameNote note, double startX,
+      double pistonSize, double pixelSeparation) {
+    final pistons = note.gameNote.requiredPistons;
+
+    // Si es nota de aire (sin pistones), mostrar barra gris
+    if (pistons.isEmpty) {
+      final totalWidth = (pistonSize * 3) + (pixelSeparation * 2);
+      final leftX = startX;
+      return _buildOpenNote(note, leftX, totalWidth);
+    }
+
+    final sortedPistons = List<int>.from(pistons)..sort();
+
+    // Si son pistones consecutivos, crear barra continua
+    if (sortedPistons.length > 1 && _arePistonsConsecutive(sortedPistons)) {
+      final firstPiston = sortedPistons.first;
+      final lastPiston = sortedPistons.last;
+      final leftX =
+          _getPistonCenterX(firstPiston, startX, pistonSize, pixelSeparation) -
+              pistonSize / 2;
+      final rightX =
+          _getPistonCenterX(lastPiston, startX, pistonSize, pixelSeparation) +
+              pistonSize / 2;
+      final width = rightX - leftX;
+
+      return Positioned(
+        left: leftX,
+        top: note.y,
+        child: _buildRectangularNoteWidget(note, width),
+      );
+    } else {
+      // Pistones no consecutivos - crear notas individuales
+      return Stack(
+        children: sortedPistons.map((piston) {
+          final centerX =
+              _getPistonCenterX(piston, startX, pistonSize, pixelSeparation);
+          return Positioned(
+            left: centerX - pistonSize / 2,
+            top: note.y,
+            child: _buildSinglePistonNote(note, pistonSize),
+          );
+        }).toList(),
+      );
+    }
+  }
+
+  // Verificar si los pistones son consecutivos
+  bool _arePistonsConsecutive(List<int> sortedPistons) {
+    for (int i = 0; i < sortedPistons.length - 1; i++) {
+      if (sortedPistons[i + 1] - sortedPistons[i] != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Obtener posición X del centro de un pistón
+  double _getPistonCenterX(int pistonNumber, double startX, double pistonSize,
+      double pixelSeparation) {
     double pistonX;
     if (pistonNumber == 1) {
       pistonX = startX + (pistonSize / 2);
@@ -1668,27 +1964,131 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       pistonX =
           startX + (pistonSize * 2) + (pixelSeparation * 2) + (pistonSize / 2);
     }
-
     return pistonX;
   }
 
-  Widget _buildFeedbackEffects() {
-    return Center(
-      child: AnimatedOpacity(
-        opacity: feedbackOpacity,
-        duration: Duration(milliseconds: 300),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-          decoration: BoxDecoration(
-            color: feedbackColor?.withOpacity(0.9),
-            borderRadius: BorderRadius.circular(15),
+  // Construir widget de nota rectangular
+  Widget _buildRectangularNoteWidget(FallingGameNote note, double width) {
+    Color noteColor = note.isHit
+        ? Colors.green.withOpacity(0.8)
+        : note.isMissed
+            ? Colors.red.withOpacity(0.8)
+            : Colors.blue;
+
+    return Container(
+      width: width,
+      height: 60,
+      decoration: BoxDecoration(
+        color: noteColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: noteColor.withOpacity(0.5),
+            blurRadius: 10,
+            spreadRadius: 2,
           ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          note.gameNote.noteName,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Construir nota individual
+  Widget _buildSinglePistonNote(FallingGameNote note, double size) {
+    Color noteColor = note.isHit
+        ? Colors.green.withOpacity(0.8)
+        : note.isMissed
+            ? Colors.red.withOpacity(0.8)
+            : Colors.blue;
+
+    return Container(
+      width: size,
+      height: 60,
+      decoration: BoxDecoration(
+        color: noteColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: noteColor.withOpacity(0.5),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          note.gameNote.noteName,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Construir nota de aire (barra gris)
+  Widget _buildOpenNote(FallingGameNote note, double leftX, double totalWidth) {
+    return Positioned(
+      left: leftX,
+      top: note.y,
+      child: Container(
+        width: totalWidth,
+        height: 50,
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white70, width: 2),
+        ),
+        child: Center(
+          child: Text(
+            'AIRE',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget de feedback simple debajo del header
+  Widget _buildSimpleFeedback() {
+    return Positioned(
+      top: 80, // Debajo del header
+      left: 0,
+      right: 0,
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: feedbackOpacity,
+          duration: Duration(milliseconds: 300),
           child: Text(
             feedbackText ?? '',
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 28,
+              color: feedbackColor ?? Colors.white,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(0.8),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
           ),
         ),
