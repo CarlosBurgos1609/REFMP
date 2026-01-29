@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class QuestionPage extends StatefulWidget {
   final String sublevelId;
@@ -35,6 +36,7 @@ class _QuestionPageState extends State<QuestionPage> {
   String? selectedOption;
   YoutubePlayerController? _youtubeController;
   String? videoUrl;
+  bool hasVideoError = false;
 
   @override
   void initState() {
@@ -126,21 +128,58 @@ class _QuestionPageState extends State<QuestionPage> {
         debugPrint('🎬 Video URL encontrada: $videoUrl');
         debugPrint('⭐ Puntos de experiencia: $videoExperiencePoints');
 
-        final videoId = YoutubePlayer.convertUrlToId(videoUrl!);
+        // Extraer video ID y crear controlador
+        String? videoId = _extractYoutubeVideoId(videoUrl!);
         debugPrint('🆔 Video ID extraído: $videoId');
 
-        if (videoId != null) {
-          _youtubeController = YoutubePlayerController(
-            initialVideoId: videoId,
-            flags: const YoutubePlayerFlags(
-              autoPlay: false,
-              mute: false,
-            ),
-          );
-          debugPrint('✅ Controlador de YouTube creado exitosamente');
+        if (videoId != null && videoId.isNotEmpty) {
+          try {
+            _youtubeController = YoutubePlayerController(
+              initialVideoId: videoId,
+              flags: YoutubePlayerFlags(
+                autoPlay: false,
+                mute: false,
+                enableCaption: false,
+                hideControls: false,
+                controlsVisibleAtStart: true,
+                loop: false,
+                isLive: false,
+                forceHD: false,
+                useHybridComposition: false, // Cambiar a false para mejor compatibilidad
+              ),
+            );
+            
+            // Listener para detectar errores
+            _youtubeController!.addListener(() {
+              if (_youtubeController!.value.hasError) {
+                debugPrint('❌ Error en video: ${_youtubeController!.value.errorCode}');
+                // Dar un tiempo antes de marcar como error para que intente cargar
+                Future.delayed(Duration(seconds: 3), () {
+                  if (mounted && _youtubeController!.value.hasError && !hasVideoError) {
+                    setState(() {
+                      hasVideoError = true;
+                    });
+                  }
+                });
+              } else if (_youtubeController!.value.isReady && !_youtubeController!.value.hasError) {
+                debugPrint('✅ Video listo para reproducir');
+                if (hasVideoError && mounted) {
+                  // Si estaba marcado como error pero ahora funciona, quitamos el error
+                  setState(() {
+                    hasVideoError = false;
+                  });
+                }
+              }
+            });
+            
+            debugPrint('✅ Controlador creado con ID: $videoId');
+          } catch (e) {
+            debugPrint('❌ Error al crear controlador: $e');
+            hasVideoError = true;
+          }
         } else {
-          debugPrint(
-              '❌ No se pudo extraer el ID del video de la URL: $videoUrl');
+          debugPrint('❌ No se pudo extraer el ID del video de la URL: $videoUrl');
+          hasVideoError = true;
         }
       } else {
         debugPrint('⚠️ No se encontró video para este subnivel');
@@ -185,6 +224,72 @@ class _QuestionPageState extends State<QuestionPage> {
     } catch (e) {
       debugPrint('❌ Error al cargar puntos del juego: $e');
       gameExperiencePoints = 0;
+    }
+  }
+
+  // Método para extraer el ID del video de YouTube de diferentes formatos de URL
+  String? _extractYoutubeVideoId(String url) {
+    try {
+      // Intentar con el método estándar de youtube_player_flutter
+      String? id = YoutubePlayer.convertUrlToId(url);
+      if (id != null && id.isNotEmpty) {
+        return id;
+      }
+
+      // Patrones adicionales para URLs de YouTube
+      final patterns = [
+        RegExp(r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})'),
+        RegExp(r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})'),
+        RegExp(r'youtube\.com\/v\/([a-zA-Z0-9_-]{11})'),
+        RegExp(r'youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})'),
+      ];
+
+      for (var pattern in patterns) {
+        final match = pattern.firstMatch(url);
+        if (match != null && match.groupCount >= 1) {
+          return match.group(1);
+        }
+      }
+
+      // Si la URL es solo el ID (11 caracteres alfanuméricos)
+      if (url.length == 11 && RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(url)) {
+        return url;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Error al extraer video ID: $e');
+      return null;
+    }
+  }
+
+  // Método para abrir el video en YouTube
+  Future<void> _openVideoInYouTube() async {
+    if (videoUrl == null) return;
+    
+    try {
+      final uri = Uri.parse(videoUrl!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        debugPrint('✅ Video abierto en YouTube');
+      } else {
+        debugPrint('❌ No se puede abrir la URL');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No se puede abrir YouTube')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error al abrir YouTube: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir el video')),
+        );
+      }
     }
   }
 
@@ -717,8 +822,8 @@ class _QuestionPageState extends State<QuestionPage> {
       );
     }
     if (widget.sublevelType == 'Video') {
-      // Mostrar loading mientras se carga el video
-      if (_youtubeController == null && videoUrl == null) {
+      // Mostrar loading mientras se carga la información del video
+      if (videoUrl == null) {
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -751,147 +856,263 @@ class _QuestionPageState extends State<QuestionPage> {
         );
       }
 
-      // Mostrar error si no se encontró video
-      if (videoUrl != null && _youtubeController == null) {
-        return Scaffold(
+      // Mostrar reproductor o pantalla alternativa
+      if (videoUrl != null) {
+        // Si hay error o no hay controlador, mostrar opción de YouTube
+        if (hasVideoError || _youtubeController == null) {
+          final videoId = _extractYoutubeVideoId(videoUrl!);
+          final thumbnailUrl = videoId != null 
+              ? 'https://img.youtube.com/vi/$videoId/maxresdefault.jpg'
+              : null;
+              
+          return Scaffold(
           appBar: AppBar(
             title: Text(
               widget.sublevelTitle,
               style: const TextStyle(color: Colors.blue),
             ),
             leading: IconButton(
-              icon:
-                  const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
+              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
               onPressed: () => Navigator.pop(context, false),
             ),
             centerTitle: true,
           ),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: Colors.red[400],
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Error al cargar el video',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red[600],
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'URL del video: $videoUrl',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    // Reintentar cargar el video
-                    loadVideoUrl();
-                  },
-                  child: Text('Reintentar'),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      // Mostrar el video cuando esté listo
-      if (_youtubeController != null) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              widget.sublevelTitle,
-              style: const TextStyle(color: Colors.blue),
-            ),
-            leading: IconButton(
-              icon:
-                  const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
-              onPressed: () => Navigator.pop(
-                  context, false), // No completado si sale sin marcar
-            ),
-            centerTitle: true,
-          ),
-          body: YoutubePlayerBuilder(
-            player: YoutubePlayer(controller: _youtubeController!),
-            builder: (context, player) => Padding(
-              padding: const EdgeInsets.all(16.0),
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  player,
-                  const SizedBox(height: 20),
-                  Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
+                  // Alerta de video restringido
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange[300]!),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.play_circle_filled,
-                            size: 48,
-                            color: Colors.blue,
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            '¡Observa el video completo!',
+                    child: Row(
+                      children: [
+                        Icon(Icons.info, color: Colors.orange[700], size: 24),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Este video no puede reproducirse aquí. Ábrelo en YouTube.',
                             style: TextStyle(
-                              fontSize: 20,
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Aprende sobre este tema y cuando termines, marca como completado para continuar.',
-                            style: TextStyle(
+                              color: Colors.orange[900],
                               fontSize: 14,
-                              color: Colors.grey,
                             ),
-                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Miniatura del video
+                  if (thumbnailUrl != null)
+                    GestureDetector(
+                      onTap: _openVideoInYouTube,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 15,
+                                  spreadRadius: 3,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.network(
+                                thumbnailUrl,
+                                width: double.infinity,
+                                height: 220,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    width: double.infinity,
+                                    height: 220,
+                                    color: Colors.grey[300],
+                                    child: Icon(
+                                      Icons.video_library,
+                                      size: 80,
+                                      color: Colors.grey[600],
+                                    ),
+                                  );
+                                },
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    width: double.infinity,
+                                    height: 220,
+                                    color: Colors.grey[200],
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                          // Botón de play grande sobre la miniatura
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.red.withOpacity(0.9),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.4),
+                                  blurRadius: 10,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            padding: EdgeInsets.all(20),
+                            child: Icon(
+                              Icons.play_arrow,
+                              size: 50,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
                     ),
+                  const SizedBox(height: 28),
+                  
+                  // Botón principal para abrir YouTube
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 18,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 4,
+                      ),
+                      onPressed: _openVideoInYouTube,
+                      icon: Icon(
+                        Icons.play_circle_fill,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                      label: Text(
+                        'Ver Video en YouTube',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 30),
-                  Container(
+                  const SizedBox(height: 24),
+                  
+                  // Tarjeta informativa
+                  Card(
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.blue,
+                                size: 28,
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  '¡Aprende con este video!',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            '1. Toca el botón rojo para abrir el video en YouTube\n'
+                            '2. Mira el video completo y aprende el contenido\n'
+                            '3. Regresa aquí y marca como completado',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.grey[700],
+                              height: 1.5,
+                            ),
+                          ),
+                          if (videoExperiencePoints > 0) ...[
+                            SizedBox(height: 16),
+                            Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.amber[50],
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.amber[300]!),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.stars, color: Colors.amber[700], size: 24),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '¡Gana $videoExperiencePoints XP!',
+                                    style: TextStyle(
+                                      color: Colors.amber[900],
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Botón de completado
+                  SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 40, vertical: 15),
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         elevation: 3,
                       ),
-                      onPressed: () {
-                        // Mostrar diálogo de confirmación
-                        _showCompletionDialog();
-                      },
-                      icon: const Icon(
+                      onPressed: _showCompletionDialog,
+                      icon: Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 24,
+                        size: 26,
                       ),
-                      label: const Text(
+                      label: Text(
                         'Marcar como Completado',
                         style: TextStyle(
                           color: Colors.white,
@@ -901,11 +1122,11 @@ class _QuestionPageState extends State<QuestionPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Text(
-                    '💡 Tip: Asegúrate de haber visto todo el video antes de marcarlo como completado',
+                    '💡 Recuerda ver el video completo antes de marcar como completado',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       color: Colors.grey[600],
                       fontStyle: FontStyle.italic,
                     ),
@@ -914,6 +1135,229 @@ class _QuestionPageState extends State<QuestionPage> {
                 ],
               ),
             ),
+          ),
+        );
+        }
+        
+        // Mostrar reproductor de YouTube embebido
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              widget.sublevelTitle,
+              style: const TextStyle(color: Colors.blue),
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.blue),
+              onPressed: () => Navigator.pop(context, false),
+            ),
+            centerTitle: true,
+          ),
+          body: YoutubePlayerBuilder(
+            player: YoutubePlayer(
+              controller: _youtubeController!,
+              showVideoProgressIndicator: true,
+              progressIndicatorColor: Colors.red,
+              progressColors: ProgressBarColors(
+                playedColor: Colors.red,
+                handleColor: Colors.redAccent,
+                bufferedColor: Colors.grey[300]!,
+                backgroundColor: Colors.grey[600]!,
+              ),
+              onReady: () {
+                debugPrint('🎬 Video listo - presiona play para reproducir');
+              },
+              onEnded: (metaData) {
+                debugPrint('✅ Video completado');
+              },
+            ),
+            builder: (context, player) {
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Reproductor de video
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: player,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Mensaje de ayuda si el video no se reproduce
+                      Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '¿No se reproduce? Usa el botón "Abrir en YouTube"',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.blue[800],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Botón para abrir en YouTube (por si hay problemas)
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          side: BorderSide(color: Colors.red),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: _openVideoInYouTube,
+                        icon: Icon(Icons.open_in_new, color: Colors.red),
+                        label: Text(
+                          'Abrir en YouTube',
+                          style: TextStyle(color: Colors.red, fontSize: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      
+                      // Tarjeta informativa
+                      Card(
+                        elevation: 3,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(18.0),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.play_circle_filled,
+                                    color: Colors.blue,
+                                    size: 32,
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '¡Mira el video completo!',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 14),
+                              Text(
+                                'Presiona el botón ▶️ en el video para comenzar. '
+                                'Si no se reproduce, usa el botón "Abrir en YouTube".',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                  height: 1.4,
+                                ),
+                              ),
+                              if (videoExperiencePoints > 0) ...[
+                                SizedBox(height: 14),
+                                Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber[50],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.amber[300]!),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.stars, color: Colors.amber[700], size: 22),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        '¡Gana $videoExperiencePoints XP!',
+                                        style: TextStyle(
+                                          color: Colors.amber[900],
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      
+                      // Botón de completado
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 3,
+                          ),
+                          onPressed: _showCompletionDialog,
+                          icon: Icon(
+                            Icons.check_circle,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          label: Text(
+                            'Marcar como Completado',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '💡 Asegúrate de ver el video completo antes de marcar como completado',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         );
       }
