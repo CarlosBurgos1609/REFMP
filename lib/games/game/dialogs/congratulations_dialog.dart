@@ -5,9 +5,9 @@ import 'package:refmp/theme/theme_provider.dart';
 void showCongratulationsDialog(
   BuildContext context, {
   required int experiencePoints,
-  required int totalScore,
   required int correctNotes,
   required int missedNotes,
+  required int coins, // Monedas ganadas
   required VoidCallback onContinue,
 }) {
   showDialog(
@@ -110,21 +110,21 @@ void showCongratulationsDialog(
                           icon: Icons.star,
                           iconColor: Colors.purple,
                           title: 'XP',
-                          value: '+$experiencePoints',
+                          value: '$experiencePoints',
                           valueColor: Colors.purple,
                           themeProvider: themeProvider,
                         ),
                       ),
                       const SizedBox(width: 6),
 
-                      // Puntos
+                      // Monedas
                       Expanded(
                         child: _buildStatCard(
-                          icon: Icons.score_rounded,
-                          iconColor: Colors.blue,
-                          title: 'Puntos',
-                          value: '$totalScore',
-                          valueColor: Colors.blue,
+                          icon: Icons.monetization_on,
+                          iconColor: Colors.amber,
+                          title: 'Monedas',
+                          value: '$coins',
+                          valueColor: Colors.amber,
                           themeProvider: themeProvider,
                         ),
                       ),

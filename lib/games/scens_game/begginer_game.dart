@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart'; // NUEVO: Para cache robusto
 import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para cache offline
 import 'package:connectivity_plus/connectivity_plus.dart'; // NUEVO: Para verificar conectividad
+import 'package:supabase_flutter/supabase_flutter.dart'; // Para guardar XP y monedas
 import '../game/dialogs/back_dialog.dart';
 import '../game/dialogs/pause_dialog.dart';
 import '../../models/song_note.dart';
@@ -1790,16 +1791,118 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // Mostrar resultados del juego
   void _showGameResults() {
+    // Guardar experiencia y monedas en la base de datos
+    _saveExperienceAndCoins();
+
     showCongratulationsDialog(
       context,
       experiencePoints: experiencePoints,
-      totalScore: currentScore,
       correctNotes: correctNotes,
       missedNotes: totalNotes - correctNotes,
+      coins: totalCoins, // Monedas ganadas por completar la canción
       onContinue: () {
         Navigator.pop(context); // Regresar al menú anterior
       },
     );
+  }
+
+  // Guardar puntos de experiencia y monedas en la base de datos
+  Future<void> _saveExperienceAndCoins() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        print('⚠️ Usuario no autenticado');
+        return;
+      }
+
+      if (experiencePoints <= 0 && totalCoins <= 0) {
+        print('⚠️ No hay puntos ni monedas para guardar');
+        return;
+      }
+
+      print('💾 Guardando $experiencePoints puntos XP y $totalCoins monedas...');
+
+      // 1. Actualizar en tabla de perfil del usuario (solo XP)
+      bool profileUpdated = false;
+      List<String> tables = [
+        'users',
+        'students',
+        'graduates',
+        'teachers',
+        'advisors',
+        'parents'
+      ];
+
+      for (String table in tables) {
+        try {
+          final userRecord = await supabase
+              .from(table)
+              .select('points_xp')
+              .eq('user_id', user.id)
+              .maybeSingle();
+
+          if (userRecord != null) {
+            final currentXP = userRecord['points_xp'] ?? 0;
+            final newXP = currentXP + experiencePoints;
+
+            await supabase
+                .from(table)
+                .update({'points_xp': newXP}).eq('user_id', user.id);
+
+            print(
+                '✅ Perfil actualizado en $table: $currentXP → $newXP XP');
+            profileUpdated = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // 2. Actualizar en users_games (XP semanal, XP total y monedas)
+      final existingRecord = await supabase
+          .from('users_games')
+          .select('points_xp_totally, points_xp_weekend, coins')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existingRecord != null) {
+        final currentTotal = existingRecord['points_xp_totally'] ?? 0;
+        final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
+        final currentCoins = existingRecord['coins'] ?? 0;
+
+        final newTotal = currentTotal + experiencePoints;
+        final newWeekend = currentWeekend + experiencePoints;
+        final newCoins = currentCoins + totalCoins;
+
+        await supabase.from('users_games').update({
+          'points_xp_totally': newTotal,
+          'points_xp_weekend': newWeekend,
+          'coins': newCoins,
+        }).eq('user_id', user.id);
+
+        print(
+            '✅ users_games actualizado: +$experiencePoints XP, +$totalCoins monedas');
+        print('   📊 Totales: $newTotal XP total, $newWeekend XP semanal, $newCoins monedas');
+      } else {
+        await supabase.from('users_games').insert({
+          'user_id': user.id,
+          'nickname': 'Usuario',
+          'points_xp_totally': experiencePoints,
+          'points_xp_weekend': experiencePoints,
+          'coins': totalCoins,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
+        print('✅ Nuevo registro en users_games creado');
+      }
+
+      print('✅ Guardado completado exitosamente');
+    } catch (e) {
+      print('❌ Error al guardar puntos y monedas: $e');
+    }
   }
 
   // Métodos de control de pausa
