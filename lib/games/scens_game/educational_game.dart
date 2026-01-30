@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:refmp/games/game/dialogs/pause_dialog.dart';
+import 'package:refmp/games/game/dialogs/back_dialog.dart';
 
 /// Juego educativo que muestra una partitura y hace caer notas
 /// El estudiante debe presionar los pistones correctos sin reproducir sonido
@@ -15,6 +17,7 @@ class EducationalGamePage extends StatefulWidget {
   final String? sheetMusicImageUrl;
   final String? backgroundAudioUrl;
   final int experiencePoints; // Puntos configurados en la base de datos
+  final int coins; // Monedas configuradas en la base de datos
 
   const EducationalGamePage({
     super.key,
@@ -23,6 +26,7 @@ class EducationalGamePage extends StatefulWidget {
     this.sheetMusicImageUrl,
     this.backgroundAudioUrl,
     this.experiencePoints = 0,
+    this.coins = 0,
   });
 
   @override
@@ -628,53 +632,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     gameUpdateTimer?.cancel();
     _audioPlayer.pause();
 
-    // Mostrar diálogo de pausa
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.pause_rounded, color: Colors.blue, size: 30),
-            SizedBox(width: 10),
-            Text('Juego en Pausa'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Score: $currentScore'),
-            Text('Notas correctas: $correctNotes/$totalNotes'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _resumeGame();
-            },
-            child: Text('Reanudar',
-                style: TextStyle(color: Colors.green, fontSize: 16)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _restartGame();
-            },
-            child: Text('Reiniciar',
-                style: TextStyle(color: Colors.orange, fontSize: 16)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: Text('Salir',
-                style: TextStyle(color: Colors.red, fontSize: 16)),
-          ),
-        ],
-      ),
+    // Mostrar diálogo de pausa con el diseño correcto
+    showPauseDialog(
+      context,
+      widget.title,
+      _resumeGame,
+      _restartGame,
+      onResumeFromBack: _resumeGame,
     );
   }
 
@@ -839,22 +803,22 @@ class _EducationalGamePageState extends State<EducationalGamePage>
                           child: _buildStatCard(
                             icon: Icons.star,
                             iconColor: Colors.purple,
-                            title: 'XP',
-                            value: '+$experiencePoints',
+                            title: 'Experiencia',
+                            value: '$experiencePoints',
                             valueColor: Colors.purple,
                             isDarkMode: isDarkMode,
                           ),
                         ),
                         const SizedBox(width: 6),
 
-                        // Puntos
+                        // Monedas
                         Expanded(
                           child: _buildStatCard(
-                            icon: Icons.score_rounded,
-                            iconColor: Colors.blue,
-                            title: 'Puntos',
-                            value: '$currentScore',
-                            valueColor: Colors.blue,
+                            icon: Icons.monetization_on,
+                            iconColor: Colors.amber,
+                            title: 'Monedas',
+                            value: '${widget.coins}',
+                            valueColor: Colors.amber,
                             isDarkMode: isDarkMode,
                           ),
                         ),
@@ -1408,30 +1372,11 @@ class _EducationalGamePageState extends State<EducationalGamePage>
             child: IconButton(
               onPressed: () {
                 _pauseGame();
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (ctx) => AlertDialog(
-                    title: Text('Salir del juego'),
-                    content: Text('¿Deseas salir del juego educativo?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _resumeGame();
-                        },
-                        child: Text('Cancelar'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          Navigator.pop(context);
-                        },
-                        child:
-                            Text('Salir', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
+                showBackDialog(
+                  context,
+                  widget.title,
+                  onCancel: _resumeGame,
+                  onRestart: _restartGame,
                 );
               },
               icon: const Icon(
@@ -1471,13 +1416,14 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           ),
 
           const SizedBox(width: 15),
-          // Imagen de la partitura rotando (similar a begginer_game)
+
+          // Imagen de la partitura rotando
           if (widget.sheetMusicImageUrl != null)
             RotationTransition(
               turns: _rotationController,
               child: Container(
-                width: 55,
-                height: 55,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.blue, width: 2),
@@ -1496,12 +1442,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
                     placeholder: (context, url) => Icon(
                       Icons.music_note,
                       color: Colors.blue,
-                      size: 30,
+                      size: 25,
                     ),
                     errorWidget: (context, url, error) => Icon(
                       Icons.music_note,
                       color: Colors.grey,
-                      size: 30,
+                      size: 25,
                     ),
                   ),
                 ),
@@ -1509,51 +1455,30 @@ class _EducationalGamePageState extends State<EducationalGamePage>
             ),
           SizedBox(width: 12),
 
-          // Información del juego
+          // Título centrado en el AppBar
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.title,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+            child: Center(
+              child: Text(
+                widget.title,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      '$correctNotes/$totalNotes',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    SizedBox(width: 12),
-                    Icon(Icons.analytics, color: Colors.blue, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      '${accuracy.toStringAsFixed(0)}%',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
 
-          // Puntuación
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          // Monedas y XP en fila horizontal
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Monedas
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.amber.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
@@ -1562,72 +1487,45 @@ class _EducationalGamePageState extends State<EducationalGamePage>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.stars, color: Colors.amber, size: 16),
+                    Icon(Icons.monetization_on, color: Colors.amber, size: 16),
                     SizedBox(width: 4),
                     Text(
-                      '$currentScore',
+                      '${widget.coins}',
                       style: TextStyle(
                         color: Colors.amber,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(height: 6),
-              // Barra de progreso
+              SizedBox(width: 8),
+              // Experiencia
               Container(
-                width: 100,
-                height: 4,
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(2),
+                  color: Colors.purple.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.purple, width: 1),
                 ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: audioDurationMs > 0
-                      ? ((DateTime.now().millisecondsSinceEpoch -
-                                  gameStartTime) /
-                              audioDurationMs)
-                          .clamp(0.0, 1.0)
-                      : 0.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blue,
-                      borderRadius: BorderRadius.circular(2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.stars, color: Colors.purple, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      '${widget.experiencePoints}',
+                      style: TextStyle(
+                        color: Colors.purple,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ],
-          ),
-          SizedBox(width: 12),
-
-          // Botón de pausa
-          Container(
-            width: 45,
-            height: 45,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.1),
-              border:
-                  Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-            ),
-            child: IconButton(
-              icon: Icon(Icons.pause, color: Colors.white, size: 24),
-              padding: EdgeInsets.zero,
-              onPressed: () {
-                setState(() {
-                  isGamePaused = !isGamePaused;
-                });
-                if (isGamePaused) {
-                  _audioPlayer.pause();
-                } else {
-                  _audioPlayer.resume();
-                }
-              },
-            ),
           ),
         ],
       ),

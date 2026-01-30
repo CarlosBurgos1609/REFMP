@@ -6,6 +6,7 @@ void showBackDialog(
   BuildContext context,
   String songName, {
   VoidCallback? onCancel,
+  VoidCallback? onRestart,
 }) {
   showDialog(
     context: context,
@@ -119,6 +120,32 @@ void showBackDialog(
                 ),
               ),
               const SizedBox(height: 12),
+
+              // Botón "Volver a intentar" (Amarillo)
+              if (onRestart != null)
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 2,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Cerrar diálogo
+                    onRestart(); // Reiniciar juego
+                  },
+                  child: const Text(
+                    'Volver a intentar',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              if (onRestart != null) const SizedBox(height: 12),
 
               // Botón "Cancelar" (Rojo)
               OutlinedButton(

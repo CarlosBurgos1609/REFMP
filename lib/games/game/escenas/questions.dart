@@ -30,6 +30,7 @@ class _QuestionPageState extends State<QuestionPage> {
   int totalExperience = 0;
   int videoExperiencePoints = 0; // Puntos específicos para videos
   int gameExperiencePoints = 0; // Puntos específicos para juegos
+  int gameCoins = 0; // Monedas configuradas para el juego
   String? gameSongId; // ID de la canción del juego
   String? gameSongName; // Nombre de la canción del juego
   String? gameSongImageUrl; // URL de la imagen de la canción
@@ -224,7 +225,7 @@ class _QuestionPageState extends State<QuestionPage> {
         response = await supabase
             .from('game')
             .select(
-                'experience_points, title, sheet_music_image_url, background_audio_url')
+                'experience_points, coins, title, sheet_music_image_url, background_audio_url')
             .eq('sublevel_id', widget.sublevelId)
             .maybeSingle();
 
@@ -248,6 +249,7 @@ class _QuestionPageState extends State<QuestionPage> {
       if (response != null) {
         debugPrint('✅ Datos encontrados en la tabla game');
         gameExperiencePoints = response['experience_points'] ?? 0;
+        gameCoins = response['coins'] ?? 0;
         gameTitle = response['title'];
         gameSheetMusicImageUrl = response['sheet_music_image_url'];
         gameBackgroundAudioUrl = response['background_audio_url'];
@@ -255,6 +257,7 @@ class _QuestionPageState extends State<QuestionPage> {
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         debugPrint('📊 DATOS DEL JUEGO:');
         debugPrint('⭐ Puntos XP: $gameExperiencePoints');
+        debugPrint('💰 Monedas: $gameCoins');
         debugPrint('📜 Título: $gameTitle');
         debugPrint('🎼 Partitura URL: $gameSheetMusicImageUrl');
         debugPrint('🔊 Audio URL: $gameBackgroundAudioUrl');
@@ -278,6 +281,7 @@ class _QuestionPageState extends State<QuestionPage> {
                   sheetMusicImageUrl: gameSheetMusicImageUrl,
                   backgroundAudioUrl: gameBackgroundAudioUrl,
                   experiencePoints: gameExperiencePoints,
+                  coins: gameCoins,
                 ),
               ),
             );
