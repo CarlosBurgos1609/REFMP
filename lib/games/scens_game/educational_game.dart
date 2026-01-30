@@ -163,6 +163,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       debugPrint('📦 Respuesta de la BD: $response');
 
+      // ignore: unnecessary_null_comparison, unnecessary_type_check
       if (response != null && response is List && response.isNotEmpty) {
         debugPrint('📄 Total de registros: ${response.length}');
 
@@ -311,15 +312,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         _updateGame();
       }
     });
-  }
-
-  void _startGame() {
-    debugPrint('🎮 Juego educativo activo - ya se inició en countdown');
-    // El audio y las notas ya se iniciaron durante el countdown
-    // Solo iniciamos el loop de actualización si no se hizo ya
-    if (gameUpdateTimer == null || !gameUpdateTimer!.isActive) {
-      _updateGame();
-    }
   }
 
   Future<void> _playBackgroundAudio() async {
@@ -1068,46 +1060,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     // Solo agregamos vibración háptica para feedback inmediato
     if (pressedPistons.isNotEmpty) {
       HapticFeedback.lightImpact();
-    }
-  }
-
-  void _checkOpenNotes() {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    final isTablet = screenWidth > 600;
-    final isSmallPhone = screenHeight < 700;
-
-    double hitZoneBottom;
-    if (isSmallPhone) {
-      hitZoneBottom = 110;
-    } else if (isTablet) {
-      hitZoneBottom = 150;
-    } else {
-      hitZoneBottom = 130;
-    }
-
-    final hitZoneY = screenHeight - hitZoneBottom;
-
-    for (var note in fallingNotes) {
-      if (!note.isHit && !note.isMissed) {
-        // Verificar si es una nota de aire (sin pistones)
-        if (note.gameNote.requiredPistons.isEmpty) {
-          final distance = (note.y - hitZoneY).abs();
-
-          if (distance <= 30) {
-            setState(() {
-              note.isHit = true;
-              correctNotes++;
-              totalNotes++;
-              currentScore += 100;
-            });
-            debugPrint('🌬️ Nota de aire correcta: ${note.gameNote.noteName}');
-            _showFeedback('¡Correcto!', Colors.green);
-            return;
-          }
-        }
-      }
     }
   }
 

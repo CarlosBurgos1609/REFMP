@@ -1822,9 +1822,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         return;
       }
 
-      print('💾 Guardando $experiencePoints puntos XP y $totalCoins monedas...');
+      print(
+          '💾 Guardando $experiencePoints puntos XP y $totalCoins monedas...');
 
       // 1. Actualizar en tabla de perfil del usuario (solo XP)
+      // ignore: unused_local_variable
       bool profileUpdated = false;
       List<String> tables = [
         'users',
@@ -1851,8 +1853,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 .from(table)
                 .update({'points_xp': newXP}).eq('user_id', user.id);
 
-            print(
-                '✅ Perfil actualizado en $table: $currentXP → $newXP XP');
+            print('✅ Perfil actualizado en $table: $currentXP → $newXP XP');
             profileUpdated = true;
             break;
           }
@@ -1885,7 +1886,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         print(
             '✅ users_games actualizado: +$experiencePoints XP, +$totalCoins monedas');
-        print('   📊 Totales: $newTotal XP total, $newWeekend XP semanal, $newCoins monedas');
+        print(
+            '   📊 Totales: $newTotal XP total, $newWeekend XP semanal, $newCoins monedas');
       } else {
         await supabase.from('users_games').insert({
           'user_id': user.id,
