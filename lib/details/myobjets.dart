@@ -1085,6 +1085,10 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
           debugPrint(
               'Offline mode: Loaded ${objects.length} objects, ${avatars.length} avatars, '
               '${wallpapers.length} wallpapers, ${trumpets.length} trumpets');
+          debugPrint(
+              'Offline mode - Total available: Objects=$totalAvailableObjects, '
+              'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
+              'Trumpets=$totalAvailableTrumpets');
         });
         updateFilteredItems();
         return;
@@ -1121,14 +1125,18 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       // Obtener conteos totales
       final totalAvailableObjectsResponse =
           await supabase.from('objets').select('id');
-      final totalAvailableAvatarsResponse =
-          await supabase.from('objets').select('id').eq('category', 'avatares');
-      final totalAvailableWallpapersResponse =
-          await supabase.from('objets').select('id').eq('category', 'fondos');
+      final totalAvailableAvatarsResponse = await supabase
+          .from('objets')
+          .select('id')
+          .ilike('category', 'avatares');
+      final totalAvailableWallpapersResponse = await supabase
+          .from('objets')
+          .select('id')
+          .ilike('category', 'fondos');
       final totalAvailableTrumpetsResponse = await supabase
           .from('objets')
           .select('id')
-          .eq('category', 'trompetas');
+          .ilike('category', 'trompetas');
 
       // Filtrar objetos por categoría
       final avatars = fetchedObjects
@@ -1158,6 +1166,9 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         debugPrint('Online mode: Loaded ${fetchedObjects.length} objects, '
             '${avatars.length} avatars, ${wallpapers.length} wallpapers, '
             '${trumpets.length} trumpets');
+        debugPrint('Total available: Objects=$totalAvailableObjects, '
+            'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
+            'Trumpets=$totalAvailableTrumpets');
       });
 
       // Guardar en Hive
@@ -1246,6 +1257,10 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
         debugPrint(
             'Catch block: Loaded ${objects.length} objects, ${avatars.length} avatars, '
             '${wallpapers.length} wallpapers, ${trumpets.length} trumpets');
+        debugPrint(
+            'Catch block - Total available: Objects=$totalAvailableObjects, '
+            'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
+            'Trumpets=$totalAvailableTrumpets');
       });
       updateFilteredItems();
     }
