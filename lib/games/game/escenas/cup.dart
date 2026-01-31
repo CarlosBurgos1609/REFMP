@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -14,6 +15,7 @@ import 'package:refmp/routes/navigationBar.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -42,6 +44,7 @@ class _CupPageState extends State<CupPage> {
   String? profileImageUrl;
   int _selectedIndex = 2;
   bool _isOnline = false;
+  Timer? _weeklyResetTimer;
 
   @override
   void initState() {
@@ -51,6 +54,322 @@ class _CupPageState extends State<CupPage> {
     ensureCurrentUserInUsersGames();
     // Agregar debug de la base de datos
     debugDatabaseData();
+    // Inicializar timer para verificar reset semanal
+    _initializeWeeklyResetTimer();
+    // Verificar si hay recompensas pendientes al iniciar
+    _checkPendingRewards();
+  }
+
+  @override
+  void dispose() {
+    _weeklyResetTimer?.cancel();
+    super.dispose();
+  }
+
+  void _initializeWeeklyResetTimer() {
+    // Verificar cada minuto si es domingo 23:59
+    _weeklyResetTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      _checkWeeklyReset();
+    });
+    // Verificar inmediatamente al iniciar
+    _checkWeeklyReset();
+  }
+
+  Future<void> _checkWeeklyReset() async {
+    final now = DateTime.now();
+    // Verificar si es domingo (weekday == 7) y hora 23:59
+    if (now.weekday == 7 && now.hour == 23 && now.minute == 59) {
+      debugPrint('Es domingo 23:59 - Iniciando proceso de reset semanal');
+      await _processWeeklyReset();
+    }
+  }
+
+  Future<void> _checkPendingRewards() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null || !_isOnline) return;
+
+      final box = await Hive.openBox('weekly_rewards');
+      final lastResetDate = box.get('last_reset_date_$userId');
+      final now = DateTime.now();
+      final weekStart = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday - 1));
+      final weekStartStr =
+          '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
+
+      // Si no hay fecha de último reset o es una semana diferente, verificar si hay recompensa pendiente
+      if (lastResetDate == null || lastResetDate != weekStartStr) {
+        final hasPendingReward = box.get('pending_reward_$userId', defaultValue: false);
+        if (hasPendingReward) {
+          debugPrint('Recompensa pendiente detectada para usuario $userId');
+          _showPendingRewardNotification();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking pending rewards: $e');
+    }
+  }
+
+  void _showPendingRewardNotification() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('¡Tienes una recompensa semanal disponible!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Ver',
+            textColor: Colors.white,
+            onPressed: () {
+              // Scroll al inicio o mostrar diálogo
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _processWeeklyReset() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null || !_isOnline) {
+        debugPrint('No se puede procesar reset: usuario no autenticado o sin conexión');
+        return;
+      }
+
+      debugPrint('Procesando reset semanal para usuario: $userId');
+
+      // 1. Obtener la posición del usuario en el ranking
+      final rankingData = await fetchCupData();
+      int userPosition = -1;
+      int userPoints = 0;
+      
+      for (int i = 0; i < rankingData.length; i++) {
+        if (rankingData[i]['user_id'] == userId) {
+          userPosition = i + 1; // Posición (1-indexed)
+          userPoints = rankingData[i]['points_xp_weekend'] ?? 0;
+          break;
+        }
+      }
+
+      debugPrint('Posición del usuario: $userPosition con $userPoints puntos');
+
+      // Si el usuario tiene puntos y está en el top 50, procesar recompensa
+      if (userPosition > 0 && userPosition <= 50 && userPoints > 0) {
+        await _claimWeeklyReward(userPosition);
+      } else {
+        debugPrint('Usuario no califica para recompensa: posición=$userPosition, puntos=$userPoints');
+      }
+
+      // 2. Resetear points_xp_weekend a 0
+      await supabase
+          .from('users_games')
+          .update({'points_xp_weekend': 0})
+          .eq('user_id', userId);
+      
+      debugPrint('Points_xp_weekend reseteado a 0 para usuario $userId');
+
+      // 3. Guardar fecha del último reset
+      final box = await Hive.openBox('weekly_rewards');
+      final now = DateTime.now();
+      final weekStart = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday - 1));
+      final weekStartStr =
+          '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
+      await box.put('last_reset_date_$userId', weekStartStr);
+
+      // 4. Refrescar datos
+      if (mounted) {
+        setState(() {
+          _cupFuture = fetchCupData();
+          _rewardsFuture = fetchRewardsData();
+        });
+      }
+
+      debugPrint('Reset semanal completado exitosamente');
+    } catch (e, stackTrace) {
+      debugPrint('Error en _processWeeklyReset: $e\nStack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _claimWeeklyReward(int position) async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      debugPrint('Reclamando recompensa para posición $position');
+
+      // Obtener la recompensa correspondiente a la posición
+      final rewardsData = await fetchRewardsData();
+      final reward = rewardsData.firstWhere(
+        (r) => r['position'] == position,
+        orElse: () => {
+          'position': position,
+          'object_id': null,
+          'coins_reward': _getDefaultCoins(position),
+          'has_object': false,
+          'has_coins': true,
+        },
+      );
+
+      final objectId = reward['object_id'];
+      final coinsReward = reward['coins_reward'] ?? 0;
+      final hasObject = reward['has_object'] ?? false;
+      final hasCoins = reward['has_coins'] ?? false;
+
+      debugPrint('Recompensa: objectId=$objectId, coins=$coinsReward, hasObject=$hasObject, hasCoins=$hasCoins');
+
+      int totalCoinsToGive = 0;
+      bool objectGiven = false;
+      String rewardMessage = '';
+
+      // Caso 1: Si hay objeto en la recompensa
+      if (hasObject && objectId != null) {
+        // Verificar si el usuario ya tiene el objeto
+        final userObjectsResponse = await supabase
+            .from('users_objets')
+            .select('objet_id')
+            .eq('user_id', userId)
+            .eq('objet_id', objectId)
+            .maybeSingle();
+
+        if (userObjectsResponse != null) {
+          // Ya tiene el objeto - dar 500 monedas de compensación
+          debugPrint('Usuario ya tiene el objeto $objectId - Dando 500 monedas de compensación');
+          totalCoinsToGive = 500;
+          rewardMessage = '¡Ya tienes este objeto! Recibiste 500 monedas de compensación';
+        } else {
+          // No tiene el objeto - dárselo
+          debugPrint('Agregando objeto $objectId al usuario');
+          await supabase.from('users_objets').insert({
+            'user_id': userId,
+            'objet_id': objectId,
+          });
+          objectGiven = true;
+          rewardMessage = '¡Felicidades! Has ganado un nuevo objeto';
+          
+          // Si también hay monedas adicionales, agregarlas
+          if (hasCoins && coinsReward > 0) {
+            totalCoinsToGive = coinsReward;
+            rewardMessage += ' y $coinsReward monedas';
+          }
+        }
+      } else if (hasCoins && coinsReward > 0) {
+        // Caso 2: Solo hay monedas
+        totalCoinsToGive = coinsReward;
+        rewardMessage = '¡Felicidades! Has ganado $coinsReward monedas';
+      }
+
+      // Actualizar monedas si hay que dar
+      if (totalCoinsToGive > 0) {
+        final currentCoinsResponse = await supabase
+            .from('users_games')
+            .select('coins')
+            .eq('user_id', userId)
+            .maybeSingle();
+        
+        final currentCoins = currentCoinsResponse?['coins'] ?? 0;
+        final newCoins = currentCoins + totalCoinsToGive;
+        
+        await supabase
+            .from('users_games')
+            .update({'coins': newCoins})
+            .eq('user_id', userId);
+        
+        debugPrint('Monedas actualizadas: $currentCoins -> $newCoins');
+      }
+
+      // Guardar en historial (opcional pero recomendable)
+      await supabase.from('weekly_rewards_history').insert({
+        'user_id': userId,
+        'position': position,
+        'object_id': objectGiven ? objectId : null,
+        'coins_received': totalCoinsToGive,
+        'claimed_at': DateTime.now().toIso8601String(),
+      });
+
+      // Marcar como recompensa reclamada
+      final box = await Hive.openBox('weekly_rewards');
+      await box.put('pending_reward_$userId', false);
+
+      // Mostrar notificación al usuario
+      if (mounted) {
+        _showRewardClaimedDialog(rewardMessage, objectGiven, objectId, totalCoinsToGive);
+      }
+
+      debugPrint('Recompensa reclamada exitosamente: $rewardMessage');
+    } catch (e, stackTrace) {
+      debugPrint('Error en _claimWeeklyReward: $e\nStack trace: $stackTrace');
+    }
+  }
+
+  void _showRewardClaimedDialog(String message, bool objectGiven, int? objectId, int coins) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.emoji_events, color: Colors.amber, size: 32),
+            const SizedBox(width: 8),
+            const Text('¡Recompensa Semanal!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            if (coins > 0)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/coin.png',
+                    width: 32,
+                    height: 32,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.monetization_on, size: 32, color: Colors.amber),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '+$coins',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              // Refrescar datos
+              setState(() {
+                _cupFuture = fetchCupData();
+              });
+            },
+            child: const Text(
+              'Continuar',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> debugDatabaseData() async {
