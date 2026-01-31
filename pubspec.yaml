@@ -92,6 +92,7 @@ dependencies:
   visibility_detector: ^0.4.0+2
   marquee: ^2.3.0
   flutter_image_compress: ^2.4.0
+  fl_chart: ^0.69.2
 
   # flutter_native_timezone: ^2.0.0
 

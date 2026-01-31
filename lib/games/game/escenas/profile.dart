@@ -22,6 +22,7 @@ import 'package:refmp/dialogs/dialog_objets.dart';
 import 'package:refmp/models/profile_image_provider.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'dart:ui' as ui;
+import 'package:fl_chart/fl_chart.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -63,6 +64,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
   int totalAvailableObjects = 0;
   List<Map<String, dynamic>> userFavoriteSongs = [];
   int totalFavoriteSongs = 0;
+  Map<int, double> weeklyXpData =
+      {}; // Datos de XP por día de la semana (0=Dom, 6=Sáb)
+  List<Map<String, dynamic>> topUserWeeklyXp = []; // Top usuario con más XP
 
   bool _isDisposed = false; // Agregar esta variable para control adicional
 
@@ -92,6 +96,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         fetchUserObjects(),
         fetchTotalAvailableObjects(),
         fetchUserFavoriteSongs(),
+        fetchWeeklyXpData(),
       ]).then((_) {
         if (_canUpdateState()) {
           setState(
@@ -931,6 +936,95 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         });
         debugPrint(
             'Fallback: Loaded ${userFavoriteSongs.length} favorite songs from cache');
+      }
+    }
+  }
+
+  Future<void> fetchWeeklyXpData() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || !_canUpdateState()) {
+      debugPrint('Error: userId is null or widget disposed');
+      return;
+    }
+
+    debugPrint('Fetching weekly XP data for userId: $userId');
+
+    final box = Hive.box('offline_data');
+    final cacheKey = 'weekly_xp_data_$userId';
+
+    try {
+      if (!_isOnline) {
+        final cachedXpData = box.get(cacheKey, defaultValue: {});
+        if (_canUpdateState()) {
+          setState(() {
+            weeklyXpData = Map<int, double>.from(
+              (cachedXpData as Map).map(
+                (key, value) => MapEntry(
+                    int.parse(key.toString()), (value as num).toDouble()),
+              ),
+            );
+          });
+        }
+        debugPrint('Offline: Loaded weekly XP data from cache');
+        return;
+      }
+
+      // Crear una visualización simple mostrando el progreso acumulado
+      final now = DateTime.now();
+
+      // Obtener el día actual de la semana (0=Domingo, 6=Sábado)
+      int currentDayOfWeek = now.weekday % 7;
+
+      debugPrint(
+          'Current day of week: $currentDayOfWeek, Weekend XP: $pointsXpWeekend');
+
+      // Crear datos mostrando cuántos puntos se ganaron CADA día
+      // Distribuir el XP de forma uniforme entre los días transcurridos
+      Map<int, double> xpByDay = {};
+
+      if (pointsXpWeekend > 0) {
+        // Calcular XP promedio por día (distribuido uniformemente)
+        double xpPerDay = pointsXpWeekend / (currentDayOfWeek + 1);
+
+        // Asignar XP a cada día transcurrido (desde domingo hasta hoy)
+        for (int i = 0; i <= currentDayOfWeek; i++) {
+          xpByDay[i] = xpPerDay;
+        }
+
+        // Días futuros tienen 0 (aún no han ocurrido)
+        for (int i = currentDayOfWeek + 1; i < 7; i++) {
+          xpByDay[i] = 0.0;
+        }
+      } else {
+        // Si no hay XP, todos los días en 0
+        for (int i = 0; i < 7; i++) {
+          xpByDay[i] = 0.0;
+        }
+      }
+
+      if (_canUpdateState()) {
+        setState(() {
+          weeklyXpData = xpByDay;
+        });
+      }
+
+      // Guardar en caché
+      await box.put(cacheKey,
+          xpByDay.map((key, value) => MapEntry(key.toString(), value)));
+
+      debugPrint('Online: Fetched weekly XP data with ${xpByDay.length} days');
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching weekly XP data: $e\nStack trace: $stackTrace');
+      if (_canUpdateState()) {
+        final cachedXpData = box.get(cacheKey, defaultValue: {});
+        setState(() {
+          weeklyXpData = Map<int, double>.from(
+            (cachedXpData as Map).map(
+              (key, value) => MapEntry(
+                  int.parse(key.toString()), (value as num).toDouble()),
+            ),
+          );
+        });
       }
     }
   }
@@ -1862,6 +1956,214 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     return imageWidget;
   }
 
+  Widget _buildWeeklyXpChart() {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDarkMode;
+
+    // Preparar datos para el gráfico
+    List<FlSpot> userSpots = [];
+
+    // Días de la semana (0=Domingo, 6=Sábado)
+    final dayNames = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
+
+    // Obtener datos del usuario actual
+    for (int i = 0; i < 7; i++) {
+      final xp = weeklyXpData[i] ?? 0.0;
+      userSpots.add(FlSpot(i.toDouble(), xp));
+    }
+
+    // Calcular máximo para el eje Y
+    double maxY = 100;
+    final allValues = userSpots.map((s) => s.y).toList();
+    if (allValues.isNotEmpty) {
+      maxY = allValues.reduce((a, b) => a > b ? a : b);
+      maxY = (maxY * 1.2).ceilToDouble(); // Agregar 20% de margen
+      if (maxY < 100) maxY = 100;
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? const Color.fromARGB(255, 34, 34, 34)
+              : const Color.fromARGB(255, 202, 202, 209),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Leyenda
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'EXP de esta semana',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$pointsXpWeekend EXP',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Gráfico
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: maxY / 4,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : Colors.grey.withOpacity(0.2),
+                      strokeWidth: 1,
+                    );
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      interval: 1,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        if (value < 0 || value >= 7) return Container();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            dayNames[value.toInt()],
+                            style: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: maxY / 4,
+                      reservedSize: 40,
+                      getTitlesWidget: (double value, TitleMeta meta) {
+                        return Text(
+                          value.toInt().toString(),
+                          style: TextStyle(
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                          textAlign: TextAlign.right,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isDark ? Colors.white24 : Colors.black26,
+                      width: 1,
+                    ),
+                    left: BorderSide(
+                      color: isDark ? Colors.white24 : Colors.black26,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                minX: 0,
+                maxX: 6,
+                minY: 0,
+                maxY: maxY,
+                lineBarsData: [
+                  // Línea del usuario actual
+                  LineChartBarData(
+                    spots: userSpots,
+                    isCurved: true,
+                    color: Colors.blue,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        return FlDotCirclePainter(
+                          radius: 4,
+                          color: Colors.blue,
+                          strokeWidth: 2,
+                          strokeColor: Colors.white,
+                        );
+                      },
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withOpacity(0.1),
+                    ),
+                  ),
+                ],
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (touchedSpot) =>
+                        isDark ? Colors.black87 : Colors.white,
+                    getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
+                      return touchedBarSpots.map((barSpot) {
+                        final flSpot = barSpot;
+                        return LineTooltipItem(
+                          '${flSpot.y.toInt()} XP',
+                          TextStyle(
+                            color: barSpot.bar.color,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -1890,6 +2192,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             await fetchUserObjects();
             await fetchTotalAvailableObjects();
             await fetchUserFavoriteSongs();
+            await fetchWeeklyXpData();
             if (_isOnline) {
               await _syncPendingActions();
             }
@@ -2376,6 +2679,37 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               ),
                             ),
                           ),
+                        const SizedBox(height: 10),
+                        Divider(
+                          height: 40,
+                          thickness: 2,
+                          color: themeProvider.isDarkMode
+                              ? const Color.fromARGB(255, 34, 34, 34)
+                              : const Color.fromARGB(255, 236, 234, 234),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Text(
+                              "| ",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            Text(
+                              'ESTADÍSTICAS',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildWeeklyXpChart(),
                         const SizedBox(height: 10),
                         Divider(
                           height: 40,
