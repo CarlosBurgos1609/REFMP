@@ -88,8 +88,19 @@ class _SettingsPage extends State<SettingsPage> {
                   }
                   // No modificar remember_me, mantenerlo como está
 
-                  // Cerrar sesión en Supabase Auth
-                  await Supabase.instance.client.auth.signOut();
+                  // Cerrar sesión en Supabase Auth con timeout
+                  try {
+                    await Supabase.instance.client.auth.signOut().timeout(
+                      const Duration(seconds: 2),
+                      onTimeout: () {
+                        // Si tarda más de 2 segundos, continuar de todas formas
+                        debugPrint('SignOut timeout, continuando...');
+                      },
+                    );
+                  } catch (e) {
+                    debugPrint('Error en signOut: $e');
+                    // Continuar aunque falle
+                  }
 
                   // Limpiar el cache de roles
                   Menu.clearRoleCache();

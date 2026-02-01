@@ -152,133 +152,135 @@ class _LearningPageState extends State<LearningPage> {
         return Dialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icono
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_add_rounded,
-                    color: Colors.blue,
-                    size: 48,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Título
-                const Text(
-                  '¡Bienvenido!',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Subtítulo
-                Text(
-                  'Elige un nombre para tu perfil de jugador',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Campo de texto
-                TextField(
-                  controller: nicknameController,
-                  maxLength: 14,
-                  textCapitalization: TextCapitalization.words,
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: 'Tu nickname (máx. 14 caracteres)',
-                    hintStyle: TextStyle(color: Colors.grey[400]),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icono
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      shape: BoxShape.circle,
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Colors.blue, width: 2),
+                    child: const Icon(
+                      Icons.person_add_rounded,
+                      color: Colors.blue,
+                      size: 48,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Título
+                  const Text(
+                    '¡Bienvenido!',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
                     ),
-                    counterText: '',
-                    prefixIcon: const Icon(Icons.edit, color: Colors.blue),
                   ),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 8),
+
+                  // Subtítulo
+                  Text(
+                    'Elige un nombre para tu perfil de jugador',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Botón de confirmar
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final nickname = nicknameController.text.trim();
-                      if (nickname.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Por favor ingresa un nickname'),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                        return;
-                      }
-
-                      if (nickname.length > 14) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                'El nickname debe tener máximo 14 caracteres'),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                        return;
-                      }
-
-                      await _registerNewUser(nickname);
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
+                  // Campo de texto
+                  TextField(
+                    controller: nicknameController,
+                    maxLength: 14,
+                    textCapitalization: TextCapitalization.words,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      hintText: 'Tu nickname (máx. 14 caracteres)',
+                      hintStyle: TextStyle(color: Colors.grey[400]),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
                       ),
-                      elevation: 2,
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.blue, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      counterText: '',
+                      prefixIcon: const Icon(Icons.edit, color: Colors.blue),
                     ),
-                    child: const Text(
-                      'Comenzar',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Botón de confirmar
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final nickname = nicknameController.text.trim();
+                        if (nickname.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Por favor ingresa un nickname'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (nickname.length > 14) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'El nickname debe tener máximo 14 caracteres'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        await _registerNewUser(nickname);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      child: const Text(
+                        'Comenzar',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -446,9 +448,9 @@ class _LearningPageState extends State<LearningPage> {
   }
 
   // Cache del instrument ID para evitar consultas repetidas
-  String? _cachedInstrumentId;
+  dynamic _cachedInstrumentId;
 
-  Future<String?> _getInstrumentId() async {
+  Future<dynamic> _getInstrumentId() async {
     if (_cachedInstrumentId != null) return _cachedInstrumentId;
 
     final response = await supabase
