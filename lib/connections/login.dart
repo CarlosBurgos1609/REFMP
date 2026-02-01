@@ -52,7 +52,7 @@ class LoginConnections {
         'message': 'Usuario autenticado, pero no registrado en ninguna tabla'
       };
     } catch (e) {
-      return {'success': false, 'message': 'Error inesperado: ${e.toString()}'};
+      return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
     }
   }
 }
