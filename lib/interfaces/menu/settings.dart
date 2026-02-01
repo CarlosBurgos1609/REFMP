@@ -4,6 +4,8 @@ import 'package:refmp/interfaces/init.dart';
 import 'package:refmp/routes/menu.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.title});
@@ -61,14 +63,58 @@ class _SettingsPage extends State<SettingsPage> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                // Limpia el cache de roles antes de cerrar sesión
-                Menu.clearRoleCache();
-                Menu.currentIndexNotifier.value = 0;
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const Init()),
+              onPressed: () async {
+                // Cerrar el diálogo
+                Navigator.of(context).pop();
+
+                // Mostrar indicador de carga
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(color: Colors.blue),
+                  ),
                 );
+
+                try {
+                  // Limpiar credenciales guardadas en SharedPreferences
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('saved_email');
+                  await prefs.remove('saved_password');
+                  await prefs.setBool('remember_me', false);
+
+                  // Cerrar sesión en Supabase Auth
+                  await Supabase.instance.client.auth.signOut();
+
+                  // Limpiar el cache de roles
+                  Menu.clearRoleCache();
+                  Menu.currentIndexNotifier.value = 0;
+
+                  // Cerrar indicador de carga
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+
+                    // Navegar a Init
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const Init()),
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  // Cerrar indicador de carga
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+
+                    // Mostrar error
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error al cerrar sesión: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text(
                 "Cerrar",

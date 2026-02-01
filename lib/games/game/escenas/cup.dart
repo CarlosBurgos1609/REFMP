@@ -99,7 +99,8 @@ class _CupPageState extends State<CupPage> {
 
       // Si no hay fecha de último reset o es una semana diferente, verificar si hay recompensa pendiente
       if (lastResetDate == null || lastResetDate != weekStartStr) {
-        final hasPendingReward = box.get('pending_reward_$userId', defaultValue: false);
+        final hasPendingReward =
+            box.get('pending_reward_$userId', defaultValue: false);
         if (hasPendingReward) {
           debugPrint('Recompensa pendiente detectada para usuario $userId');
           _showPendingRewardNotification();
@@ -133,7 +134,8 @@ class _CupPageState extends State<CupPage> {
     try {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null || !_isOnline) {
-        debugPrint('No se puede procesar reset: usuario no autenticado o sin conexión');
+        debugPrint(
+            'No se puede procesar reset: usuario no autenticado o sin conexión');
         return;
       }
 
@@ -143,7 +145,7 @@ class _CupPageState extends State<CupPage> {
       final rankingData = await fetchCupData();
       int userPosition = -1;
       int userPoints = 0;
-      
+
       for (int i = 0; i < rankingData.length; i++) {
         if (rankingData[i]['user_id'] == userId) {
           userPosition = i + 1; // Posición (1-indexed)
@@ -158,15 +160,15 @@ class _CupPageState extends State<CupPage> {
       if (userPosition > 0 && userPosition <= 50 && userPoints > 0) {
         await _claimWeeklyReward(userPosition);
       } else {
-        debugPrint('Usuario no califica para recompensa: posición=$userPosition, puntos=$userPoints');
+        debugPrint(
+            'Usuario no califica para recompensa: posición=$userPosition, puntos=$userPoints');
       }
 
       // 2. Resetear points_xp_weekend a 0
       await supabase
           .from('users_games')
-          .update({'points_xp_weekend': 0})
-          .eq('user_id', userId);
-      
+          .update({'points_xp_weekend': 0}).eq('user_id', userId);
+
       debugPrint('Points_xp_weekend reseteado a 0 para usuario $userId');
 
       // 3. Guardar fecha del último reset
@@ -217,7 +219,8 @@ class _CupPageState extends State<CupPage> {
       final hasObject = reward['has_object'] ?? false;
       final hasCoins = reward['has_coins'] ?? false;
 
-      debugPrint('Recompensa: objectId=$objectId, coins=$coinsReward, hasObject=$hasObject, hasCoins=$hasCoins');
+      debugPrint(
+          'Recompensa: objectId=$objectId, coins=$coinsReward, hasObject=$hasObject, hasCoins=$hasCoins');
 
       int totalCoinsToGive = 0;
       bool objectGiven = false;
@@ -235,9 +238,11 @@ class _CupPageState extends State<CupPage> {
 
         if (userObjectsResponse != null) {
           // Ya tiene el objeto - dar 500 monedas de compensación
-          debugPrint('Usuario ya tiene el objeto $objectId - Dando 500 monedas de compensación');
+          debugPrint(
+              'Usuario ya tiene el objeto $objectId - Dando 500 monedas de compensación');
           totalCoinsToGive = 500;
-          rewardMessage = '¡Ya tienes este objeto! Recibiste 500 monedas de compensación';
+          rewardMessage =
+              '¡Ya tienes este objeto! Recibiste 500 monedas de compensación';
         } else {
           // No tiene el objeto - dárselo
           debugPrint('Agregando objeto $objectId al usuario');
@@ -247,7 +252,7 @@ class _CupPageState extends State<CupPage> {
           });
           objectGiven = true;
           rewardMessage = '¡Felicidades! Has ganado un nuevo objeto';
-          
+
           // Si también hay monedas adicionales, agregarlas
           if (hasCoins && coinsReward > 0) {
             totalCoinsToGive = coinsReward;
@@ -267,15 +272,14 @@ class _CupPageState extends State<CupPage> {
             .select('coins')
             .eq('user_id', userId)
             .maybeSingle();
-        
+
         final currentCoins = currentCoinsResponse?['coins'] ?? 0;
         final newCoins = currentCoins + totalCoinsToGive;
-        
+
         await supabase
             .from('users_games')
-            .update({'coins': newCoins})
-            .eq('user_id', userId);
-        
+            .update({'coins': newCoins}).eq('user_id', userId);
+
         debugPrint('Monedas actualizadas: $currentCoins -> $newCoins');
       }
 
@@ -294,7 +298,8 @@ class _CupPageState extends State<CupPage> {
 
       // Mostrar notificación al usuario
       if (mounted) {
-        _showRewardClaimedDialog(rewardMessage, objectGiven, objectId, totalCoinsToGive);
+        _showRewardClaimedDialog(
+            rewardMessage, objectGiven, objectId, totalCoinsToGive);
       }
 
       debugPrint('Recompensa reclamada exitosamente: $rewardMessage');
@@ -303,7 +308,8 @@ class _CupPageState extends State<CupPage> {
     }
   }
 
-  void _showRewardClaimedDialog(String message, bool objectGiven, int? objectId, int coins) {
+  void _showRewardClaimedDialog(
+      String message, bool objectGiven, int? objectId, int coins) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -333,8 +339,10 @@ class _CupPageState extends State<CupPage> {
                     'assets/images/coin.png',
                     width: 32,
                     height: 32,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.monetization_on, size: 32, color: Colors.amber),
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.monetization_on,
+                        size: 32,
+                        color: Colors.amber),
                   ),
                   const SizedBox(width: 8),
                   Text(
