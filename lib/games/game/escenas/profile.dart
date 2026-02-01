@@ -91,19 +91,28 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       _initializeUserData();
       fetchUserProfileImage();
       fetchWallpaper();
-      Future.wait([
-        fetchUserAchievements(),
-        fetchUserObjects(),
-        fetchTotalAvailableObjects(),
-        fetchUserFavoriteSongs(),
-        fetchWeeklyXpData(),
-      ]).then((_) {
-        if (_canUpdateState()) {
-          setState(
-              () {}); // Asegurar la actualización de la UI solo si es seguro
-        }
+
+      // Primero obtener los puntos, luego cargar la gráfica
+      fetchTotalCoins().then((_) {
+        if (!_canUpdateState()) return;
+
+        // Después de obtener los puntos, cargar el resto de datos incluyendo la gráfica
+        Future.wait([
+          fetchUserAchievements(),
+          fetchUserObjects(),
+          fetchTotalAvailableObjects(),
+          fetchUserFavoriteSongs(),
+          fetchWeeklyXpData(), // Ahora se ejecuta después de tener los puntos
+        ]).then((_) {
+          if (_canUpdateState()) {
+            setState(
+                () {}); // Asegurar la actualización de la UI solo si es seguro
+          }
+        }).catchError((error) {
+          debugPrint('Error in initialization: $error');
+        });
       }).catchError((error) {
-        debugPrint('Error in initialization: $error');
+        debugPrint('Error fetching coins: $error');
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -759,9 +768,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       final response = await supabase
           .from('users_objets')
           .select(
-              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
+              'objet_id, created_at, objets!inner(id, image_url, name, category, description, price)')
           .eq('user_id', userId)
-          .order('created_at', ascending: false, referencedTable: 'objets')
+          .order('created_at', ascending: false)
           .limit(3);
 
       if (!_canUpdateState()) return;
@@ -778,7 +787,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           'category': objet['category'] ?? 'otros',
           'description': objet['description'] ?? 'Sin descripción',
           'price': objet['price'] ?? 0,
-          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
+          'created_at': item['created_at'] ?? DateTime.now().toIso8601String(),
         });
       }
 
@@ -979,21 +988,18 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
           'Current day of week: $currentDayOfWeek, Weekend XP: $pointsXpWeekend');
 
       // Crear datos mostrando cuántos puntos se ganaron CADA día
-      // Distribuir el XP de forma uniforme entre los días transcurridos
+      // Solo mostrar puntos para el día actual (no acumulativos)
       Map<int, double> xpByDay = {};
 
       if (pointsXpWeekend > 0) {
-        // Calcular XP promedio por día (distribuido uniformemente)
-        double xpPerDay = pointsXpWeekend / (currentDayOfWeek + 1);
+        // Solo asignar los puntos al día actual
+        xpByDay[currentDayOfWeek] = pointsXpWeekend.toDouble();
 
-        // Asignar XP a cada día transcurrido (desde domingo hasta hoy)
-        for (int i = 0; i <= currentDayOfWeek; i++) {
-          xpByDay[i] = xpPerDay;
-        }
-
-        // Días futuros tienen 0 (aún no han ocurrido)
-        for (int i = currentDayOfWeek + 1; i < 7; i++) {
-          xpByDay[i] = 0.0;
+        // Todos los demás días tienen 0
+        for (int i = 0; i < 7; i++) {
+          if (i != currentDayOfWeek) {
+            xpByDay[i] = 0.0;
+          }
         }
       } else {
         // Si no hay XP, todos los días en 0
