@@ -141,6 +141,24 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  Future<bool> _isGuest() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return false;
+
+      final response = await supabase
+          .from('guests')
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      debugPrint('Error al verificar si es invitado: $e');
+      return false;
+    }
+  }
+
   Future<void> fetchUserProfileImage() async {
     try {
       final user = supabase.auth.currentUser;
@@ -167,7 +185,8 @@ class _HomePageState extends State<HomePage>
         'graduates',
         'teachers',
         'advisors',
-        'parents'
+        'parents',
+        'guests'
       ];
 
       for (String table in tables) {
@@ -591,174 +610,216 @@ class _HomePageState extends State<HomePage>
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Divider(
-                    height: 40,
-                    thickness: 2,
-                    color: themeProvider.isDarkMode
-                        ? const Color.fromARGB(255, 34, 34, 34)
-                        : const Color.fromARGB(255, 236, 234, 234),
-                  ),
-                  const Text(
-                    "Aprende y Juega",
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue),
-                  ),
-                  const SizedBox(height: 20),
-                  games.isEmpty
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Colors.blue))
-                      : Column(
-                          children: [
-                            SizedBox(
-                              height: 400,
-                              child: PageView.builder(
-                                controller: _gamesPageController,
-                                itemCount: games.length,
-                                onPageChanged: (index) {
-                                  setState(() {
-                                    _currentGamePage = index;
-                                  });
-                                },
-                                itemBuilder: (context, index) {
-                                  final game = games[index];
-                                  final description =
-                                      game['description'] ?? 'Sin descripción';
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10),
-                                    child: Card(
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16)),
-                                      elevation: 4,
-                                      child: Column(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                    top: Radius.circular(16)),
-                                            child: game['image'] != null &&
-                                                    game['image'].isNotEmpty
-                                                ? CachedNetworkImage(
-                                                    imageUrl: game['image'],
-                                                    cacheManager:
-                                                        CustomCacheManager
-                                                            .instance,
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                    height: 180,
-                                                    placeholder: (context,
-                                                            url) =>
-                                                        const Center(
-                                                            child:
-                                                                CircularProgressIndicator(
-                                                                    color: Colors
-                                                                        .blue)),
-                                                    errorWidget: (context, url,
-                                                            error) =>
-                                                        const Icon(
+                  // Aprende y Juega - Solo visible si NO es invitado
+                  FutureBuilder<bool>(
+                    future: _isGuest(),
+                    builder: (context, snapshot) {
+                      // Si es invitado, no mostrar nada
+                      if (snapshot.hasData && snapshot.data == true) {
+                        return const SizedBox.shrink();
+                      }
+
+                      // Si no es invitado, mostrar la sección
+                      return Column(
+                        children: [
+                          Divider(
+                            height: 40,
+                            thickness: 2,
+                            color: themeProvider.isDarkMode
+                                ? const Color.fromARGB(255, 34, 34, 34)
+                                : const Color.fromARGB(255, 236, 234, 234),
+                          ),
+                          const Text(
+                            "Aprende y Juega",
+                            style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue),
+                          ),
+                          const SizedBox(height: 20),
+                          games.isEmpty
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                      color: Colors.blue))
+                              : Column(
+                                  children: [
+                                    SizedBox(
+                                      height: 400,
+                                      child: PageView.builder(
+                                        controller: _gamesPageController,
+                                        itemCount: games.length,
+                                        onPageChanged: (index) {
+                                          setState(() {
+                                            _currentGamePage = index;
+                                          });
+                                        },
+                                        itemBuilder: (context, index) {
+                                          final game = games[index];
+                                          final description =
+                                              game['description'] ??
+                                                  'Sin descripción';
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10),
+                                            child: Card(
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          16)),
+                                              elevation: 4,
+                                              child: Column(
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        const BorderRadius
+                                                            .vertical(
+                                                            top:
+                                                                Radius.circular(
+                                                                    16)),
+                                                    child: game['image'] !=
+                                                                null &&
+                                                            game['image']
+                                                                .isNotEmpty
+                                                        ? CachedNetworkImage(
+                                                            imageUrl:
+                                                                game['image'],
+                                                            cacheManager:
+                                                                CustomCacheManager
+                                                                    .instance,
+                                                            fit: BoxFit.cover,
+                                                            width:
+                                                                double.infinity,
+                                                            height: 180,
+                                                            placeholder: (context,
+                                                                    url) =>
+                                                                const Center(
+                                                                    child: CircularProgressIndicator(
+                                                                        color: Colors
+                                                                            .blue)),
+                                                            errorWidget: (context,
+                                                                    url,
+                                                                    error) =>
+                                                                const Icon(
+                                                                    Icons
+                                                                        .image_not_supported,
+                                                                    size: 80),
+                                                          )
+                                                        : const Icon(
                                                             Icons
                                                                 .image_not_supported,
                                                             size: 80),
-                                                  )
-                                                : const Icon(
-                                                    Icons.image_not_supported,
-                                                    size: 80),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.all(12.0),
-                                            child: Column(
-                                              children: [
-                                                const SizedBox(height: 10),
-                                                Text(
-                                                  game['name'] ??
-                                                      "Nombre desconocido",
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.blue,
                                                   ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  description,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      fontSize: 15),
-                                                ),
-                                                const SizedBox(height: 15),
-                                                ElevatedButton.icon(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        Colors.blue,
-                                                    shape:
-                                                        RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        10)),
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 20,
-                                                        vertical: 12),
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            12.0),
+                                                    child: Column(
+                                                      children: [
+                                                        const SizedBox(
+                                                            height: 10),
+                                                        Text(
+                                                          game['name'] ??
+                                                              "Nombre desconocido",
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.blue,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 8),
+                                                        Text(
+                                                          description,
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize: 15),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 15),
+                                                        ElevatedButton.icon(
+                                                          style: ElevatedButton
+                                                              .styleFrom(
+                                                            backgroundColor:
+                                                                Colors.blue,
+                                                            shape: RoundedRectangleBorder(
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            10)),
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    horizontal:
+                                                                        20,
+                                                                    vertical:
+                                                                        12),
+                                                          ),
+                                                          onPressed: () {
+                                                            Navigator.push(
+                                                              context,
+                                                              MaterialPageRoute(
+                                                                builder: (_) =>
+                                                                    LearningPage(
+                                                                        instrumentName:
+                                                                            game['name']),
+                                                              ),
+                                                            );
+                                                          },
+                                                          icon: const Icon(
+                                                              Icons
+                                                                  .sports_esports_rounded,
+                                                              color:
+                                                                  Colors.white),
+                                                          label: const Text(
+                                                              "Aprende y Juega",
+                                                              style: TextStyle(
+                                                                  color: Colors
+                                                                      .white)),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
-                                                  onPressed: () {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            LearningPage(
-                                                                instrumentName:
-                                                                    game[
-                                                                        'name']),
-                                                      ),
-                                                    );
-                                                  },
-                                                  icon: const Icon(
-                                                      Icons
-                                                          .sports_esports_rounded,
-                                                      color: Colors.white),
-                                                  label: const Text(
-                                                      "Aprende y Juega",
-                                                      style: TextStyle(
-                                                          color: Colors.white)),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          );
+                                        },
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(
-                                games.length,
-                                (index) => AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 4),
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: _currentGamePage == index
-                                        ? Colors.blue
-                                        : Colors.grey[400],
-                                  ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: List.generate(
+                                        games.length,
+                                        (index) => AnimatedContainer(
+                                          duration:
+                                              const Duration(milliseconds: 300),
+                                          margin: const EdgeInsets.symmetric(
+                                              horizontal: 4),
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: _currentGamePage == index
+                                                ? Colors.blue
+                                                : Colors.grey[400],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

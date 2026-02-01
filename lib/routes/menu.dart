@@ -181,7 +181,8 @@ class Menu {
         'graduates',
         'teachers',
         'advisors',
-        'parents'
+        'parents',
+        'guests'
       ];
       for (final table in tables) {
         final response = await supabase
@@ -202,18 +203,17 @@ class Menu {
     final user = supabase.auth.currentUser;
     if (user == null) return false;
 
-    final isDirector = await supabase
-        .from('directors')
-        .select()
-        .eq('user_id', user.id)
-        .maybeSingle();
-    final isUser = await supabase
-        .from('users')
-        .select()
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    return isDirector != null || isUser != null;
+    // Pueden ver: teachers, users (admin), advisors
+    final tables = ['teachers', 'users', 'advisors'];
+    for (final table in tables) {
+      final response = await supabase
+          .from(table)
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (response != null) return true;
+    }
+    return false;
   }
 
   static Future<bool>? _canSeeTeachersMenuFuture;
@@ -243,15 +243,35 @@ class Menu {
     return isParent != null;
   }
 
+  static Future<bool> _isGuest() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    final isGuest = await supabase
+        .from('guests')
+        .select()
+        .eq('user_id', user.id)
+        .maybeSingle();
+    return isGuest != null;
+  }
+
   static Future<bool>? _isStudentOrParentFuture;
   static Future<bool> _getIsStudentOrParentFuture() {
     _isStudentOrParentFuture ??= _isStudentOrParent();
     return _isStudentOrParentFuture!;
   }
 
+  static Future<bool>? _isGuestFuture;
+  static Future<bool> _getIsGuestFuture() {
+    _isGuestFuture ??= _isGuest();
+    return _isGuestFuture!;
+  }
+
   static void clearRoleCache() {
     _isStudentOrParentFuture = null;
     _canSeeTeachersMenuFuture = null;
+    _isGuestFuture = null;
   }
 
   static ValueListenableBuilder<int> buildDrawer(BuildContext context) {
@@ -373,107 +393,108 @@ class Menu {
                   ),
                 ),
               ),
-              // Main menu items
-              ...[0, 1, 2, 4, 5, 12].map((index) {
-                return ListTile(
-                  leading: Icon(Menu._getIcon(index),
-                      color: currentIndex == index ? Colors.blue : Colors.grey),
-                  title: Text(
-                    _titles[index]!,
-                    style: TextStyle(
-                      color: currentIndex == index ? Colors.blue : Colors.grey,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Menu._navigateToPage(context, index);
-                  },
-                );
-              }),
-
-              // User-related items solo si NO es estudiante ni padre
+              // Main menu items - hide 'Aprende' (12) for guests
               FutureBuilder<bool>(
-                future: Menu._getIsStudentOrParentFuture(),
+                future: Menu._getIsGuestFuture(),
+                builder: (context, snapshot) {
+                  final isGuest = snapshot.hasData && snapshot.data == true;
+                  final menuItems = isGuest
+                      ? [0, 1, 2, 4, 5] // Sin 'Aprende' para invitados
+                      : [0, 1, 2, 4, 5, 12]; // Con 'Aprende' para otros
+
+                  return Column(
+                    children: menuItems.map((index) {
+                      return ListTile(
+                        leading: Icon(Menu._getIcon(index),
+                            color: currentIndex == index
+                                ? Colors.blue
+                                : Colors.grey),
+                        title: Text(
+                          _titles[index]!,
+                          style: TextStyle(
+                            color: currentIndex == index
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Menu._navigateToPage(context, index);
+                        },
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+
+              // User-related items solo para teachers, users (admin) y advisors
+              FutureBuilder<bool>(
+                future: Menu._getCanSeeTeachersMenuFuture(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const SizedBox.shrink();
                   }
-                  if (snapshot.hasData && snapshot.data == false) {
-                    // Verificar si puede ver profesores para decidir si mostrar la sección
-                    return FutureBuilder<bool>(
-                      future: Menu._getCanSeeTeachersMenuFuture(),
-                      builder: (context, teachersSnapshot) {
-                        if (teachersSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final canSeeTeachers = teachersSnapshot.hasData &&
-                            teachersSnapshot.data == true;
-
-                        // Mostrar sección de usuarios si puede ver estudiantes, egresados o profesores
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Divider(),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 8),
-                              child: Text(
-                                "Usuarios",
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                  if (snapshot.hasData && snapshot.data == true) {
+                    // Mostrar sección de usuarios para teachers, users (admin) y advisors
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(),
+                        const Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                          child: Text(
+                            "Usuarios",
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        // Estudiantes y Egresados
+                        ...[9, 10].map((index) {
+                          return ListTile(
+                            leading: Icon(Menu._getIcon(index),
+                                color: currentIndex == index
+                                    ? Colors.blue
+                                    : Colors.grey),
+                            title: Text(
+                              _titles[index]!,
+                              style: TextStyle(
+                                color: currentIndex == index
+                                    ? Colors.blue
+                                    : Colors.grey,
                               ),
                             ),
-                            // Estudiantes y Egresados (siempre visibles si NO es estudiante ni padre)
-                            ...[9, 10].map((index) {
-                              return ListTile(
-                                leading: Icon(Menu._getIcon(index),
-                                    color: currentIndex == index
-                                        ? Colors.blue
-                                        : Colors.grey),
-                                title: Text(
-                                  _titles[index]!,
-                                  style: TextStyle(
-                                    color: currentIndex == index
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  Menu._navigateToPage(context, index);
-                                },
-                              );
-                            }),
-                            // Profesores solo si tiene permiso
-                            if (canSeeTeachers)
-                              ListTile(
-                                leading: Icon(Menu._getIcon(13),
-                                    color: currentIndex == 13
-                                        ? Colors.blue
-                                        : Colors.grey),
-                                title: Text(
-                                  _titles[13]!,
-                                  style: TextStyle(
-                                    color: currentIndex == 13
-                                        ? Colors.blue
-                                        : Colors.grey,
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  Menu._navigateToPage(context, 13);
-                                },
-                              ),
-                          ],
-                        );
-                      },
+                            onTap: () {
+                              Navigator.pop(context);
+                              Menu._navigateToPage(context, index);
+                            },
+                          );
+                        }),
+                        // Profesores
+                        ListTile(
+                          leading: Icon(Menu._getIcon(13),
+                              color: currentIndex == 13
+                                  ? Colors.blue
+                                  : Colors.grey),
+                          title: Text(
+                            _titles[13]!,
+                            style: TextStyle(
+                              color: currentIndex == 13
+                                  ? Colors.blue
+                                  : Colors.grey,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Menu._navigateToPage(context, 13);
+                          },
+                        ),
+                      ],
                     );
                   }
-                  // Si es estudiante o padre, no muestra nada
+                  // Si no tiene permiso, no muestra nada
                   return const SizedBox.shrink();
                 },
               ),
@@ -543,6 +564,7 @@ class RoleAwareDrawer extends StatefulWidget {
 class _RoleAwareDrawerState extends State<RoleAwareDrawer> {
   bool? isStudentOrParent;
   bool? canSeeTeachers;
+  bool? isGuest;
 
   @override
   void initState() {
@@ -553,17 +575,21 @@ class _RoleAwareDrawerState extends State<RoleAwareDrawer> {
   Future<void> _loadRoles() async {
     final isSP = await Menu._isStudentOrParent();
     final canSeeT = await Menu._canSeeTeachersMenu();
+    final isG = await Menu._isGuest();
     if (mounted) {
       setState(() {
         isStudentOrParent = isSP;
         canSeeTeachers = canSeeT;
+        isGuest = isG;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isStudentOrParent == null || canSeeTeachers == null) {
+    if (isStudentOrParent == null ||
+        canSeeTeachers == null ||
+        isGuest == null) {
       // Loader solo mientras se consulta el rol
       return const Drawer(
         child: Center(child: CircularProgressIndicator(color: Colors.blue)),
@@ -681,27 +707,41 @@ class _RoleAwareDrawerState extends State<RoleAwareDrawer> {
               ),
             ),
           ),
-          // Main menu items
-          ...[0, 1, 2, 4, 5, 12].map((index) {
-            return ListTile(
-              leading: Icon(Menu._getIcon(index),
-                  color:
-                      widget.currentIndex == index ? Colors.blue : Colors.grey),
-              title: Text(
-                Menu._titles[index]!,
-                style: TextStyle(
-                  color:
-                      widget.currentIndex == index ? Colors.blue : Colors.grey,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Menu._navigateToPage(context, index);
-              },
-            );
-          }),
+          // Main menu items - hide 'Aprende' (12) for guests
+          FutureBuilder<bool>(
+            future: Menu._getIsGuestFuture(),
+            builder: (context, snapshot) {
+              final isGuest = snapshot.hasData && snapshot.data == true;
+              final menuItems = isGuest
+                  ? [0, 1, 2, 4, 5] // Sin 'Aprende' para invitados
+                  : [0, 1, 2, 4, 5, 12]; // Con 'Aprende' para otros
+
+              return Column(
+                children: menuItems.map((index) {
+                  return ListTile(
+                    leading: Icon(Menu._getIcon(index),
+                        color: widget.currentIndex == index
+                            ? Colors.blue
+                            : Colors.grey),
+                    title: Text(
+                      Menu._titles[index]!,
+                      style: TextStyle(
+                        color: widget.currentIndex == index
+                            ? Colors.blue
+                            : Colors.grey,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Menu._navigateToPage(context, index);
+                    },
+                  );
+                }).toList(),
+              );
+            },
+          ),
           const Divider(),
-          if (isStudentOrParent == false) ...[
+          if (canSeeTeachers == true) ...[
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
               child: Text(
@@ -732,23 +772,20 @@ class _RoleAwareDrawerState extends State<RoleAwareDrawer> {
                 },
               );
             }),
-            if (canSeeTeachers == true)
-              ListTile(
-                leading: Icon(Menu._getIcon(13),
-                    color:
-                        widget.currentIndex == 13 ? Colors.blue : Colors.grey),
-                title: Text(
-                  Menu._titles[13]!,
-                  style: TextStyle(
-                    color:
-                        widget.currentIndex == 13 ? Colors.blue : Colors.grey,
-                  ),
+            ListTile(
+              leading: Icon(Menu._getIcon(13),
+                  color: widget.currentIndex == 13 ? Colors.blue : Colors.grey),
+              title: Text(
+                Menu._titles[13]!,
+                style: TextStyle(
+                  color: widget.currentIndex == 13 ? Colors.blue : Colors.grey,
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Menu._navigateToPage(context, 13);
-                },
               ),
+              onTap: () {
+                Navigator.pop(context);
+                Menu._navigateToPage(context, 13);
+              },
+            ),
           ],
           // Notifications, contacts, settings, and info
           ...[3, 6, 8, 11].map((index) {

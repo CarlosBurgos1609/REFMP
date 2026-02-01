@@ -43,7 +43,8 @@ class _ProfilePageState extends State<ProfilePage> {
     'graduates',
     'teachers',
     'advisors',
-    'parents'
+    'parents',
+    'guests'
   ];
 
   @override
@@ -243,7 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         const SizedBox(height: 20),
                         GestureDetector(
-                          onTap: _pickImage,
+                          onTap: userTable == 'guests' ? null : _pickImage,
                           child: CircleAvatar(
                             radius: 80,
                             backgroundColor: Colors.blue,
@@ -275,15 +276,16 @@ class _ProfilePageState extends State<ProfilePage> {
                                           ),
                                   ),
                                 ),
-                                const Align(
-                                  alignment: Alignment.bottomRight,
-                                  child: CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: Colors.white,
-                                    child: Icon(Icons.camera_alt,
-                                        color: Colors.blue),
+                                if (userTable != 'guests')
+                                  const Align(
+                                    alignment: Alignment.bottomRight,
+                                    child: CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Colors.white,
+                                      child: Icon(Icons.camera_alt,
+                                          color: Colors.blue),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
@@ -300,25 +302,26 @@ class _ProfilePageState extends State<ProfilePage> {
                       ],
                     ),
                   ),
-        floatingActionButton: userTable == null || userTable == 'offline'
-            ? null
-            : FloatingActionButton(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditProfilePage(
-                        userProfile: userProfile,
-                        userTable: userTable!,
-                      ),
-                    ),
-                  );
-                  await _loadProfileData();
-                },
-                backgroundColor: Colors.blue,
-                child: const Icon(Icons.edit, color: Colors.white),
-                tooltip: 'Editar perfil',
-              ),
+        floatingActionButton:
+            userTable == null || userTable == 'offline' || userTable == 'guests'
+                ? null
+                : FloatingActionButton(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EditProfilePage(
+                            userProfile: userProfile,
+                            userTable: userTable!,
+                          ),
+                        ),
+                      );
+                      await _loadProfileData();
+                    },
+                    backgroundColor: Colors.blue,
+                    child: const Icon(Icons.edit, color: Colors.white),
+                    tooltip: 'Editar perfil',
+                  ),
       ),
     );
   }
