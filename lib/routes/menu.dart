@@ -257,6 +257,7 @@ class Menu {
   }
 
   static Future<bool>? _isStudentOrParentFuture;
+  // ignore: unused_element
   static Future<bool> _getIsStudentOrParentFuture() {
     _isStudentOrParentFuture ??= _isStudentOrParent();
     return _isStudentOrParentFuture!;

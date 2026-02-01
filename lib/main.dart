@@ -115,7 +115,19 @@ class MyApp extends StatelessWidget {
   }
 
   Future<AuthState?> _getInitialScreen() async {
+    // Iniciar timer y verificar sesión en paralelo
+    final startTime = DateTime.now();
     final session = Supabase.instance.client.auth.currentSession;
+
+    // Calcular tiempo transcurrido
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    final minimumDelay = 3500; // 3.5 segundos
+
+    // Si tardó menos del tiempo mínimo, esperar la diferencia
+    if (elapsed < minimumDelay) {
+      await Future.delayed(Duration(milliseconds: minimumDelay - elapsed));
+    }
+
     return AuthState(session: session);
   }
 }

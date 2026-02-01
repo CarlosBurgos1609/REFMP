@@ -77,11 +77,16 @@ class _SettingsPage extends State<SettingsPage> {
                 );
 
                 try {
-                  // Limpiar credenciales guardadas en SharedPreferences
+                  // Limpiar credenciales guardadas en SharedPreferences solo si NO tiene recuerdame
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('saved_email');
-                  await prefs.remove('saved_password');
-                  await prefs.setBool('remember_me', false);
+                  final rememberMe = prefs.getBool('remember_me') ?? false;
+
+                  if (!rememberMe) {
+                    // Solo borrar si NO está marcado recuerdame
+                    await prefs.remove('saved_email');
+                    await prefs.remove('saved_password');
+                  }
+                  // No modificar remember_me, mantenerlo como está
 
                   // Cerrar sesión en Supabase Auth
                   await Supabase.instance.client.auth.signOut();
