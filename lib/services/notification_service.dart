@@ -292,4 +292,43 @@ class NotificationService {
       payload: payload,
     );
   }
-}
+
+  /// Envía notificaciones push a todos los usuarios después de crear contenido
+  static Future<void> sendNotificationToAllUsers(int notificationId) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // 1. Obtener la notificación creada
+      final notification = await supabase
+          .from('notifications')
+          .select()
+          .eq('id', notificationId)
+          .single();
+
+      // 2. Obtener todos los tokens FCM activos
+      final tokens = await supabase
+          .from('fcm_tokens')
+          .select('token, user_id')
+          .not('token', 'is', null);
+
+      if (tokens.isEmpty) {
+        debugPrint('⚠️ No hay tokens FCM para enviar notificaciones');
+        return;
+      }
+
+      // 3. Crear user_notifications para cada usuario
+      final userNotifications = tokens
+          .map((t) => {
+                'user_id': t['user_id'],
+                'notification_id': notificationId,
+                'is_read': false,
+                'is_deleted': false,
+                'created_at': DateTime.now().toIso8601String(),
+              })
+          .toList();
+
+      await supabase.from('user_notifications').insert(userNotifications);
+
+      debugPrint('✅ Notificación enviada a ${tokens.length} usuarios');
+    } catch (e) {
+      debugPrint('❌ Error enviando notific

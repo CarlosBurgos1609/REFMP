@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:refmp/services/notification_service.dart';
 
 class HeadquartersForm extends StatefulWidget {
   const HeadquartersForm({super.key});
@@ -110,13 +111,33 @@ class _HeadquartersFormState extends State<HeadquartersForm> {
       }
 
       // Crear notificación para todos los usuarios
-      await supabase.from('notifications').insert({
-        'title': 'Nueva Sede: ${_nameController.text}',
-        'message': 'Se agregó una nueva sede. Da clic para ver más detalles',
-        'icon': 'home',
-        'redirect_to': '/sedes',
-        'image': imageUrl,
-      });
+      try {
+        final notifResponse = await supabase
+            .from('notifications')
+            .insert({
+              'title': 'Nueva Sede: ${_nameController.text}',
+              'message':
+                  'Se agregó una nueva sede. Da clic para ver más detalles',
+              'icon': 'home',
+              'redirect_to': '/sedes',
+              'image': imageUrl,
+            })
+            .select()
+            .single();
+
+        // Enviar notificaciones push a todos los usuarios
+        if (notifResponse['id'] != null) {
+          final notifId = notifResponse['id'] is int
+              ? notifResponse['id'] as int
+              : int.tryParse(notifResponse['id'].toString()) ?? 0;
+
+          if (notifId > 0) {
+            await NotificationService.sendNotificationToAllUsers(notifId);
+          }
+        }
+      } catch (notifError) {
+        debugPrint('⚠️ Error al enviar notificaciones: $notifError');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sede creada exitosamente')),
@@ -350,11 +371,4 @@ class _HeadquartersFormState extends State<HeadquartersForm> {
                         ),
                         onPressed: _submitForm,
                       ),
-                    ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+     

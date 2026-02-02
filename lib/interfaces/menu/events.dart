@@ -275,7 +275,11 @@ class _EventsPageState extends State<EventsPage> {
         final notificationsResponse = await supabase
             .from('notifications')
             .select('id')
-            .like('redirect_to', '%/event_detail/$eventId%');
+            .like('redirect_to', '%/events?eventId=$eventId%');
+
+        debugPrint('🔍 Buscando notificaciones para evento ID: $eventId');
+        debugPrint(
+            '📋 Notificaciones encontradas: ${notificationsResponse.length}');
 
         if (notificationsResponse.isNotEmpty) {
           // Eliminar user_notifications primero
@@ -294,10 +298,13 @@ class _EventsPageState extends State<EventsPage> {
                 .eq('id', notification['id']);
           }
 
-          debugPrint('Notificaciones relacionadas eliminadas correctamente');
+          debugPrint(
+              '✅ ${notificationsResponse.length} notificaciones relacionadas eliminadas correctamente');
+        } else {
+          debugPrint('ℹ️ No se encontraron notificaciones para este evento');
         }
       } catch (e) {
-        debugPrint('Error al eliminar notificaciones relacionadas: $e');
+        debugPrint('❌ Error al eliminar notificaciones relacionadas: $e');
         // Continuar con la eliminación del evento aunque falle la eliminación de notificaciones
       }
 
@@ -973,6 +980,4 @@ class _EventsPageState extends State<EventsPage> {
 
 class EventDataSource extends CalendarDataSource {
   EventDataSource(List<Appointment> appointments) {
-    this.appointments = appointments;
-  }
-}
+    this.appointm

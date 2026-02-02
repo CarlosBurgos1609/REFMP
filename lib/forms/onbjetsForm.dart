@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
+import 'package:refmp/services/notification_service.dart';
 
 class ObjetsForm extends StatefulWidget {
   const ObjetsForm({super.key});
@@ -241,14 +242,33 @@ class _ObjetsFormState extends State<ObjetsForm> {
           .single();
 
       // Crear notificación para todos los usuarios
-      await supabase.from('notifications').insert({
-        'title': 'Nuevo Objeto: ${_nameController.text}',
-        'message':
-            'Disponible por ${_priceController.text} monedas. Da clic para ver más detalles',
-        'icon': 'star',
-        'redirect_to': '/home',
-        'image': imageUrl,
-      });
+      try {
+        final notifResponse = await supabase
+            .from('notifications')
+            .insert({
+              'title': 'Nuevo Objeto: ${_nameController.text}',
+              'message':
+                  'Disponible por ${_priceController.text} monedas. Da clic para ver más detalles',
+              'icon': 'star',
+              'redirect_to': '/home',
+              'image': imageUrl,
+            })
+            .select()
+            .single();
+
+        // Enviar notificaciones push a todos los usuarios
+        if (notifResponse['id'] != null) {
+          final notifId = notifResponse['id'] is int
+              ? notifResponse['id'] as int
+              : int.tryParse(notifResponse['id'].toString()) ?? 0;
+
+          if (notifId > 0) {
+            await NotificationService.sendNotificationToAllUsers(notifId);
+          }
+        }
+      } catch (notifError) {
+        debugPrint('⚠️ Error al enviar notificaciones: $notifError');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Objeto creado exitosamente')),
@@ -462,11 +482,4 @@ class _ObjetsFormState extends State<ObjetsForm> {
                         ),
                         onPressed: _submitForm,
                       ),
-                    ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+                    

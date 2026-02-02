@@ -978,33 +978,68 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         return;
       }
 
-      // Crear una visualización simple mostrando el progreso acumulado
+      // Obtener el inicio de la semana (domingo)
       final now = DateTime.now();
+      final currentWeekday = now.weekday % 7; // 0=Domingo, 6=Sábado
+      final startOfWeek = now.subtract(Duration(days: currentWeekday));
+      final startOfWeekMidnight =
+          DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
 
-      // Obtener el día actual de la semana (0=Domingo, 6=Sábado)
-      int currentDayOfWeek = now.weekday % 7;
+      // Nombres de los días para debug
+      final dayNames = [
+        'Domingo',
+        'Lunes',
+        'Martes',
+        'Miércoles',
+        'Jueves',
+        'Viernes',
+        'Sábado'
+      ];
 
-      debugPrint(
-          'Current day of week: $currentDayOfWeek, Weekend XP: $pointsXpWeekend');
+      debugPrint('Start of week: $startOfWeekMidnight (${dayNames[0]})');
+      debugPrint('Current day: ${dayNames[currentWeekday]}');
 
-      // Crear datos mostrando cuántos puntos se ganaron CADA día
-      // Solo mostrar puntos para el día actual (no acumulativos)
-      Map<int, double> xpByDay = {};
+      // Consultar el historial de partidas de esta semana
+      final response = await supabase
+          .from('games_history')
+          .select('points_xp, created_at')
+          .eq('user_id', userId)
+          .gte('created_at', startOfWeekMidnight.toIso8601String())
+          .order('created_at', ascending: true);
 
-      if (pointsXpWeekend > 0) {
-        // Solo asignar los puntos al día actual
-        xpByDay[currentDayOfWeek] = pointsXpWeekend.toDouble();
+      debugPrint('Query result: ${response.length} games found');
 
-        // Todos los demás días tienen 0
-        for (int i = 0; i < 7; i++) {
-          if (i != currentDayOfWeek) {
-            xpByDay[i] = 0.0;
-          }
+      // Agrupar puntos por día de la semana
+      Map<int, double> xpByDay = {
+        0: 0.0, // Domingo
+        1: 0.0, // Lunes
+        2: 0.0, // Martes
+        3: 0.0, // Miércoles
+        4: 0.0, // Jueves
+        5: 0.0, // Viernes
+        6: 0.0, // Sábado
+      };
+
+      if (response.isEmpty) {
+        // Si no hay historial, mostrar los puntos del día actual
+        debugPrint(
+            '⚠️ No games_history found, using pointsXpWeekend for current day');
+        if (pointsXpWeekend > 0) {
+          xpByDay[currentWeekday] = pointsXpWeekend.toDouble();
+          debugPrint(
+              'Showing $pointsXpWeekend XP on current day (${dayNames[currentWeekday]})');
         }
       } else {
-        // Si no hay XP, todos los días en 0
-        for (int i = 0; i < 7; i++) {
-          xpByDay[i] = 0.0;
+        // Procesar historial de juegos
+        for (var game in response) {
+          final createdAt = DateTime.parse(game['created_at']);
+          final dayOfWeek = createdAt.weekday % 7; // 0=Domingo, 6=Sábado
+          final points = (game['points_xp'] as num?)?.toDouble() ?? 0.0;
+
+          xpByDay[dayOfWeek] = (xpByDay[dayOfWeek] ?? 0.0) + points;
+
+          debugPrint(
+              'Game on ${dayNames[dayOfWeek]}: +$points XP -> Total: ${xpByDay[dayOfWeek]}');
         }
       }
 
@@ -1018,7 +1053,10 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       await box.put(cacheKey,
           xpByDay.map((key, value) => MapEntry(key.toString(), value)));
 
-      debugPrint('Online: Fetched weekly XP data with ${xpByDay.length} days');
+      debugPrint('Online: Fetched weekly XP data:');
+      xpByDay.forEach((day, xp) {
+        debugPrint('  ${dayNames[day]}: $xp XP');
+      });
     } catch (e, stackTrace) {
       debugPrint('Error fetching weekly XP data: $e\nStack trace: $stackTrace');
       if (_canUpdateState()) {
@@ -1973,9 +2011,11 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     final dayNames = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
 
     // Obtener datos del usuario actual
+    debugPrint('📊 Building chart with weeklyXpData: $weeklyXpData');
     for (int i = 0; i < 7; i++) {
       final xp = weeklyXpData[i] ?? 0.0;
       userSpots.add(FlSpot(i.toDouble(), xp));
+      debugPrint('  Day $i (${dayNames[i]}): $xp XP');
     }
 
     // Calcular máximo para el eje Y
@@ -1986,6 +2026,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       maxY = (maxY * 1.2).ceilToDouble(); // Agregar 20% de margen
       if (maxY < 100) maxY = 100;
     }
+    debugPrint('📊 Chart maxY: $maxY');
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 0),

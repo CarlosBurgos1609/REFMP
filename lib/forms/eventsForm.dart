@@ -13,6 +13,7 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:refmp/widgets/location_picker.dart';
+import 'package:refmp/services/notification_service.dart';
 
 class AddEventForm extends StatefulWidget {
   const AddEventForm({Key? key}) : super(key: key);
@@ -168,14 +169,33 @@ class _AddEventFormState extends State<AddEventForm> {
       }
 
       // Crear notificación para todos los usuarios
-      await supabase.from('notifications').insert({
-        'title': '🎉📅 Nuevo Evento ‼️: ${nameController.text}',
-        'message':
-            'Se creó nuevo evento para el día ${DateFormat('dd/MM/yyyy').format(date)}. Da clic al evento para ver más detalles',
-        'icon': 'event',
-        'redirect_to': '/events?eventId=$eventId',
-        'image': imageUrl,
-      });
+      try {
+        final notifResponse = await supabase.from('notifications').insert({
+          'title': '🎉📅 Nuevo Evento ‼️: ${nameController.text}',
+          'message':
+              'Se creó nuevo evento para el día ${DateFormat('dd/MM/yyyy').format(date)}. Da clic al evento para ver más detalles',
+          'icon': 'event',
+          'redirect_to': '/events?eventId=$eventId',
+          'image': imageUrl,
+        }).select().single();
+
+        debugPrint('📩 Notificación creada: ${notifResponse['id']}');
+
+        // Enviar notificaciones push a todos los usuarios
+        if (notifResponse['id'] != null) {
+          final notifId = notifResponse['id'] is int 
+              ? notifResponse['id'] as int 
+              : int.tryParse(notifResponse['id'].toString()) ?? 0;
+          
+          if (notifId > 0) {
+            await NotificationService.sendNotificationToAllUsers(notifId);
+            debugPrint('✅ Notificaciones push enviadas');
+          }
+        }
+      } catch (notifError) {
+        debugPrint('⚠️ Error al enviar notificaciones: $notifError');
+        // Continuar aunque falle la notificación
+      }
 
       debugPrint('✅ Evento creado exitosamente: $eventId');
 

@@ -364,137 +364,146 @@ class _NotificationPageState extends State<NotificationPage> {
           ),
         ),
         drawer: Menu.buildDrawer(context),
-        body: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-              Divider(
-                height: 40,
-                thickness: 2,
-                color: themeProvider.isDarkMode
-                    ? const Color.fromARGB(255, 34, 34, 34)
-                    : const Color.fromARGB(255, 236, 234, 234),
-              ),
-              Text(
-                "Historial de notificaciones",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+        body: RefreshIndicator(
+          onRefresh: fetchNotificationHistory,
+          color: Colors.blue,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                Divider(
+                  height: 40,
+                  thickness: 2,
                   color: themeProvider.isDarkMode
-                      ? const Color.fromARGB(255, 255, 252, 252)
-                      : const Color.fromARGB(255, 33, 150, 243),
+                      ? const Color.fromARGB(255, 34, 34, 34)
+                      : const Color.fromARGB(255, 236, 234, 234),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: _notifications.isEmpty
-                    ? const Center(child: Text("No tienes notificaciones"))
-                    : ListView.builder(
-                        itemCount: _notifications.length,
-                        itemBuilder: (context, index) {
-                          final notif = _notifications[index];
-                          final notifData = notif['notifications'];
+                Text(
+                  "Historial de notificaciones",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: themeProvider.isDarkMode
+                        ? const Color.fromARGB(255, 255, 252, 252)
+                        : const Color.fromARGB(255, 33, 150, 243),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _notifications.isEmpty
+                      ? const Center(child: Text("No tienes notificaciones"))
+                      : ListView.builder(
+                          itemCount: _notifications.length,
+                          itemBuilder: (context, index) {
+                            final notif = _notifications[index];
+                            final notifData = notif['notifications'];
 
-                          final iconKey = notifData['icon']?.toString() ?? '';
-                          final icon = iconMap[iconKey] ?? Icons.notifications;
-                          final imageUrl = notifData['image'];
+                            final iconKey = notifData['icon']?.toString() ?? '';
+                            final icon =
+                                iconMap[iconKey] ?? Icons.notifications;
+                            final imageUrl = notifData['image'];
 
-                          return Dismissible(
-                            key: Key(notif['id'].toString()),
-                            background: Container(
-                              color: Colors.redAccent,
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.only(left: 20),
-                              child:
-                                  const Icon(Icons.delete, color: Colors.white),
-                            ),
-                            secondaryBackground: Container(
-                              color: Colors.redAccent,
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 20),
-                              child:
-                                  const Icon(Icons.delete, color: Colors.white),
-                            ),
-                            onDismissed: (_) {
-                              deleteNotification(notif['id']);
-                            },
-                            child: Card(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
+                            return Dismissible(
+                              key: Key(notif['id'].toString()),
+                              background: Container(
+                                color: Colors.redAccent,
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.only(left: 20),
+                                child: const Icon(Icons.delete,
+                                    color: Colors.white),
                               ),
-                              elevation: 4,
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              child: ListTile(
-                                leading: Icon(icon, color: Colors.blue),
-                                title: Text(
-                                  notifData['title'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
+                              secondaryBackground: Container(
+                                color: Colors.redAccent,
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 20),
+                                child: const Icon(Icons.delete,
+                                    color: Colors.white),
+                              ),
+                              onDismissed: (_) {
+                                deleteNotification(notif['id']);
+                              },
+                              child: Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
                                 ),
-                                subtitle: Text(notifData['message'] ?? ''),
-                                trailing: imageUrl != null
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Image.network(
-                                          imageUrl,
-                                          width: 40,
-                                          height: 40,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    : null,
-                                onTap: () {
-                                  final redirect = notifData['redirect_to']
-                                      ?.toString()
-                                      .trim();
+                                elevation: 4,
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                child: ListTile(
+                                  leading: Icon(icon, color: Colors.blue),
+                                  title: Text(
+                                    notifData['title'] ?? '',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(notifData['message'] ?? ''),
+                                  trailing: imageUrl != null
+                                      ? ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          child: Image.network(
+                                            imageUrl,
+                                            width: 40,
+                                            height: 40,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : null,
+                                  onTap: () {
+                                    final redirect = notifData['redirect_to']
+                                        ?.toString()
+                                        .trim();
 
-                                  if (redirect == null || redirect.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              "Ruta de redirección no disponible")),
-                                    );
-                                    return;
-                                  }
+                                    if (redirect == null || redirect.isEmpty) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                "Ruta de redirección no disponible")),
+                                      );
+                                      return;
+                                    }
 
-                                  // Extraer la ruta base (antes del ?) y los parámetros
-                                  final baseRoute = redirect.split('?').first;
+                                    // Extraer la ruta base (antes del ?) y los parámetros
+                                    final baseRoute = redirect.split('?').first;
 
-                                  final redirectToIndex = {
-                                    '/home': 1,
-                                    '/profile': 2,
-                                    '/headquarters': 3,
-                                    '/intrumentos': 4,
-                                    '/events': 5,
-                                    '/students': 6,
-                                  };
+                                    final redirectToIndex = {
+                                      '/home': 1,
+                                      '/profile': 2,
+                                      '/headquarters': 3,
+                                      '/intrumentos': 4,
+                                      '/events': 5,
+                                      '/students': 6,
+                                    };
 
-                                  // Verificar si la ruta base existe
-                                  if (redirectToIndex.containsKey(baseRoute)) {
-                                    Menu.currentIndexNotifier.value =
-                                        redirectToIndex[baseRoute]!;
+                                    // Verificar si la ruta base existe
+                                    if (redirectToIndex
+                                        .containsKey(baseRoute)) {
+                                      Menu.currentIndexNotifier.value =
+                                          redirectToIndex[baseRoute]!;
 
-                                    // Usar la ruta completa (con parámetros) para navegación
-                                    Navigator.pushReplacementNamed(
-                                      context,
-                                      redirect, // Usar la ruta completa con parámetros
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              "Ruta de redirección no válida: $redirect")),
-                                    );
-                                  }
-                                },
+                                      // Usar la ruta completa (con parámetros) para navegación
+                                      Navigator.pushReplacementNamed(
+                                        context,
+                                        redirect, // Usar la ruta completa con parámetros
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                "Ruta de redirección no válida: $redirect")),
+                                      );
+                                    }
+                                  },
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
