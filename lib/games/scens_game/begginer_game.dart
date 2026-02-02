@@ -233,6 +233,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       150.0; // REDUCIDO: pixels por segundo para mejor control
   @Deprecated(
       'Ya no se usa - la detección ahora es basada en distancia del centro')
+  // ignore: unused_field
   static const double hitTolerance =
       80.0; // AUMENTADO: Tolerancia para hits más fáciles con la nueva velocidad
 

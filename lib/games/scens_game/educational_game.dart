@@ -282,6 +282,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _startLogoTimer() {
+    // Iniciar audio ANTES del countdown para que tenga tiempo de cargar
+    if (widget.backgroundAudioUrl != null) {
+      _playBackgroundAudio();
+      debugPrint('🎵 Audio iniciado durante logo screen');
+    }
+
     logoTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
@@ -294,12 +300,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _startCountdown() {
-    // Iniciar audio de fondo DURANTE el countdown
-    if (widget.backgroundAudioUrl != null) {
-      _playBackgroundAudio();
-      debugPrint('🎵 Audio iniciado durante countdown');
-    }
-
+    // El audio ya fue iniciado durante el logo screen
     countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (countdownNumber > 1) {
         setState(() {
@@ -1264,30 +1265,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   Widget _buildGameScreen() {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Partitura de fondo (más visible)
-          if (widget.sheetMusicImageUrl != null)
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.4, // Más visible
-                child: CachedNetworkImage(
-                  imageUrl: widget.sheetMusicImageUrl!,
-                  fit: BoxFit.contain,
-                  placeholder: (context, url) => Center(
-                    child: CircularProgressIndicator(color: Colors.blue),
-                  ),
-                  errorWidget: (context, url, error) => Center(
-                    child: Icon(Icons.music_note,
-                        size: 50, color: Colors.grey[800]),
-                  ),
-                ),
-              ),
-            ),
-
-          // Área del juego con gradiente más suave
+          // Área del juego
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -1309,6 +1293,45 @@ class _EducationalGamePageState extends State<EducationalGamePage>
               ],
             ),
           ),
+
+          // Partitura posicionada entre el header y la zona de hit
+          if (widget.sheetMusicImageUrl != null)
+            Positioned(
+              top: 80, // Debajo del header
+              left: 20,
+              right: 20,
+              height: screenHeight * 0.4, // 40% de la altura - más grande
+              child: Opacity(
+                opacity: 0.6, // Más visible pero no obstruye
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20), // Borde redondeado
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.blue.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(18), // Ajustado para el borde
+                      child: CachedNetworkImage(
+                        imageUrl: widget.sheetMusicImageUrl!,
+                        fit: BoxFit.contain,
+                        placeholder: (context, url) => Center(
+                          child: CircularProgressIndicator(color: Colors.blue),
+                        ),
+                        errorWidget: (context, url, error) => Center(
+                          child: Icon(Icons.music_note,
+                              size: 50, color: Colors.grey[800]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // Controles de pistones en la parte inferior
           Positioned(
