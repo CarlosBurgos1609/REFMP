@@ -21,9 +21,6 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp();
 
-  // Initialize Notification Service
-  NotificationService.init(navigatorKey);
-
   // Initialize Hive
   await Hive.initFlutter();
   await Hive.openBox('offline_data');
@@ -37,6 +34,9 @@ void main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtaHl1b2dleGdnaGludmZnb3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg4MTI3NDEsImV4cCI6MjA1NDM4ODc0MX0.jRXmFC75jhyOMa1FJ8bw9__cbAua8erwJkYODn_YckM',
   );
+
+  // Initialize Notification Service (DESPUÉS de Supabase)
+  await NotificationService.init(navigatorKey);
 
   runApp(
     MultiProvider(

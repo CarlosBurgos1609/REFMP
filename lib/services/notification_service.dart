@@ -5,20 +5,30 @@ import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+// Handler para notificaciones en segundo plano
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint(
+      '📩 [Background] Notificación recibida: ${message.notification?.title}');
+}
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+  static final FirebaseMessaging _firebaseMessaging =
+      FirebaseMessaging.instance;
 
   static Timer? _pollingTimer;
   static bool _isPollingActive = false;
 
-  static void init(GlobalKey<NavigatorState> navigatorKey) {
-    const androidInit = AndroidInitializationSettings(
-        '@mipmap/ic_launcher'); // usa el ícono existente
+  static Future<void> init(GlobalKey<NavigatorState> navigatorKey) async {
+    // Inicializar notificaciones locales
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
 
-    flutterLocalNotificationsPlugin.initialize(
+    await flutterLocalNotificationsPlugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
         final payload = response.payload;
@@ -27,6 +37,98 @@ class NotificationService {
         }
       },
     );
+
+    // Configurar Firebase Cloud Messaging
+    await _initializeFirebaseMessaging(navigatorKey);
+  }
+
+  static Future<void> _initializeFirebaseMessaging(
+      GlobalKey<NavigatorState> navigatorKey) async {
+    // Solicitar permisos para notificaciones
+    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      debugPrint('✅ Permisos de notificaciones concedidos');
+    } else {
+      debugPrint('⚠️ Permisos de notificaciones denegados');
+    }
+
+    // Obtener y guardar el token FCM
+    String? token = await _firebaseMessaging.getToken();
+    if (token != null) {
+      debugPrint('🔑 FCM Token: $token');
+      await _saveFCMToken(token);
+    }
+
+    // Escuchar cambios en el token
+    _firebaseMessaging.onTokenRefresh.listen(_saveFCMToken);
+
+    // Handler para notificaciones en segundo plano
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // Handler para notificaciones cuando la app está abierta
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint(
+          '📨 [Foreground] Notificación recibida: ${message.notification?.title}');
+
+      if (message.notification != null) {
+        showNotification(
+          id: message.hashCode & 0x7FFFFFFF,
+          title: message.notification!.title ?? 'Sin título',
+          message: message.notification!.body ?? 'Sin mensaje',
+          imageUrl: message.notification?.android?.imageUrl,
+          payload: message.data['redirect_to'],
+        );
+      }
+    });
+
+    // Handler cuando se toca una notificación y la app estaba cerrada
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint('🔔 Notificación tocada (app en segundo plano)');
+      final redirectTo = message.data['redirect_to'];
+      if (redirectTo != null && navigatorKey.currentState != null) {
+        navigatorKey.currentState!.pushNamed(redirectTo);
+      }
+    });
+
+    // Verificar si la app se abrió desde una notificación
+    RemoteMessage? initialMessage =
+        await _firebaseMessaging.getInitialMessage();
+    if (initialMessage != null) {
+      debugPrint('🚀 App abierta desde notificación');
+      final redirectTo = initialMessage.data['redirect_to'];
+      if (redirectTo != null) {
+        Future.delayed(const Duration(seconds: 1), () {
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamed(redirectTo);
+          }
+        });
+      }
+    }
+  }
+
+  /// Guarda el token FCM en Supabase
+  static Future<void> _saveFCMToken(String token) async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Guardar en una tabla de tokens (necesitas crear esta tabla)
+      await Supabase.instance.client.from('fcm_tokens').upsert({
+        'user_id': userId,
+        'token': token,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('✅ Token FCM guardado en Supabase');
+    } catch (e) {
+      debugPrint('❌ Error guardando token FCM: $e');
+    }
   }
 
   /// Inicia el polling automático cada 30 segundos
