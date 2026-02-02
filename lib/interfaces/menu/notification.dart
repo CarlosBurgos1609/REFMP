@@ -330,6 +330,7 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    // ignore: unused_local_variable
     final routeBuilderMap = {
       '/home': () => const HomePage(title: 'Inicio'),
       '/profile': () => const ProfilePage(title: 'Perfil'),
