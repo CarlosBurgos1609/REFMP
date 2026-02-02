@@ -170,23 +170,27 @@ class _AddEventFormState extends State<AddEventForm> {
 
       // Crear notificación para todos los usuarios
       try {
-        final notifResponse = await supabase.from('notifications').insert({
-          'title': '🎉📅 Nuevo Evento ‼️: ${nameController.text}',
-          'message':
-              'Se creó nuevo evento para el día ${DateFormat('dd/MM/yyyy').format(date)}. Da clic al evento para ver más detalles',
-          'icon': 'event',
-          'redirect_to': '/events?eventId=$eventId',
-          'image': imageUrl,
-        }).select().single();
+        final notifResponse = await supabase
+            .from('notifications')
+            .insert({
+              'title': '🎉📅 Nuevo Evento ‼️: ${nameController.text}',
+              'message':
+                  'Se creó nuevo evento para el día ${DateFormat('dd/MM/yyyy').format(date)}. Da clic al evento para ver más detalles',
+              'icon': 'event',
+              'redirect_to': '/events?eventId=$eventId',
+              'image': imageUrl,
+            })
+            .select()
+            .single();
 
         debugPrint('📩 Notificación creada: ${notifResponse['id']}');
 
         // Enviar notificaciones push a todos los usuarios
         if (notifResponse['id'] != null) {
-          final notifId = notifResponse['id'] is int 
-              ? notifResponse['id'] as int 
+          final notifId = notifResponse['id'] is int
+              ? notifResponse['id'] as int
               : int.tryParse(notifResponse['id'].toString()) ?? 0;
-          
+
           if (notifId > 0) {
             await NotificationService.sendNotificationToAllUsers(notifId);
             debugPrint('✅ Notificaciones push enviadas');

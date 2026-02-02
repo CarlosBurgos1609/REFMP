@@ -980,4 +980,6 @@ class _EventsPageState extends State<EventsPage> {
 
 class EventDataSource extends CalendarDataSource {
   EventDataSource(List<Appointment> appointments) {
-    this.appointm
+    this.appointments = appointments;
+  }
+}

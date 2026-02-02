@@ -482,4 +482,11 @@ class _ObjetsFormState extends State<ObjetsForm> {
                         ),
                         onPressed: _submitForm,
                       ),
-                    
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

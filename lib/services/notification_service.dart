@@ -331,4 +331,7 @@ class NotificationService {
 
       debugPrint('✅ Notificación enviada a ${tokens.length} usuarios');
     } catch (e) {
-      debugPrint('❌ Error enviando notific
+      debugPrint('❌ Error enviando notificaciones a usuarios: $e');
+    }
+  }
+}

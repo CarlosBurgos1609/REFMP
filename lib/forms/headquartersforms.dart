@@ -371,4 +371,11 @@ class _HeadquartersFormState extends State<HeadquartersForm> {
                         ),
                         onPressed: _submitForm,
                       ),
-     
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -69,21 +69,25 @@ class _InstrumentsFormState extends State<InstrumentsForm> {
 
       // Crear notificación para todos los usuarios
       try {
-        final notifResponse = await supabase.from('notifications').insert({
-          'title': 'Nuevo Instrumento: ${_nameController.text}',
-          'message':
-              'Se agregó un nuevo instrumento. Da clic para ver más detalles',
-          'icon': 'music',
-          'redirect_to': '/instruments',
-          'image': imageUrl,
-        }).select().single();
+        final notifResponse = await supabase
+            .from('notifications')
+            .insert({
+              'title': 'Nuevo Instrumento: ${_nameController.text}',
+              'message':
+                  'Se agregó un nuevo instrumento. Da clic para ver más detalles',
+              'icon': 'music',
+              'redirect_to': '/instruments',
+              'image': imageUrl,
+            })
+            .select()
+            .single();
 
         // Enviar notificaciones push a todos los usuarios
         if (notifResponse['id'] != null) {
-          final notifId = notifResponse['id'] is int 
-              ? notifResponse['id'] as int 
+          final notifId = notifResponse['id'] is int
+              ? notifResponse['id'] as int
               : int.tryParse(notifResponse['id'].toString()) ?? 0;
-          
+
           if (notifId > 0) {
             await NotificationService.sendNotificationToAllUsers(notifId);
           }
