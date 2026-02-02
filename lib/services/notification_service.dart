@@ -299,6 +299,7 @@ class NotificationService {
       final supabase = Supabase.instance.client;
 
       // 1. Obtener la notificación creada
+      // ignore: unused_local_variable
       final notification = await supabase
           .from('notifications')
           .select()
