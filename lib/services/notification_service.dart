@@ -44,71 +44,90 @@ class NotificationService {
 
   static Future<void> _initializeFirebaseMessaging(
       GlobalKey<NavigatorState> navigatorKey) async {
-    // Solicitar permisos para notificaciones
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
+    try {
+      // Solicitar permisos para notificaciones
+      NotificationSettings settings =
+          await _firebaseMessaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('✅ Permisos de notificaciones concedidos');
-    } else {
-      debugPrint('⚠️ Permisos de notificaciones denegados');
-    }
-
-    // Obtener y guardar el token FCM
-    String? token = await _firebaseMessaging.getToken();
-    if (token != null) {
-      debugPrint('🔑 FCM Token: $token');
-      await _saveFCMToken(token);
-    }
-
-    // Escuchar cambios en el token
-    _firebaseMessaging.onTokenRefresh.listen(_saveFCMToken);
-
-    // Handler para notificaciones en segundo plano
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // Handler para notificaciones cuando la app está abierta
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint(
-          '📨 [Foreground] Notificación recibida: ${message.notification?.title}');
-
-      if (message.notification != null) {
-        showNotification(
-          id: message.hashCode & 0x7FFFFFFF,
-          title: message.notification!.title ?? 'Sin título',
-          message: message.notification!.body ?? 'Sin mensaje',
-          imageUrl: message.notification?.android?.imageUrl,
-          payload: message.data['redirect_to'],
-        );
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        debugPrint('✅ Permisos de notificaciones concedidos');
+      } else {
+        debugPrint('⚠️ Permisos de notificaciones denegados');
+        return; // Salir si no hay permisos
       }
-    });
 
-    // Handler cuando se toca una notificación y la app estaba cerrada
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('🔔 Notificación tocada (app en segundo plano)');
-      final redirectTo = message.data['redirect_to'];
-      if (redirectTo != null && navigatorKey.currentState != null) {
-        navigatorKey.currentState!.pushNamed(redirectTo);
-      }
-    });
+      // Obtener y guardar el token FCM (con manejo de errores)
+      try {
+        String? token = await _firebaseMessaging.getToken();
+        if (token != null) {
+          debugPrint('🔑 FCM Token: $token');
+          await _saveFCMToken(token);
+        } else {
+          debugPrint('⚠️ No se pudo obtener el token FCM');
+        }
 
-    // Verificar si la app se abrió desde una notificación
-    RemoteMessage? initialMessage =
-        await _firebaseMessaging.getInitialMessage();
-    if (initialMessage != null) {
-      debugPrint('🚀 App abierta desde notificación');
-      final redirectTo = initialMessage.data['redirect_to'];
-      if (redirectTo != null) {
-        Future.delayed(const Duration(seconds: 1), () {
-          if (navigatorKey.currentState != null) {
-            navigatorKey.currentState!.pushNamed(redirectTo);
-          }
-        });
+        // Escuchar cambios en el token
+        _firebaseMessaging.onTokenRefresh.listen(_saveFCMToken);
+      } catch (e) {
+        debugPrint('⚠️ Error obteniendo token FCM: $e');
+        debugPrint('ℹ️ La app funcionará sin notificaciones push remotas');
+        // No lanzar el error, continuar con la inicialización
       }
+
+      // Handler para notificaciones en segundo plano
+      FirebaseMessaging.onBackgroundMessage(
+          _firebaseMessagingBackgroundHandler);
+
+      // Handler para notificaciones cuando la app está abierta
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint(
+            '📨 [Foreground] Notificación recibida: ${message.notification?.title}');
+
+        if (message.notification != null) {
+          showNotification(
+            id: message.hashCode & 0x7FFFFFFF,
+            title: message.notification!.title ?? 'Sin título',
+            message: message.notification!.body ?? 'Sin mensaje',
+            imageUrl: message.notification?.android?.imageUrl,
+            payload: message.data['redirect_to'],
+          );
+        }
+      });
+
+      // Handler cuando se toca una notificación y la app estaba cerrada
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('🔔 Notificación tocada (app en segundo plano)');
+        final redirectTo = message.data['redirect_to'];
+        if (redirectTo != null && navigatorKey.currentState != null) {
+          navigatorKey.currentState!.pushNamed(redirectTo);
+        }
+      });
+
+      // Verificar si la app se abrió desde una notificación
+      RemoteMessage? initialMessage =
+          await _firebaseMessaging.getInitialMessage();
+      if (initialMessage != null) {
+        debugPrint('🚀 App abierta desde notificación');
+        final redirectTo = initialMessage.data['redirect_to'];
+        if (redirectTo != null) {
+          Future.delayed(const Duration(seconds: 1), () {
+            if (navigatorKey.currentState != null) {
+              navigatorKey.currentState!.pushNamed(redirectTo);
+            }
+          });
+        }
+      }
+
+      debugPrint('✅ Firebase Messaging inicializado correctamente');
+    } catch (e) {
+      debugPrint('❌ Error inicializando Firebase Messaging: $e');
+      debugPrint('ℹ️ La app continuará funcionando con notificaciones locales');
+      // No lanzar el error, permitir que la app continúe
     }
   }
 
