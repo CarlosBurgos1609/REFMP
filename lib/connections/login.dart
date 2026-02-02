@@ -38,10 +38,12 @@ class LoginConnections {
             .maybeSingle();
 
         if (data != null) {
+          final charge = data['charge'] ?? 'Usuario';
           return {
             'success': true,
-            'message': 'Inicio de sesión correcto como $table',
+            'message': 'Inicio de sesión correcto como $charge',
             'role': table,
+            'charge': charge,
             'user': data, // Retorna los datos del usuario
           };
         }

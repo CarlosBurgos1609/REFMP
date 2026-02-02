@@ -84,12 +84,12 @@ class _LoginPageState extends State<LoginPage> {
         SnackBar(content: Text(result['message'])),
       );
 
-      String role = result['role'] ?? 'Usuario';
+      String charge = result['charge'] ?? 'Usuario';
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => HomePage(title: 'Inicio - $role'),
+          builder: (_) => HomePage(title: 'Bienvenid@ $charge'),
         ),
       );
     } else {

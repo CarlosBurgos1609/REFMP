@@ -64,17 +64,8 @@ class _SettingsPage extends State<SettingsPage> {
             ),
             TextButton(
               onPressed: () async {
-                // Cerrar el diálogo
+                // Cerrar el diálogo inmediatamente
                 Navigator.of(context).pop();
-
-                // Mostrar indicador de carga
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (context) => const Center(
-                    child: CircularProgressIndicator(color: Colors.blue),
-                  ),
-                );
 
                 try {
                   // Limpiar credenciales guardadas en SharedPreferences solo si NO tiene recuerdame
@@ -88,29 +79,22 @@ class _SettingsPage extends State<SettingsPage> {
                   }
                   // No modificar remember_me, mantenerlo como está
 
-                  // Cerrar sesión en Supabase Auth con timeout
-                  try {
-                    await Supabase.instance.client.auth.signOut().timeout(
-                      const Duration(seconds: 2),
-                      onTimeout: () {
-                        // Si tarda más de 2 segundos, continuar de todas formas
-                        debugPrint('SignOut timeout, continuando...');
-                      },
-                    );
-                  } catch (e) {
-                    debugPrint('Error en signOut: $e');
-                    // Continuar aunque falle
-                  }
-
                   // Limpiar el cache de roles
                   Menu.clearRoleCache();
                   Menu.currentIndexNotifier.value = 0;
 
-                  // Cerrar indicador de carga
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
+                  // Cerrar sesión en Supabase Auth sin esperar (fire and forget)
+                  Supabase.instance.client.auth.signOut().timeout(
+                    const Duration(milliseconds: 500),
+                    onTimeout: () {
+                      debugPrint('SignOut timeout, continuando...');
+                    },
+                  ).catchError((e) {
+                    debugPrint('Error en signOut: $e');
+                  });
 
-                    // Navegar a Init
+                  // Navegar a Init inmediatamente sin esperar
+                  if (context.mounted) {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (context) => const Init()),
@@ -118,16 +102,13 @@ class _SettingsPage extends State<SettingsPage> {
                     );
                   }
                 } catch (e) {
-                  // Cerrar indicador de carga
+                  debugPrint('Error al cerrar sesión: $e');
+                  // Navegar de todas formas
                   if (context.mounted) {
-                    Navigator.of(context).pop();
-
-                    // Mostrar error
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error al cerrar sesión: $e'),
-                        backgroundColor: Colors.red,
-                      ),
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const Init()),
+                      (route) => false,
                     );
                   }
                 }
