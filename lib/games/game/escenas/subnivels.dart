@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:refmp/games/game/escenas/questions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SubnivelesPage extends StatefulWidget {
   final String levelId;
@@ -19,30 +22,77 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
   bool isLoading = true;
   Map<String, bool> sublevelCompletionStatus = {};
   double overallProgress = 0.0;
+  bool _isOnline = false;
+  late Box _hiveBox;
 
   @override
   void initState() {
     super.initState();
-    fetchSubniveles();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    _hiveBox = await Hive.openBox('offline_data');
+    await fetchSubniveles();
+  }
+
+  Future<bool> isOnline() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error en verificación de internet: $e');
+      return false;
+    }
   }
 
   Future<void> fetchSubniveles() async {
-    try {
-      final response = await supabase
-          .from('sublevels')
-          .select()
-          .eq('level_id', widget.levelId)
-          .order('order_number', ascending: true)
-          .limit(50);
+    final cacheKey = 'sublevels_${widget.levelId}';
+    _isOnline = await isOnline();
 
-      setState(() {
-        subniveles = response;
-      });
+    try {
+      if (_isOnline) {
+        // Cargar desde Supabase
+        debugPrint('🌐 Cargando subniveles ONLINE');
+        final response = await supabase
+            .from('sublevels')
+            .select()
+            .eq('level_id', widget.levelId)
+            .order('order_number', ascending: true)
+            .limit(50);
+
+        // Guardar en cache
+        await _hiveBox.put(cacheKey, response);
+        debugPrint('💾 Subniveles guardados en cache: ${response.length}');
+
+        setState(() {
+          subniveles = response;
+        });
+      } else {
+        // Cargar desde cache
+        debugPrint('📱 Sin conexión, cargando desde cache');
+        final cachedData = _hiveBox.get(cacheKey, defaultValue: []);
+        setState(() {
+          subniveles = cachedData ?? [];
+        });
+        debugPrint('💾 Subniveles cargados desde cache: ${subniveles.length}');
+      }
 
       // Fetch completion status after getting sublevels
       await _fetchCompletionStatus();
     } catch (e) {
-      debugPrint('Error al obtener subniveles: $e');
+      debugPrint('❌ Error al obtener subniveles: $e');
+      // En caso de error, intentar cargar desde cache
+      final cachedData = _hiveBox.get(cacheKey, defaultValue: []);
+      setState(() {
+        subniveles = cachedData ?? [];
+      });
+      debugPrint(
+          '💾 Cargados ${subniveles.length} subniveles desde cache (error)');
     } finally {
       setState(() {
         isLoading = false;
@@ -68,90 +118,138 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
   }
 
   Future<void> _fetchCompletionStatus() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final cacheKey = 'completion_status_${userId}_${widget.levelId}';
+
     try {
-      final userId = supabase.auth.currentUser?.id;
+      if (_isOnline) {
+        // Get completed sublevels from Supabase
+        debugPrint('🌐 Cargando estado de completación ONLINE');
+        final response = await supabase
+            .from('users_sublevels')
+            .select('sublevel_id, completed')
+            .eq('user_id', userId)
+            .eq('level_id', widget.levelId);
 
-      if (userId == null) return;
+        // Guardar en cache
+        await _hiveBox.put(cacheKey, response);
+        debugPrint('💾 Estado de completación guardado en cache');
 
-      // Get completed sublevels for this user
-      final response = await supabase
-          .from('users_sublevels')
-          .select('sublevel_id, completed')
-          .eq('user_id', userId)
-          .eq('level_id', widget.levelId);
-
-      Map<String, bool> completionMap = {};
-      int completedCount = 0;
-
-      for (var sublevel in subniveles) {
-        final sublevelId = sublevel['id'];
-        final completion = response
-                .where((item) => item['sublevel_id'] == sublevelId)
-                .isNotEmpty
-            ? response.firstWhere((item) => item['sublevel_id'] == sublevelId)
-            : <String, dynamic>{};
-
-        bool isCompleted =
-            completion.isNotEmpty && completion['completed'] == true;
-        completionMap[sublevelId.toString()] = isCompleted;
-        if (isCompleted) completedCount++;
+        _processCompletionData(response);
+      } else {
+        // Cargar desde cache
+        debugPrint('📱 Cargando estado de completación desde cache');
+        final cachedData = _hiveBox.get(cacheKey, defaultValue: []);
+        _processCompletionData(cachedData ?? []);
       }
-
-      setState(() {
-        sublevelCompletionStatus = completionMap;
-        overallProgress =
-            subniveles.isNotEmpty ? completedCount / subniveles.length : 0.0;
-      });
     } catch (e) {
-      print('Error fetching completion status: $e');
+      debugPrint('❌ Error fetching completion status: $e');
+      // En caso de error, intentar cargar desde cache
+      final cachedData = _hiveBox.get(cacheKey, defaultValue: []);
+      _processCompletionData(cachedData ?? []);
     }
   }
 
+  void _processCompletionData(List<dynamic> response) {
+    Map<String, bool> completionMap = {};
+    int completedCount = 0;
+
+    for (var sublevel in subniveles) {
+      final sublevelId = sublevel['id'];
+      final completion =
+          response.where((item) => item['sublevel_id'] == sublevelId).isNotEmpty
+              ? response.firstWhere((item) => item['sublevel_id'] == sublevelId)
+              : <String, dynamic>{};
+
+      bool isCompleted =
+          completion.isNotEmpty && completion['completed'] == true;
+      completionMap[sublevelId.toString()] = isCompleted;
+      if (isCompleted) completedCount++;
+    }
+
+    setState(() {
+      sublevelCompletionStatus = completionMap;
+      overallProgress =
+          subniveles.isNotEmpty ? completedCount / subniveles.length : 0.0;
+    });
+  }
+
   Future<void> _markSublevelCompleted(dynamic sublevelIdParam) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final sublevelId = sublevelIdParam.toString();
+    final cacheKey = 'completion_status_${userId}_${widget.levelId}';
+    final pendingKey = 'pending_completions';
+
     try {
-      final userId = supabase.auth.currentUser?.id;
+      if (_isOnline) {
+        // Online: guardar en Supabase
+        debugPrint('🌐 Marcando subnivel como completado ONLINE');
+        final existingRecord = await supabase
+            .from('users_sublevels')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('level_id', widget.levelId)
+            .eq('sublevel_id', sublevelId);
 
-      if (userId == null) return;
+        if (existingRecord.isEmpty) {
+          await supabase.from('users_sublevels').insert({
+            'user_id': userId,
+            'level_id': widget.levelId,
+            'sublevel_id': sublevelId,
+            'completed': true,
+            'completion_date': DateTime.now().toIso8601String(),
+          });
+        } else {
+          await supabase
+              .from('users_sublevels')
+              .update({
+                'completed': true,
+                'completion_date': DateTime.now().toIso8601String(),
+              })
+              .eq('user_id', userId)
+              .eq('level_id', widget.levelId)
+              .eq('sublevel_id', sublevelId);
+        }
 
-      // Use sublevelId as String (UUID)
-      final sublevelId = sublevelIdParam.toString();
-
-      // Check if record already exists
-      final existingRecord = await supabase
-          .from('users_sublevels')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('level_id', widget.levelId)
-          .eq('sublevel_id', sublevelId);
-
-      if (existingRecord.isEmpty) {
-        // Insert new record
-        await supabase.from('users_sublevels').insert({
+        debugPrint('✅ Subnivel $sublevelId marcado como completado');
+      } else {
+        // Offline: guardar en pendientes
+        debugPrint('📱 Sin conexión, guardando completación pendiente');
+        List<dynamic> pending = _hiveBox.get(pendingKey, defaultValue: []);
+        pending.add({
           'user_id': userId,
           'level_id': widget.levelId,
           'sublevel_id': sublevelId,
           'completed': true,
           'completion_date': DateTime.now().toIso8601String(),
         });
-      } else {
-        // Update existing record
-        await supabase
-            .from('users_sublevels')
-            .update({
-              'completed': true,
-              'completion_date': DateTime.now().toIso8601String(),
-            })
-            .eq('user_id', userId)
-            .eq('level_id', widget.levelId)
-            .eq('sublevel_id', sublevelId);
+        await _hiveBox.put(pendingKey, pending);
+        debugPrint('💾 Completación guardada para sincronizar después');
       }
+
+      // Actualizar cache local de completion status
+      List<dynamic> cachedStatus = _hiveBox.get(cacheKey, defaultValue: []);
+      final existingIndex =
+          cachedStatus.indexWhere((item) => item['sublevel_id'] == sublevelId);
+
+      if (existingIndex >= 0) {
+        cachedStatus[existingIndex]['completed'] = true;
+      } else {
+        cachedStatus.add({
+          'sublevel_id': sublevelId,
+          'completed': true,
+        });
+      }
+      await _hiveBox.put(cacheKey, cachedStatus);
 
       // Refresh completion status
       await _fetchCompletionStatus();
-
-      print('Sublevel $sublevelId marked as completed');
     } catch (e) {
-      print('Error marking sublevel as completed: $e');
+      debugPrint('❌ Error marking sublevel as completed: $e');
     }
   }
 
