@@ -448,6 +448,18 @@ class _NotificationPageState extends State<NotificationPage> {
                                       ?.toString()
                                       .trim();
 
+                                  if (redirect == null || redirect.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              "Ruta de redirección no disponible")),
+                                    );
+                                    return;
+                                  }
+
+                                  // Extraer la ruta base (antes del ?) y los parámetros
+                                  final baseRoute = redirect.split('?').first;
+
                                   final redirectToIndex = {
                                     '/home': 1,
                                     '/profile': 2,
@@ -457,23 +469,21 @@ class _NotificationPageState extends State<NotificationPage> {
                                     '/students': 6,
                                   };
 
-                                  if (redirect != null &&
-                                      routeBuilderMap.containsKey(redirect) &&
-                                      redirectToIndex.containsKey(redirect)) {
+                                  // Verificar si la ruta base existe
+                                  if (redirectToIndex.containsKey(baseRoute)) {
                                     Menu.currentIndexNotifier.value =
-                                        redirectToIndex[redirect]!;
-                                    Navigator.pushReplacement(
+                                        redirectToIndex[baseRoute]!;
+
+                                    // Usar la ruta completa (con parámetros) para navegación
+                                    Navigator.pushReplacementNamed(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            routeBuilderMap[redirect]!(),
-                                      ),
+                                      redirect, // Usar la ruta completa con parámetros
                                     );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
+                                      SnackBar(
                                           content: Text(
-                                              "Ruta de redirección no válida")),
+                                              "Ruta de redirección no válida: $redirect")),
                                     );
                                   }
                                 },
