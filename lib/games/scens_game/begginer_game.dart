@@ -181,6 +181,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Estado de los pistones (sin prevención de capturas por pistones)
   Set<int> pressedPistons = <int>{};
 
+  // Sombras de pistones (indica qué pistones deben presionarse ahora)
+  Map<int, Color> pistonShadows = {}; // {pistonNumber: shadowColor}
+
   // Controlador de animación para la rotación de la imagen de la canción
   late AnimationController _rotationController;
 
@@ -228,6 +231,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Configuración del juego
   static const double noteSpeed =
       150.0; // REDUCIDO: pixels por segundo para mejor control
+  @Deprecated(
+      'Ya no se usa - la detección ahora es basada en distancia del centro')
   static const double hitTolerance =
       80.0; // AUMENTADO: Tolerancia para hits más fáciles con la nueva velocidad
 
@@ -1637,20 +1642,44 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
 
-        // Calcular zona de hit responsive (igual que en _buildHitZone)
+        // Calcular zona de hit responsive - EN EL CENTRO DE LA PANTALLA
         final isTablet = screenWidth > 600;
         final isSmallPhone = screenHeight < 700;
 
-        double hitZoneBottom;
-        if (isSmallPhone) {
-          hitZoneBottom = 110; // Más cerca para celulares pequeños
-        } else if (isTablet) {
-          hitZoneBottom = 150; // Más espacio en tablets
-        } else {
-          hitZoneBottom = 130; // Tamaño estándar para celulares normales
-        }
+        // Zona de hit en el centro de la pantalla (mucho más arriba que los pistones)
+        final hitZoneHeight = isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
 
-        final hitZoneY = screenHeight - hitZoneBottom;
+        // Colocar la zona de hit un poco más abajo del centro de la pantalla
+        final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
+        final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
+
+        // Actualizar sombras de pistones según notas activas en zona de hit
+        Map<int, Color> newShadows = {};
+        for (var note in fallingNotes) {
+          if (note.isHit || note.isMissed) continue;
+
+          final noteBottom = note.y + 60;
+          final noteTop = note.y;
+
+          // Si la nota está en o cerca de la zona de hit, mostrar sombra
+          if (noteBottom >= hitZoneY - 50 &&
+              noteTop <= hitZoneY + hitZoneHeight + 50) {
+            final pistons = note.requiredPistons;
+            final shadowColor = Colors.blue.withOpacity(0.5);
+
+            if (pistons.isEmpty) {
+              // Nota de aire - sombra en todos los pistones
+              newShadows[1] = shadowColor;
+              newShadows[2] = shadowColor;
+              newShadows[3] = shadowColor;
+            } else {
+              for (int piston in pistons) {
+                newShadows[piston] = shadowColor;
+              }
+            }
+          }
+        }
+        pistonShadows = newShadows;
 
         // SIMPLIFICADO: Actualizar posición de cada nota usando movimiento tradicional
         for (var note in fallingNotes) {
@@ -1666,41 +1695,45 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             if (note.songNote != null && note.songNote!.startTimeMs <= 6000) {
               print(
                   '📍 Note ${note.noteName}: Y=${note.y.toStringAsFixed(1)}, elapsed=${elapsed.toStringAsFixed(1)}s, DB_time=${note.songNote!.startTimeMs}ms');
-            } // AUTO-HIT para notas de aire (sin presionar pistones)
-            if (note.isOpenNote &&
-                note.y >= hitZoneY - 30 &&
-                note.y <= hitZoneY + 30) {
-              print('🌬️ AUTO-HIT for open note (aire): ${note.noteName}');
-              note.isHit = true;
-
-              // Actualizar la última nota tocada para mostrar en el contenedor
-              setState(() {
-                lastPlayedNote = note.noteName;
-              });
-
-              // MEJORADO: Solo reproducir sonido si NO está usando audio continuo
-              if (!_isAudioContinuous &&
-                  note.songNote != null &&
-                  note.songNote!.noteUrl != null) {
-                _playFromRobustCache(note.songNote!);
-              } else if (_isAudioContinuous) {
-                print(
-                    '🔇 Audio continuo activo - no reproducir nota de aire automática');
-              }
-
-              // NUEVO: Calcular calidad del timing (qué tan cerca del centro)
-              final hitZoneY = screenHeight * 0.77; // Centro de la zona de hit
-              final distanceFromCenter = (note.y - hitZoneY).abs();
-              final timingQuality =
-                  (distanceFromCenter / hitTolerance).clamp(0.0, 1.0);
-
-              _onNoteHit(note.noteName,
-                  timingQuality); // Contar como acierto con calidad
-              continue; // Pasar a la siguiente nota
             }
 
-            // Verificar si la nota se perdió (más cerca de los pistones - límite reducido)
-            if (note.y > hitZoneY + 50) {
+            // AUTO-HIT para notas de aire (sin presionar pistones) - SOLO EN EL CENTRO
+            if (note.isOpenNote) {
+              final noteCenter = note.y + 30;
+
+              // Solo auto-hit si la nota está en el centro exacto (25% del hit zone)
+              final hitZoneHeight = 120.0;
+              final perfectZone = hitZoneHeight * 0.25;
+              final distanceFromCenter = (noteCenter - hitZoneCenterY).abs();
+
+              if (distanceFromCenter < perfectZone) {
+                print('🌬️ AUTO-HIT for open note (aire): ${note.noteName}');
+                note.isHit = true;
+
+                // Actualizar la última nota tocada para mostrar en el contenedor
+                setState(() {
+                  lastPlayedNote = note.noteName;
+                });
+
+                // MEJORADO: Solo reproducir sonido si NO está usando audio continuo
+                if (!_isAudioContinuous &&
+                    note.songNote != null &&
+                    note.songNote!.noteUrl != null) {
+                  _playFromRobustCache(note.songNote!);
+                } else if (_isAudioContinuous) {
+                  print(
+                      '🔇 Audio continuo activo - no reproducir nota de aire automática');
+                }
+
+                _onNoteHit(note.noteName, 1.0); // Perfect timing
+                continue; // Pasar a la siguiente nota
+              }
+            }
+
+            // Verificar si la nota se perdió (pasó de la zona de hit)
+            final noteTop = note.y;
+            final hitZoneHeight = 120.0;
+            if (noteTop > hitZoneCenterY + (hitZoneHeight / 2)) {
               // Reducido de +80 a +50 para eliminar notas más rápido
               note.isMissed = true;
               print('❌ Note missed: ${note.noteName} at Y: ${note.y}');
@@ -2034,24 +2067,25 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
 
-        // Calcular zona de hit responsive (igual que en el timer y _buildHitZone)
+        // Calcular zona de hit responsive en el centro de la pantalla
         final isTablet = screenWidth > 600;
         final isSmallPhone = screenHeight < 700;
 
-        double hitZoneBottom;
-        if (isSmallPhone) {
-          hitZoneBottom = 110; // Más cerca para celulares pequeños
-        } else if (isTablet) {
-          hitZoneBottom = 150; // Más espacio en tablets
-        } else {
-          hitZoneBottom = 130; // Tamaño estándar para celulares normales
-        }
+        final hitZoneHeight = isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
+        final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
+        final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
 
-        final hitZoneY = screenHeight - hitZoneBottom;
-        final distance = (note.y - hitZoneY).abs();
+        final noteCenter = note.y + 30;
+        final noteBottom = note.y + 60;
+        final noteTop = note.y;
+        final distanceFromCenter = (noteCenter - hitZoneCenterY).abs();
+
+        // Definir zonas de hit basadas en distancia del centro
+        final perfectZone = hitZoneHeight * 0.25; // 25% del centro es "perfect"
+        final goodZone = hitZoneHeight * 0.4; // 40% del centro es "good"
 
         // Verificar si la nota está en la zona de hit
-        if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
+        if (noteBottom >= hitZoneY && noteTop <= hitZoneY + hitZoneHeight) {
           isInHitZone = true;
 
           // MEJORADO: Debug para combinaciones complejas
@@ -2060,9 +2094,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             print('   Note: ${note.noteName}');
             print('   Required pistons: ${note.requiredPistons}');
             print('   Combination used: $pistonCombination');
-            print('   Note position Y: ${note.y.toStringAsFixed(1)}');
-            print('   Hit zone Y: ${hitZoneY.toStringAsFixed(1)}');
-            print('   Distance: ${distance.toStringAsFixed(1)}');
+            print('   Note center Y: ${noteCenter.toStringAsFixed(1)}');
+            print('   Hit zone center Y: ${hitZoneCenterY.toStringAsFixed(1)}');
+            print(
+                '   Distance from center: ${distanceFromCenter.toStringAsFixed(1)}');
             print('   Press times:');
 
             final currentTime = DateTime.now().millisecondsSinceEpoch;
@@ -2095,14 +2130,31 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               }
             }
 
-            // NUEVO: Calcular calidad del timing (qué tan cerca del centro)
-            final screenHeight = MediaQuery.of(context).size.height;
-            final hitZoneY = screenHeight * 0.77; // Centro de la zona de hit
-            final distanceFromCenter = (note.y - hitZoneY).abs();
-            final timingQuality =
-                (distanceFromCenter / hitTolerance).clamp(0.0, 1.0);
+            // NUEVO: Calcular calidad del timing basado en distancia del centro
+            double timingQuality;
+            String feedback;
+            Color feedbackColor;
 
+            if (distanceFromCenter < perfectZone) {
+              timingQuality = 1.0;
+              feedback = 'Perfect';
+              feedbackColor = Colors.green;
+            } else if (distanceFromCenter < goodZone) {
+              timingQuality = 0.7;
+              feedback = 'Good';
+              feedbackColor = Colors.blue;
+            } else {
+              timingQuality = 0.5;
+              feedback = 'Regular';
+              feedbackColor = Colors.orange;
+            }
+
+            _showFeedback(feedback, feedbackColor);
             _onNoteHit(note.noteName, timingQuality);
+
+            // Feedback háptico
+            HapticFeedback.mediumImpact();
+
             return;
           } else {
             // Debug: mostrar qué se esperaba vs qué se usó
@@ -3627,44 +3679,41 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Detectar si es tablet o celular para ajustar posición
+    // Detectar si es tablet o celular para ajustar tamaño
     final isTablet = screenWidth > 600;
     final isSmallPhone = screenHeight < 700;
 
-    // Posición responsive de la zona de hit
-    // Para celulares pequeños: más cerca de los pistones
-    // Para tablets: más espacio para acomodar mejor el layout
-    double hitZoneBottom;
+    // Tamaño responsive de la zona de hit
     double hitZoneHeight;
 
     if (isSmallPhone) {
-      hitZoneBottom = 110; // Más cerca para celulares pequeños
-      hitZoneHeight = 80; // Zona más compacta
+      hitZoneHeight = 100; // Zona más compacta para celulares pequeños
     } else if (isTablet) {
-      hitZoneBottom = 150; // Más espacio en tablets
-      hitZoneHeight = 120; // Zona más grande
+      hitZoneHeight = 140; // Zona más grande para tablets
     } else {
-      hitZoneBottom = 130; // Tamaño estándar para celulares normales
-      hitZoneHeight = 100;
+      hitZoneHeight = 120; // Tamaño estándar para celulares normales
     }
 
+    // Calcular posición un poco más abajo del centro de la pantalla
+    final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
+
     return Positioned(
-      bottom: hitZoneBottom,
+      top: hitZoneY, // Ahora se posiciona desde arriba, en el centro
       left: 0,
       right: 0,
       child: Container(
         height: hitZoneHeight,
         decoration: BoxDecoration(
-          // Hacer la zona visible para pruebas (comentar después si se desea)
+          // Hacer la zona visible para que los jugadores sepan dónde tocar
           color: Colors.white.withOpacity(0.05), // Muy sutil pero visible
-          border: Border.all(color: Colors.blue.withOpacity(0.2), width: 1),
+          border: Border.all(color: Colors.blue.withOpacity(0.3), width: 2),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Center(
           child: Text(
             'ZONA DE HIT',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withOpacity(0.4),
               fontSize: isSmallPhone ? 12 : 14,
               fontWeight: FontWeight.w300,
             ),
@@ -3986,6 +4035,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallPhone = screenHeight < 700;
 
+    // Verificar si este pistón debe mostrar sombra
+    final hasShadow = pistonShadows.containsKey(pistonNumber);
+    final shadowColor = pistonShadows[pistonNumber];
+
     // Tamaño de fuente responsive
     final double fontSize = isSmallPhone ? 20.0 : 24.0;
 
@@ -3999,46 +4052,74 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         height: pistonSize,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(pistonSize / 2),
+          // Agregar borde cuando hay sombra
+          border: hasShadow
+              ? Border.all(
+                  color: Colors.blue.shade300,
+                  width: 4,
+                )
+              : null,
           boxShadow: [
+            // Sombra normal
             BoxShadow(
               color: Colors.blue.withOpacity(0.3),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
+            // Sombra adicional cuando debe presionarse
+            if (hasShadow)
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.8),
+                blurRadius: 25,
+                spreadRadius: 5,
+              ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(pistonSize / 2),
-          child: Image.asset(
-            'assets/images/piston.png',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(pistonSize / 2),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFF3B82F6),
-                      Color(0xFF1E40AF),
-                    ],
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    pistonNumber.toString(),
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.bold,
+        child: Stack(
+          children: [
+            // Imagen del pistón
+            ClipRRect(
+              borderRadius: BorderRadius.circular(pistonSize / 2),
+              child: Image.asset(
+                'assets/images/piston.png',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(pistonSize / 2),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0xFF3B82F6),
+                          Color(0xFF1E40AF),
+                        ],
+                      ),
                     ),
-                  ),
+                    child: Center(
+                      child: Text(
+                        pistonNumber.toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Overlay de color cuando hay sombra
+            if (hasShadow)
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(pistonSize / 2),
+                  color: (shadowColor ?? Colors.blue).withOpacity(0.3),
                 ),
-              );
-            },
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -4087,20 +4168,17 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           final isTablet = screenWidth > 600;
           final isSmallPhone = screenHeight < 700;
 
-          double hitZoneBottom;
-          if (isSmallPhone) {
-            hitZoneBottom = 110;
-          } else if (isTablet) {
-            hitZoneBottom = 150;
-          } else {
-            hitZoneBottom = 130;
-          }
+          // Calcular zona de hit un poco más abajo del centro de la pantalla
+          final hitZoneHeight =
+              isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
+          final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
+          final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
 
-          final hitZoneY = screenHeight - hitZoneBottom;
-          final distance = (note.y - hitZoneY).abs();
+          final noteCenter = note.y + 30;
+          final distance = (noteCenter - hitZoneCenterY).abs();
 
           // Si hay una nota en zona de hit
-          if (distance <= hitTolerance || note.y >= hitZoneY - 40) {
+          if (distance <= hitZoneHeight / 2) {
             final requiredCount = note.requiredPistons.length;
             maxRequiredPistons = maxRequiredPistons > requiredCount
                 ? maxRequiredPistons
