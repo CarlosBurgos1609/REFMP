@@ -240,6 +240,16 @@ class _ObjetsFormState extends State<ObjetsForm> {
           .select()
           .single();
 
+      // Crear notificación para todos los usuarios
+      await supabase.from('notifications').insert({
+        'title': 'Nuevo Objeto: ${_nameController.text}',
+        'message':
+            'Disponible por ${_priceController.text} monedas. Da clic para ver más detalles',
+        'icon': 'star',
+        'redirect_to': '/home',
+        'image': imageUrl,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Objeto creado exitosamente')),
       );

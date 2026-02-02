@@ -66,6 +66,16 @@ class _InstrumentsFormState extends State<InstrumentsForm> {
         'photo': imageUrl,
       });
 
+      // Crear notificación para todos los usuarios
+      await supabase.from('notifications').insert({
+        'title': 'Nuevo Instrumento: ${_nameController.text}',
+        'message':
+            'Se agregó un nuevo instrumento. Da clic para ver más detalles',
+        'icon': 'music',
+        'redirect_to': '/instruments',
+        'image': imageUrl,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Instrumento creado exitosamente')),
       );

@@ -109,6 +109,15 @@ class _HeadquartersFormState extends State<HeadquartersForm> {
         });
       }
 
+      // Crear notificación para todos los usuarios
+      await supabase.from('notifications').insert({
+        'title': 'Nueva Sede: ${_nameController.text}',
+        'message': 'Se agregó una nueva sede. Da clic para ver más detalles',
+        'icon': 'home',
+        'redirect_to': '/sedes',
+        'image': imageUrl,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sede creada exitosamente')),
       );

@@ -67,10 +67,20 @@ class MyApp extends StatelessWidget {
             ),
           );
         }
-        if (settings.name == '/events') {
+        if (settings.name != null && settings.name!.startsWith('/events')) {
+          // Extraer eventId si existe en la URL
+          int? eventId;
+          if (settings.name!.contains('?eventId=')) {
+            final parts = settings.name!.split('?eventId=');
+            if (parts.length > 1) {
+              eventId = int.tryParse(parts[1]);
+            }
+          }
+
           return MaterialPageRoute(
-            builder: (context) => const EventsPage(
+            builder: (context) => EventsPage(
               title: 'Eventos',
+              highlightEventId: eventId,
             ),
           );
         }
@@ -103,6 +113,10 @@ class MyApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData && snapshot.data?.session != null) {
+            // Usuario autenticado: inicializar notificaciones
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _initializeNotifications(context);
+            });
             return const HomePage(
               title: 'Bienvenid@',
             );
@@ -129,6 +143,24 @@ class MyApp extends StatelessWidget {
     }
 
     return AuthState(session: session);
+  }
+
+  Future<void> _initializeNotifications(BuildContext context) async {
+    try {
+      // Esperar un poco para que el contexto esté completamente inicializado
+      await Future.delayed(const Duration(seconds: 1));
+
+      // Verificar si hay notificaciones pendientes usando el método estático
+      await NotificationPage.checkAndShowNotifications();
+
+      // Iniciar polling automático cada 30 segundos
+      NotificationService.startPolling();
+
+      debugPrint(
+          '✅ Notificaciones inicializadas correctamente con polling automático');
+    } catch (e) {
+      debugPrint('Error al inicializar notificaciones: $e');
+    }
   }
 }
 

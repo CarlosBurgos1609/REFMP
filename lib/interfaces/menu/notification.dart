@@ -22,6 +22,59 @@ class NotificationPage extends StatefulWidget {
 
   @override
   State<NotificationPage> createState() => _NotificationPageState();
+
+  // Método estático para acceder al estado desde fuera
+  static Future<void> checkAndShowNotifications() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    debugPrint('🔔 Verificando notificaciones para usuario: $userId');
+
+    if (userId == null) {
+      debugPrint('❌ No hay usuario autenticado');
+      return;
+    }
+
+    try {
+      final response = await Supabase.instance.client
+          .from('user_notifications')
+          .select('*, notifications(*)')
+          .eq('user_id', userId)
+          .eq('is_read', false)
+          .eq('is_deleted', false);
+
+      debugPrint('📥 Notificaciones no leídas encontradas: ${response.length}');
+
+      if (response.isEmpty) {
+        debugPrint('ℹ️ No hay notificaciones pendientes');
+        return;
+      }
+
+      for (var notif in response) {
+        final notifData = notif['notifications'];
+        if (notifData != null) {
+          debugPrint('📢 Mostrando notificación: ${notifData['title']}');
+
+          final notificationId = notif['id'].hashCode & 0x7FFFFFFF;
+          await NotificationService.showNotification(
+            id: notificationId,
+            title: notifData['title'] ?? 'No title',
+            message: notifData['message'] ?? 'No message',
+            icon: notifData['icon'] ?? 'icon',
+            imageUrl: notifData['image'],
+            payload: notifData['redirect_to'],
+          );
+
+          // Marcar como leída
+          await Supabase.instance.client
+              .from('user_notifications')
+              .update({'is_read': true}).eq('id', notif['id']);
+
+          debugPrint('✅ Notificación marcada como leída');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking notifications: $e');
+    }
+  }
 }
 
 class _NotificationPageState extends State<NotificationPage> {
@@ -74,6 +127,9 @@ class _NotificationPageState extends State<NotificationPage> {
               final newNotif = data.first;
               final notifData = newNotif['notifications'];
               if (notifData != null && newNotif['is_read'] == false) {
+                debugPrint(
+                    '📲 [Stream] Nueva notificación recibida: ${notifData['title']}');
+
                 // Convert UUID to int for notification ID
                 final notificationId = newNotif['id'].hashCode & 0x7FFFFFFF;
                 NotificationService.showNotification(
@@ -81,6 +137,7 @@ class _NotificationPageState extends State<NotificationPage> {
                   title: notifData['title'] ?? 'No title',
                   message: notifData['message'] ?? 'No message',
                   icon: notifData['icon'] ?? 'icon',
+                  imageUrl: notifData['image'],
                   payload: notifData['redirect_to'],
                 );
 
@@ -140,6 +197,7 @@ class _NotificationPageState extends State<NotificationPage> {
               title: notifData['title'] ?? 'No title',
               message: notifData['message'] ?? 'No message',
               icon: notifData['icon'] ?? 'icon',
+              imageUrl: notifData['image'], // Agregar imagen
               payload: notifData['redirect_to'],
             );
 
@@ -175,6 +233,7 @@ class _NotificationPageState extends State<NotificationPage> {
             title: notifData['title'] ?? 'No title',
             message: notifData['message'] ?? 'No message',
             icon: notifData['icon'] ?? 'icon',
+            imageUrl: notifData['image'], // Agregar imagen
             payload: notifData['redirect_to'],
           );
         }

@@ -42,8 +42,9 @@ const Map<String, String> monthImages = {
 };
 
 class EventsPage extends StatefulWidget {
-  const EventsPage({super.key, required this.title});
+  const EventsPage({super.key, required this.title, this.highlightEventId});
   final String title;
+  final int? highlightEventId;
 
   @override
   State<EventsPage> createState() => _EventsPageState();
@@ -70,7 +71,12 @@ class _EventsPageState extends State<EventsPage> {
     });
     Hive.openBox('offline_data').then((box) {
       _hiveBox = box;
-      fetchEvents();
+      fetchEvents().then((_) {
+        // Si hay un evento para destacar, abrirlo automáticamente
+        if (widget.highlightEventId != null) {
+          _openEventById(widget.highlightEventId!);
+        }
+      });
     });
   }
 
@@ -232,21 +238,76 @@ class _EventsPageState extends State<EventsPage> {
   Future<void> _deleteEvent(
       Map<String, dynamic> event, BuildContext context) async {
     try {
-      await supabase.from('events').delete().eq('id', event['id']);
-
+      // Primero eliminar la imagen del storage si existe
       final imageUrl = event['image'];
       if (imageUrl != null && imageUrl.isNotEmpty) {
-        final imageName = imageUrl.split('/').last;
-        await supabase.storage
-            .from('Events')
-            .remove(['events_images/$imageName']);
-        await customCacheManager.removeFile(imageUrl);
+        try {
+          // Extraer el path correcto del storage
+          // URL típica: https://proyecto.supabase.co/storage/v1/object/public/Events/event_images/event_123.jpg
+          final uri = Uri.parse(imageUrl);
+          final pathSegments = uri.pathSegments;
+
+          // Buscar el índice donde empieza 'Events' para obtener el path relativo
+          final eventsIndex = pathSegments.indexOf('Events');
+          if (eventsIndex != -1 && eventsIndex < pathSegments.length - 1) {
+            // Reconstruir el path desde 'Events' en adelante (sin incluir 'Events' porque ya está en from())
+            final storagePath = pathSegments.sublist(eventsIndex + 1).join('/');
+
+            debugPrint('Eliminando imagen del storage: $storagePath');
+            await supabase.storage.from('Events').remove([storagePath]);
+
+            // Limpiar cache
+            await customCacheManager.removeFile(imageUrl);
+            debugPrint('Imagen eliminada correctamente del storage y cache');
+          } else {
+            debugPrint('No se pudo extraer el path de la imagen: $imageUrl');
+          }
+        } catch (e) {
+          debugPrint('Error al eliminar imagen del storage: $e');
+          // Continuar con la eliminación del evento aunque falle la imagen
+        }
       }
+
+      // Eliminar notificaciones relacionadas con este evento
+      try {
+        // Buscar notificaciones que apunten a este evento
+        final eventId = event['id'];
+        final notificationsResponse = await supabase
+            .from('notifications')
+            .select('id')
+            .like('redirect_to', '%/event_detail/$eventId%');
+
+        if (notificationsResponse.isNotEmpty) {
+          // Eliminar user_notifications primero
+          for (var notification in notificationsResponse) {
+            await supabase
+                .from('user_notifications')
+                .delete()
+                .eq('notification_id', notification['id']);
+          }
+
+          // Luego eliminar las notificaciones
+          for (var notification in notificationsResponse) {
+            await supabase
+                .from('notifications')
+                .delete()
+                .eq('id', notification['id']);
+          }
+
+          debugPrint('Notificaciones relacionadas eliminadas correctamente');
+        }
+      } catch (e) {
+        debugPrint('Error al eliminar notificaciones relacionadas: $e');
+        // Continuar con la eliminación del evento aunque falle la eliminación de notificaciones
+      }
+
+      // Luego eliminar el evento de la base de datos
+      await supabase.from('events').delete().eq('id', event['id']);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Evento eliminado correctamente'),
+            content: Text('Evento e imagen eliminados correctamente'),
             backgroundColor: Colors.green,
           ),
         );
@@ -310,6 +371,355 @@ class _EventsPageState extends State<EventsPage> {
           : CalendarView.month;
       _calendarController.view = _calendarView;
     });
+  }
+
+  void _openEventById(int eventId) {
+    // Buscar el evento en _eventDetails
+    final eventIndex = _eventDetails.indexWhere((e) => e['id'] == eventId);
+
+    if (eventIndex != -1) {
+      final event = _eventDetails[eventIndex];
+
+      // Esperar un poco para que la UI esté lista
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        bool canEditDelete = false;
+        if (_isOnline) {
+          canEditDelete = await _canDeleteEvent(event['id']);
+        }
+
+        if (!mounted) return;
+
+        _showEventModal(event, canEditDelete);
+      });
+    } else {
+      debugPrint('⚠️ Evento con ID $eventId no encontrado');
+    }
+  }
+
+  void _showEventModal(Map<String, dynamic> event, bool canEditDelete) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(25.0),
+              child: Container(
+                color: themeProvider.isDarkMode
+                    ? const Color.fromARGB(255, 34, 34, 34)
+                    : Colors.white,
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: _buildEventCard(event, canEditDelete, themeProvider),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildEventCard(Map<String, dynamic> event, bool canEditDelete,
+      ThemeProvider themeProvider) {
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(40),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: event['image'] != null && event['image'].isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: event['image'],
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        cacheManager: customCacheManager,
+                        placeholder: (context, url) =>
+                            const CircularProgressIndicator(color: Colors.blue),
+                        errorWidget: (context, url, error) => Image.asset(
+                          'assets/images/refmmp.png',
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Image.asset(
+                        'assets/images/refmmp.png',
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  event['name'],
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      "Fecha: ",
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      DateFormat.yMMMMd('es_ES')
+                          .format(DateTime.parse(event['date'])),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text(
+                      "Hora: ",
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "${event['time']} - ${event['time_fin']}",
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+                Text(
+                  "Ubicación: ",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (event['ubication_url'] != null &&
+                    event['ubication_url'].isNotEmpty)
+                  GestureDetector(
+                    onTap: () => _launchGoogleMaps(event['ubication_url']),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_on,
+                            color: Colors.blue, size: 20),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            event['location'],
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Colors.blue,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Text(event['location'], style: const TextStyle(fontSize: 16)),
+                const SizedBox(height: 8),
+                Text(
+                  "Sedes: ",
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(50.0),
+                  child: Container(
+                    color: Colors.transparent,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: (event['events_headquarters']
+                                        as List<dynamic>?)
+                                    ?.isEmpty ??
+                                true
+                            ? [
+                                const Padding(
+                                  padding:
+                                      EdgeInsets.symmetric(horizontal: 8.0),
+                                  child: Text('No hay sedes asociadas'),
+                                ),
+                              ]
+                            : (event['events_headquarters'] as List<dynamic>)
+                                .map((hq) {
+                                final sedeName =
+                                    hq?['sedes']?['name'] ?? 'Sede desconocida';
+                                final sedeImage = hq?['sedes']
+                                        ?['local_photo_path'] ??
+                                    hq?['sedes']?['photo'] ??
+                                    '';
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0),
+                                  child: Chip(
+                                    avatar: sedeImage.isNotEmpty
+                                        ? CircleAvatar(
+                                            backgroundImage: File(sedeImage)
+                                                    .existsSync()
+                                                ? FileImage(File(sedeImage))
+                                                : CachedNetworkImageProvider(
+                                                    sedeImage,
+                                                    cacheManager:
+                                                        customCacheManager,
+                                                  ),
+                                            radius: 12,
+                                            backgroundColor: Colors.white,
+                                          )
+                                        : null,
+                                    label: Text(
+                                      sedeName,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    backgroundColor: Colors.blue.shade300,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0),
+                                  ),
+                                );
+                              }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+                if (canEditDelete && _isOnline)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      EditEventForm(event: event),
+                                ),
+                              );
+                              if (result == true) {
+                                await fetchEvents();
+                              }
+                            },
+                            icon: const Icon(Icons.edit),
+                            label: const Text('Editar'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text(
+                                  '¿Eliminar evento?',
+                                  style: TextStyle(color: Colors.blue),
+                                  textAlign: TextAlign.center,
+                                ),
+                                content: const Text(
+                                  '¿Estás seguro de que deseas eliminar este evento?',
+                                  textAlign: TextAlign.center,
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
+                                    child: const Text(
+                                      'Cancelar',
+                                      style: TextStyle(color: Colors.blue),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
+                                    child: const Text(
+                                      'Eliminar',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              await _deleteEvent(event, context);
+                            }
+                          },
+                          icon: const Icon(Icons.delete),
+                          label: const Text('Eliminar'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -523,470 +933,7 @@ class _EventsPageState extends State<EventsPage> {
                           canEditDelete = await _canDeleteEvent(event['id']);
                         }
 
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          isDismissible: true,
-                          enableDrag: true,
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.9,
-                          ),
-                          builder: (context) {
-                            return DraggableScrollableSheet(
-                              initialChildSize: 0.9,
-                              minChildSize: 0.5,
-                              maxChildSize: 0.9,
-                              expand: false,
-                              builder: (context, scrollController) {
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(25.0),
-                                  child: Container(
-                                    color: themeProvider.isDarkMode
-                                        ? const Color.fromARGB(255, 34, 34, 34)
-                                        : Colors.white,
-                                    child: SingleChildScrollView(
-                                      controller: scrollController,
-                                      child: Card(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(40),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Stack(
-                                              children: [
-                                                ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                  child: event['image'] !=
-                                                              null &&
-                                                          event['image']
-                                                              .isNotEmpty
-                                                      ? CachedNetworkImage(
-                                                          imageUrl:
-                                                              event['image'],
-                                                          width:
-                                                              double.infinity,
-                                                          fit: BoxFit.cover,
-                                                          cacheManager:
-                                                              customCacheManager,
-                                                          placeholder: (context,
-                                                                  url) =>
-                                                              const CircularProgressIndicator(
-                                                                  color: Colors
-                                                                      .blue),
-                                                          errorWidget: (context,
-                                                                  url, error) =>
-                                                              Image.asset(
-                                                            'assets/images/refmmp.png',
-                                                            width:
-                                                                double.infinity,
-                                                            fit: BoxFit.cover,
-                                                          ),
-                                                        )
-                                                      : Image.asset(
-                                                          'assets/images/refmmp.png',
-                                                          width:
-                                                              double.infinity,
-                                                          fit: BoxFit.cover,
-                                                        ),
-                                                ),
-                                                Positioned(
-                                                  top: 8,
-                                                  right: 8,
-                                                  child: IconButton(
-                                                    icon: const Icon(
-                                                      Icons.close,
-                                                      color: Colors.white,
-                                                      size: 30,
-                                                    ),
-                                                    onPressed: () =>
-                                                        Navigator.pop(context),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.all(16.0),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .spaceBetween,
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          event['name'],
-                                                          style:
-                                                              const TextStyle(
-                                                            color: Colors.blue,
-                                                            fontSize: 22,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      GestureDetector(
-                                                        onTap: () =>
-                                                            Navigator.pop(
-                                                                context),
-                                                        child: const Icon(
-                                                          Icons.close,
-                                                          color: Colors.white,
-                                                          size: 24,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 10),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        "Fecha: ",
-                                                        style: TextStyle(
-                                                          color: Colors.blue,
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        DateFormat.yMMMMd(
-                                                                'es_ES')
-                                                            .format(DateTime
-                                                                .parse(event[
-                                                                    'date'])),
-                                                        style: const TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Row(
-                                                    children: [
-                                                      Text(
-                                                        "Hora: ",
-                                                        style: TextStyle(
-                                                          color: Colors.blue,
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        "${event['time']} - ${event['time_fin']}",
-                                                        style: const TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Text(
-                                                    "Ubicación: ",
-                                                    style: TextStyle(
-                                                      color: Colors.blue,
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  if (event['ubication_url'] !=
-                                                          null &&
-                                                      event['ubication_url']
-                                                          .isNotEmpty)
-                                                    GestureDetector(
-                                                      onTap: () =>
-                                                          _launchGoogleMaps(event[
-                                                              'ubication_url']),
-                                                      child: Row(
-                                                        children: [
-                                                          const Icon(
-                                                              Icons.location_on,
-                                                              color:
-                                                                  Colors.blue,
-                                                              size: 20),
-                                                          const SizedBox(
-                                                              width: 4),
-                                                          Expanded(
-                                                            child: Text(
-                                                              event['location'],
-                                                              style:
-                                                                  const TextStyle(
-                                                                color:
-                                                                    Colors.blue,
-                                                                decoration:
-                                                                    TextDecoration
-                                                                        .underline,
-                                                                decorationColor:
-                                                                    Colors.blue,
-                                                                fontSize: 16,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    )
-                                                  else
-                                                    Text(
-                                                      event['location'],
-                                                      style: const TextStyle(
-                                                          fontSize: 16),
-                                                    ),
-                                                  const SizedBox(height: 8),
-                                                  Text(
-                                                    "Sedes: ",
-                                                    style: TextStyle(
-                                                      color: Colors.blue,
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            50.0),
-                                                    child: Container(
-                                                      color: Colors.transparent,
-                                                      child:
-                                                          SingleChildScrollView(
-                                                        scrollDirection:
-                                                            Axis.horizontal,
-                                                        child: Row(
-                                                          children: (event['events_headquarters']
-                                                                          as List<
-                                                                              dynamic>?)
-                                                                      ?.isEmpty ??
-                                                                  true
-                                                              ? [
-                                                                  const Padding(
-                                                                    padding: EdgeInsets.symmetric(
-                                                                        horizontal:
-                                                                            8.0),
-                                                                    child: Text(
-                                                                        'No hay sedes asociadas'),
-                                                                  ),
-                                                                ]
-                                                              : (event['events_headquarters']
-                                                                      as List<
-                                                                          dynamic>)
-                                                                  .map((hq) {
-                                                                  final sedeName =
-                                                                      hq?['sedes']
-                                                                              ?[
-                                                                              'name'] ??
-                                                                          'Sede desconocida';
-                                                                  final sedeImage = hq?[
-                                                                              'sedes']
-                                                                          ?[
-                                                                          'local_photo_path'] ??
-                                                                      hq?['sedes']
-                                                                          ?[
-                                                                          'photo'] ??
-                                                                      '';
-
-                                                                  return Padding(
-                                                                    padding: const EdgeInsets
-                                                                        .symmetric(
-                                                                        horizontal:
-                                                                            4.0),
-                                                                    child: Chip(
-                                                                      avatar: sedeImage
-                                                                              .isNotEmpty
-                                                                          ? CircleAvatar(
-                                                                              backgroundImage: File(sedeImage).existsSync()
-                                                                                  ? FileImage(File(sedeImage))
-                                                                                  : CachedNetworkImageProvider(
-                                                                                      sedeImage,
-                                                                                      cacheManager: customCacheManager,
-                                                                                    ),
-                                                                              radius: 12,
-                                                                              backgroundColor: Colors.white,
-                                                                            )
-                                                                          : null,
-                                                                      label:
-                                                                          Text(
-                                                                        sedeName,
-                                                                        style:
-                                                                            const TextStyle(
-                                                                          fontSize:
-                                                                              12,
-                                                                          color:
-                                                                              Colors.white,
-                                                                        ),
-                                                                      ),
-                                                                      backgroundColor: Colors
-                                                                          .blue
-                                                                          .shade300,
-                                                                      shape:
-                                                                          RoundedRectangleBorder(
-                                                                        borderRadius:
-                                                                            BorderRadius.circular(50),
-                                                                      ),
-                                                                      padding: const EdgeInsets
-                                                                          .symmetric(
-                                                                          horizontal:
-                                                                              8.0),
-                                                                    ),
-                                                                  );
-                                                                }).toList(),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  if (canEditDelete &&
-                                                      _isOnline)
-                                                    Align(
-                                                      alignment:
-                                                          Alignment.centerRight,
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .all(10.0),
-                                                            child:
-                                                                ElevatedButton
-                                                                    .icon(
-                                                              style:
-                                                                  ElevatedButton
-                                                                      .styleFrom(
-                                                                backgroundColor:
-                                                                    Colors.blue,
-                                                                foregroundColor:
-                                                                    Colors
-                                                                        .white,
-                                                              ),
-                                                              onPressed:
-                                                                  () async {
-                                                                final result =
-                                                                    await Navigator
-                                                                        .push(
-                                                                  context,
-                                                                  MaterialPageRoute(
-                                                                    builder: (context) =>
-                                                                        EditEventForm(
-                                                                            event:
-                                                                                event),
-                                                                  ),
-                                                                );
-                                                                if (result ==
-                                                                    true) {
-                                                                  await fetchEvents();
-                                                                }
-                                                              },
-                                                              icon: const Icon(
-                                                                  Icons.edit),
-                                                              label: const Text(
-                                                                  'Editar'),
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 10),
-                                                          ElevatedButton.icon(
-                                                            onPressed:
-                                                                () async {
-                                                              final confirm =
-                                                                  await showDialog<
-                                                                      bool>(
-                                                                context:
-                                                                    context,
-                                                                builder:
-                                                                    (context) =>
-                                                                        AlertDialog(
-                                                                  title:
-                                                                      const Text(
-                                                                    '¿Eliminar evento?',
-                                                                    style: TextStyle(
-                                                                        color: Colors
-                                                                            .blue),
-                                                                    textAlign:
-                                                                        TextAlign
-                                                                            .center,
-                                                                  ),
-                                                                  content:
-                                                                      const Text(
-                                                                    '¿Estás seguro de que deseas eliminar este evento?',
-                                                                    textAlign:
-                                                                        TextAlign
-                                                                            .center,
-                                                                  ),
-                                                                  actions: [
-                                                                    TextButton(
-                                                                      onPressed:
-                                                                          () =>
-                                                                              Navigator.of(context).pop(false),
-                                                                      child:
-                                                                          const Text(
-                                                                        'Cancelar',
-                                                                        style: TextStyle(
-                                                                            color:
-                                                                                Colors.blue),
-                                                                        textAlign:
-                                                                            TextAlign.center,
-                                                                      ),
-                                                                    ),
-                                                                    TextButton(
-                                                                      onPressed:
-                                                                          () =>
-                                                                              Navigator.of(context).pop(true),
-                                                                      child:
-                                                                          const Text(
-                                                                        'Eliminar',
-                                                                        style: TextStyle(
-                                                                            color:
-                                                                                Colors.red),
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              );
-
-                                                              if (confirm ==
-                                                                  true) {
-                                                                await _deleteEvent(
-                                                                    event,
-                                                                    context);
-                                                              }
-                                                            },
-                                                            icon: const Icon(
-                                                                Icons.delete),
-                                                            label: const Text(
-                                                                'Eliminar'),
-                                                            style:
-                                                                ElevatedButton
-                                                                    .styleFrom(
-                                                              backgroundColor:
-                                                                  Colors.red,
-                                                              foregroundColor:
-                                                                  Colors.white,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
+                        _showEventModal(event, canEditDelete);
                       }
                     }
                   },

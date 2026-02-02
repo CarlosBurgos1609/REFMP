@@ -32,6 +32,7 @@ class _AddEventFormState extends State<AddEventForm> {
   TimeOfDay? endTime;
   List<String> selectedSedes = [];
   File? imageFile;
+  bool _isSaving = false; // Prevenir doble guardado
 
   List<Map<String, dynamic>> sedes = [];
 
@@ -81,6 +82,12 @@ class _AddEventFormState extends State<AddEventForm> {
   }
 
   Future<void> saveEvent() async {
+    // Prevenir doble guardado
+    if (_isSaving) {
+      debugPrint('⚠️ Ya se está guardando el evento, ignorando doble clic');
+      return;
+    }
+
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,6 +108,10 @@ class _AddEventFormState extends State<AddEventForm> {
       );
       return;
     }
+
+    setState(() {
+      _isSaving = true;
+    });
 
     final uuid = DateTime.now().millisecondsSinceEpoch;
     final cleanName =
@@ -156,6 +167,18 @@ class _AddEventFormState extends State<AddEventForm> {
         });
       }
 
+      // Crear notificación para todos los usuarios
+      await supabase.from('notifications').insert({
+        'title': '🎉📅 Nuevo Evento ‼️: ${nameController.text}',
+        'message':
+            'Se creó nuevo evento para el día ${DateFormat('dd/MM/yyyy').format(date)}. Da clic al evento para ver más detalles',
+        'icon': 'event',
+        'redirect_to': '/events?eventId=$eventId',
+        'image': imageUrl,
+      });
+
+      debugPrint('✅ Evento creado exitosamente: $eventId');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Evento guardado con éxito')),
@@ -169,9 +192,17 @@ class _AddEventFormState extends State<AddEventForm> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar el evento: $e')),
-      );
+      debugPrint('❌ Error al guardar evento: $e');
+
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al guardar el evento: $e')),
+        );
+      }
     }
   }
 
@@ -642,10 +673,19 @@ class _AddEventFormState extends State<AddEventForm> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save, color: Colors.white),
-                      label: const Text(
-                        'Guardar Evento',
-                        style: TextStyle(color: Colors.white),
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.save, color: Colors.white),
+                      label: Text(
+                        _isSaving ? 'Guardando...' : 'Guardar Evento',
+                        style: const TextStyle(color: Colors.white),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
@@ -654,7 +694,7 @@ class _AddEventFormState extends State<AddEventForm> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: saveEvent,
+                      onPressed: _isSaving ? null : saveEvent,
                     ),
                   ),
                   const SizedBox(width: 16),
