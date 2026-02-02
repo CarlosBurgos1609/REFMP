@@ -180,10 +180,12 @@ class _HomePageState extends State<HomePage>
   }
 
   void _showNotificationDialog() {
+    final scaffoldContext =
+        context; // Guardar referencia al contexto del Scaffold
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
@@ -214,7 +216,7 @@ class _HomePageState extends State<HomePage>
                 // Guardar que ya preguntamos
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setBool('has_asked_notifications', true);
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop();
               },
               child: const Text(
                 'Ahora no',
@@ -233,21 +235,22 @@ class _HomePageState extends State<HomePage>
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setBool('has_asked_notifications', true);
 
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop();
 
                 // Solicitar permiso
                 final status = await Permission.notification.request();
 
-                if (status.isGranted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                if (status.isGranted && scaffoldContext.mounted) {
+                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
                     const SnackBar(
                       content: Text('Notificaciones activadas correctamente'),
                       backgroundColor: Colors.green,
                     ),
                   );
-                } else if (status.isPermanentlyDenied) {
+                } else if (status.isPermanentlyDenied &&
+                    scaffoldContext.mounted) {
                   // El usuario denegó permanentemente, ofrecer ir a configuración
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(scaffoldContext).showSnackBar(
                     SnackBar(
                       content: const Text(
                           'Por favor, activa las notificaciones desde la configuración'),
