@@ -14,6 +14,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
 // Custom Cache Manager for CachedNetworkImage
@@ -58,6 +60,7 @@ class _HomePageState extends State<HomePage>
     fetchUserProfileImage();
     fetchSedes();
     fetchGamesData();
+    _checkNotificationPermission();
 
     Connectivity().onConnectivityChanged.listen((result) async {
       if (result != ConnectivityResult.none) {
@@ -157,6 +160,121 @@ class _HomePageState extends State<HomePage>
       debugPrint('Error al verificar si es invitado: $e');
       return false;
     }
+  }
+
+  Future<void> _checkNotificationPermission() async {
+    // Esperar un poco para que la UI esté lista
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final prefs = await SharedPreferences.getInstance();
+    final hasAskedBefore = prefs.getBool('has_asked_notifications') ?? false;
+
+    // Si ya preguntamos antes, no volver a preguntar
+    if (hasAskedBefore) return;
+
+    final status = await Permission.notification.status;
+
+    if (!status.isGranted && mounted) {
+      _showNotificationDialog();
+    }
+  }
+
+  void _showNotificationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.notifications_active, color: Colors.blue, size: 30),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '¿Activar notificaciones?',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Activa las notificaciones para recibir actualizaciones importantes sobre tus clases, eventos y más.',
+            style: TextStyle(fontSize: 15),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () async {
+                // Guardar que ya preguntamos
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('has_asked_notifications', true);
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                'Ahora no',
+                style: TextStyle(color: Colors.grey, fontSize: 16),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () async {
+                // Guardar que ya preguntamos
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('has_asked_notifications', true);
+
+                Navigator.of(context).pop();
+
+                // Solicitar permiso
+                final status = await Permission.notification.request();
+
+                if (status.isGranted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Notificaciones activadas correctamente'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else if (status.isPermanentlyDenied) {
+                  // El usuario denegó permanentemente, ofrecer ir a configuración
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                          'Por favor, activa las notificaciones desde la configuración'),
+                      backgroundColor: Colors.orange,
+                      action: SnackBarAction(
+                        label: 'Abrir',
+                        textColor: Colors.white,
+                        onPressed: () {
+                          openAppSettings();
+                        },
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                'Activar',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> fetchUserProfileImage() async {
