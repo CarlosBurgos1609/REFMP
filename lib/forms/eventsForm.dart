@@ -344,6 +344,7 @@ class _AddEventFormState extends State<AddEventForm> {
               const SizedBox(height: 20),
               TextFormField(
                 controller: nameController,
+                textCapitalization: TextCapitalization.sentences,
                 decoration: customInputDecoration(
                   'Nombre del evento',
                   Icons.event,
@@ -408,6 +409,7 @@ class _AddEventFormState extends State<AddEventForm> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: locationController,
+                textCapitalization: TextCapitalization.words,
                 decoration: customInputDecoration(
                   'Ubicación del evento',
                   Icons.place,
