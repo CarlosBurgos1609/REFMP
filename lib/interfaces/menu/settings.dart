@@ -206,23 +206,101 @@ class _SettingsPage extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 10),
+
+              // Opción: Usar tema del sistema
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
+                  backgroundColor: themeProvider.useSystemTheme
+                      ? Colors.blue
+                      : Colors.grey.shade300,
+                  foregroundColor: themeProvider.useSystemTheme
+                      ? Colors.white
+                      : Colors.black54,
                   minimumSize: const Size(double.infinity, 50),
                 ),
                 onPressed: () {
-                  themeProvider.toggleTheme();
+                  if (!themeProvider.useSystemTheme) {
+                    final brightness =
+                        MediaQuery.of(context).platformBrightness;
+                    themeProvider.useSystemThemeMode(brightness);
+                  }
                 },
-                icon: Icon(
-                  themeProvider.isDarkMode ? Icons.dark_mode : Icons.light_mode,
-                  color:
-                      themeProvider.isDarkMode ? Colors.white : Colors.yellow,
+                icon: const Icon(Icons.brightness_auto),
+                label: const Text(
+                  'Predeterminado del sistema',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                label: Text(
-                  themeProvider.isDarkMode ? 'Modo oscuro' : 'Modo claro',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+
+              // Opción: Modo claro
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      !themeProvider.useSystemTheme && !themeProvider.isDarkMode
+                          ? Colors.blue
+                          : Colors.grey.shade300,
+                  foregroundColor:
+                      !themeProvider.useSystemTheme && !themeProvider.isDarkMode
+                          ? Colors.white
+                          : Colors.black54,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                onPressed: () {
+                  if (themeProvider.useSystemTheme ||
+                      themeProvider.isDarkMode) {
+                    // Si está en modo sistema o modo oscuro, cambiar a modo claro
+                    if (themeProvider.isDarkMode) {
+                      themeProvider.toggleTheme();
+                    } else {
+                      // Ya está en modo claro pero usando sistema, solo desactivar sistema
+                      themeProvider.toggleTheme();
+                      if (themeProvider.isDarkMode) {
+                        themeProvider.toggleTheme();
+                      }
+                    }
+                  }
+                },
+                icon: const Icon(Icons.light_mode, color: Colors.amber),
+                label: const Text(
+                  'Modo claro',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Opción: Modo oscuro
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      !themeProvider.useSystemTheme && themeProvider.isDarkMode
+                          ? Colors.blue
+                          : Colors.grey.shade300,
+                  foregroundColor:
+                      !themeProvider.useSystemTheme && themeProvider.isDarkMode
+                          ? Colors.white
+                          : Colors.black54,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                onPressed: () {
+                  if (themeProvider.useSystemTheme ||
+                      !themeProvider.isDarkMode) {
+                    // Si está en modo sistema o modo claro, cambiar a modo oscuro
+                    if (!themeProvider.isDarkMode) {
+                      themeProvider.toggleTheme();
+                    } else {
+                      // Ya está en modo oscuro pero usando sistema, solo desactivar sistema
+                      themeProvider.toggleTheme();
+                      if (!themeProvider.isDarkMode) {
+                        themeProvider.toggleTheme();
+                      }
+                    }
+                  }
+                },
+                icon: const Icon(Icons.dark_mode, color: Colors.white),
+                label: const Text(
+                  'Modo oscuro',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 10),

@@ -62,6 +62,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+
+    // Actualizar el tema del sistema cuando cambia
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final brightness = MediaQuery.of(context).platformBrightness;
+      themeProvider.updateSystemBrightness(brightness);
+    });
+
     return MaterialApp(
       navigatorKey: navigatorKey,
       theme: themeProvider.currentTheme,
