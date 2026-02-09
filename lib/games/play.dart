@@ -1301,7 +1301,7 @@ class _PlayPageState extends State<PlayPage> {
                                                             const SizedBox(
                                                                 width: 6),
                                                             Text(
-                                                              '${getStaticCoins(song!['difficulty'] ?? 'fácil', level['name'] ?? '')} monedas',
+                                                              'Obtén ${getStaticCoins(song!['difficulty'] ?? 'fácil', level['name'] ?? '')} monedas',
                                                               style:
                                                                   const TextStyle(
                                                                 fontSize: 14,
