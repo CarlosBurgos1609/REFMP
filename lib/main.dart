@@ -42,8 +42,10 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtaHl1b2dleGdnaGludmZnb3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg4MTI3NDEsImV4cCI6MjA1NDM4ODc0MX0.jRXmFC75jhyOMa1FJ8bw9__cbAua8erwJkYODn_YckM',
   );
 
-  // Initialize Notification Service (DESPUÉS de Supabase)
-  await NotificationService.init(navigatorKey);
+  // Initialize Notification Service en background (no bloquear el inicio)
+  NotificationService.init(navigatorKey).catchError((e) {
+    debugPrint('⚠️ Error inicializando notificaciones (no crítico): $e');
+  });
 
   runApp(
     MultiProvider(
@@ -56,18 +58,49 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Actualizar el tema del sistema solo una vez al iniciar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final brightness = MediaQuery.of(context).platformBrightness;
+        final themeProvider =
+            Provider.of<ThemeProvider>(context, listen: false);
+        themeProvider.updateSystemBrightness(brightness);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    // Reaccionar cuando el usuario cambia el tema del sistema
+    if (mounted) {
+      final brightness = MediaQuery.of(context).platformBrightness;
+      final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+      themeProvider.updateSystemBrightness(brightness);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-
-    // Actualizar el tema del sistema cuando cambia
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final brightness = MediaQuery.of(context).platformBrightness;
-      themeProvider.updateSystemBrightness(brightness);
-    });
 
     return MaterialApp(
       navigatorKey: navigatorKey,
@@ -149,7 +182,7 @@ class MyApp extends StatelessWidget {
 
     // Calcular tiempo transcurrido
     final elapsed = DateTime.now().difference(startTime).inMilliseconds;
-    final minimumDelay = 3500; // 3.5 segundos
+    final minimumDelay = 1500; // 1.5 segundos
 
     // Si tardó menos del tiempo mínimo, esperar la diferencia
     if (elapsed < minimumDelay) {
