@@ -282,10 +282,10 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _startLogoTimer() {
-    // Iniciar audio ANTES del countdown para que tenga tiempo de cargar
+    // PRECARGAR audio durante el logo screen (sin reproducir)
     if (widget.backgroundAudioUrl != null) {
-      _playBackgroundAudio();
-      debugPrint('🎵 Audio iniciado durante logo screen');
+      _preloadBackgroundAudio();
+      debugPrint('🎵 Audio precargándose durante logo screen');
     }
 
     logoTimer = Timer(const Duration(seconds: 3), () {
@@ -300,7 +300,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _startCountdown() {
-    // El audio ya fue iniciado durante el logo screen
+    // INICIAR reproducción del audio JUSTO cuando empieza el countdown
+    _startBackgroundAudio();
+
     countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (countdownNumber > 1) {
         setState(() {
@@ -319,16 +321,18 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     });
   }
 
-  Future<void> _playBackgroundAudio() async {
+  // PRECARGAR el audio sin reproducirlo (durante logo screen)
+  Future<void> _preloadBackgroundAudio() async {
     try {
-      debugPrint('🔊 Iniciando reproducción de audio...');
+      debugPrint('📥 Precargando audio...');
       debugPrint('🔗 URL: ${widget.backgroundAudioUrl}');
 
       // Configurar modo de reproducción
       await _audioPlayer.setReleaseMode(ReleaseMode.stop);
 
-      await _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
-      debugPrint('✅ Comando de reproducción enviado');
+      // SOLO configurar la fuente, NO reproducir
+      await _audioPlayer.setSource(UrlSource(widget.backgroundAudioUrl!));
+      debugPrint('✅ Audio precargado y listo');
 
       // Obtener duración del audio (solo una vez)
       _audioPlayer.onDurationChanged.listen((Duration duration) {
@@ -352,22 +356,47 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         }
       });
 
+      debugPrint('✅ Audio listo para reproducción');
+    } catch (e) {
+      debugPrint('❌ Error al precargar audio: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar audio de fondo'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  // INICIAR reproducción del audio precargado INMEDIATAMENTE
+  void _startBackgroundAudio() {
+    try {
+      debugPrint('▶️ Iniciando reproducción del audio precargado...');
+
+      // Reproducir el audio que ya fue precargado (SIN await para ejecución inmediata)
+      _audioPlayer.resume();
+
       if (mounted) {
         setState(() {
           isAudioPlaying = true;
         });
       }
 
-      debugPrint('✅ Audio de fondo reproduciéndose');
+      debugPrint('✅ Audio reproduciéndose');
     } catch (e) {
-      debugPrint('❌ Error al reproducir audio: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al reproducir audio de fondo'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+      debugPrint('❌ Error al iniciar audio: $e');
+      // Intentar reproducir directamente como fallback
+      try {
+        _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
+        if (mounted) {
+          setState(() {
+            isAudioPlaying = true;
+          });
+        }
+      } catch (e2) {
+        debugPrint('❌ Error en fallback: $e2');
       }
     }
   }
@@ -732,6 +761,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     // Reiniciar tiempo de inicio y duración de audio
     gameStartTime = 0;
     audioDurationMs = 0;
+
+    // Precargar audio nuevamente
+    if (widget.backgroundAudioUrl != null) {
+      _preloadBackgroundAudio();
+      debugPrint('🎵 Audio precargándose para reinicio');
+    }
 
     // Iniciar countdown nuevamente
     setState(() {
