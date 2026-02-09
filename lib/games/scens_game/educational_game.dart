@@ -1234,6 +1234,10 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       };
 
       await box.put(cacheKey, cacheData);
+
+      // CRÍTICO: Forzar escritura en disco para persistencia
+      await box.flush();
+
       debugPrint(
           '💾 Cached ${notes.length} notes for sublevel ${widget.sublevelId}');
       debugPrint('   🔑 Cache key: $cacheKey');
@@ -1259,16 +1263,19 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       }
 
       debugPrint('📱 Loading from cache for sublevel ${widget.sublevelId}');
-      final notesData = cachedData['notes_data'] as List;
+      final notesData = (cachedData['notes_data'] as List).cast<Map>();
 
       final notes = notesData.map((noteData) {
+        // Convertir Map<dynamic, dynamic> a Map<String, dynamic>
+        final noteMap = Map<String, dynamic>.from(noteData);
+
         return GameNote(
-          id: noteData['id'],
-          startTimeMs: noteData['start_time_ms'],
-          durationMs: noteData['duration_ms'],
-          orderIndex: noteData['order_index'],
-          noteName: noteData['note_name'],
-          requiredPistons: List<int>.from(noteData['required_pistons'] ?? []),
+          id: noteMap['id'],
+          startTimeMs: noteMap['start_time_ms'],
+          durationMs: noteMap['duration_ms'],
+          orderIndex: noteMap['order_index'],
+          noteName: noteMap['note_name'],
+          requiredPistons: List<int>.from(noteMap['required_pistons'] ?? []),
         );
       }).toList();
 

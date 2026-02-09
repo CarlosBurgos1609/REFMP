@@ -435,11 +435,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // MEJORADO: Sistema inteligente que verifica cambios en la base de datos
     if (widget.songId != null && widget.songId!.isNotEmpty) {
-      // Primero intentar cargar desde cache offline
-      print('🔍 Loading from offline cache first...');
-      await _loadSongFromOfflineCache();
-
-      // NUEVO: Verificar conectividad antes de intentar base de datos
+      // NUEVO: Verificar conectividad PRIMERO antes de intentar cargar
       bool isOnline = false;
       try {
         final connectivityResult = await Connectivity().checkConnectivity();
@@ -454,36 +450,47 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
       print('🌐 Internet connection: ${isOnline ? "ONLINE" : "OFFLINE"}');
 
-      // Solo verificar actualizaciones si estamos online
-      if (isOnline) {
-        print('🔍 Checking for database updates...');
-        final hasUpdates = await _checkForDatabaseUpdates();
+      // Si está OFFLINE, cargar SOLO desde caché y terminar
+      if (!isOnline) {
+        print('📱 OFFLINE MODE: Loading from cache only...');
+        await _loadSongFromOfflineCache();
 
-        if (hasUpdates) {
-          print('🆕 Database changes detected! Loading fresh data...');
-          await _loadFreshDataFromDatabase();
+        if (songNotes.isNotEmpty) {
+          print('✅ Loaded ${songNotes.length} notes from offline cache');
+          setState(() {
+            isLoadingSong = false;
+          });
+          return; // CRÍTICO: Salir aquí si está offline
         } else {
-          print('✅ Cache is up to date with database');
-        }
-      } else {
-        print('📱 Offline mode: Using cached data only');
-      }
-
-      // Si después de verificar actualizaciones tenemos datos, validar calidad
-      if (songNotes.isNotEmpty) {
-        // NUEVO: Validar calidad del cache antes de usarlo
-        print('🔍 Validating cache quality...');
-        final isValid = await validateAndRepairCache();
-
-        if (isValid && songNotes.isNotEmpty) {
-          print('✅ Using validated song data (${songNotes.length} notes)');
+          print('❌ No cached data found for offline mode');
           setState(() {
             isLoadingSong = false;
           });
           return;
-        } else {
-          print('⚠️ Cache validation failed, attempting fresh load...');
         }
+      }
+
+      // Si está ONLINE, intentar cargar desde caché primero y luego verificar actualizaciones
+      print('🔍 Loading from offline cache first...');
+      await _loadSongFromOfflineCache();
+
+      print('🔍 Checking for database updates...');
+      final hasUpdates = await _checkForDatabaseUpdates();
+
+      if (hasUpdates) {
+        print('🆕 Database changes detected! Loading fresh data...');
+        await _loadFreshDataFromDatabase();
+      } else {
+        print('✅ Cache is up to date with database');
+      }
+
+      // Si después de verificar actualizaciones tenemos datos, validar calidad
+      if (songNotes.isNotEmpty) {
+        print('✅ Using song data (${songNotes.length} notes)');
+        setState(() {
+          isLoadingSong = false;
+        });
+        return;
       }
 
       // Si no hay datos después de verificar actualizaciones, intentar la base de datos como fallback
@@ -612,31 +619,33 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
         // Reconstruir songNotes desde cache
         songNotes = [];
-        final notesData = cachedSongData['notes_data'] as List;
+        final notesData = (cachedSongData['notes_data'] as List).cast<Map>();
 
         for (var noteData in notesData) {
+          // Convertir Map<dynamic, dynamic> a Map<String, dynamic>
+          final noteMap = Map<String, dynamic>.from(noteData);
+
           // Crear SongNote desde datos cached
           final songNote = SongNote(
-            id: noteData['note_id']?.toString() ?? '',
+            id: noteMap['note_id']?.toString() ?? '',
             songId: widget.songId ?? '',
-            startTimeMs: noteData['start_time_ms'] ?? 0,
-            durationMs: noteData['duration_ms'] ?? 1000,
-            beatPosition: (noteData['beat_position'] ?? 0.0) is int
-                ? (noteData['beat_position'] ?? 0.0).toDouble()
-                : noteData['beat_position'] ?? 0.0,
-            measureNumber: noteData['measure_number'] ?? 1,
-            noteType: noteData['note_type'] ?? 'quarter',
-            velocity: noteData['velocity'] ?? 80,
-            chromaticId: noteData['chromatic_id'],
+            startTimeMs: noteMap['start_time_ms'] ?? 0,
+            durationMs: noteMap['duration_ms'] ?? 1000,
+            beatPosition: (noteMap['beat_position'] ?? 0.0) is int
+                ? (noteMap['beat_position'] ?? 0.0).toDouble()
+                : noteMap['beat_position'] ?? 0.0,
+            measureNumber: noteMap['measure_number'] ?? 1,
+            noteType: noteMap['note_type'] ?? 'quarter',
+            velocity: noteMap['velocity'] ?? 80,
+            chromaticId: noteMap['chromatic_id'],
             createdAt: DateTime.fromMillisecondsSinceEpoch(
-                noteData['created_at'] ??
-                    DateTime.now().millisecondsSinceEpoch),
+                noteMap['created_at'] ?? DateTime.now().millisecondsSinceEpoch),
           );
 
           // NUEVO: Restaurar ChromaticNote desde cache offline si está disponible
-          if (noteData['chromatic_note_data'] != null) {
-            final chromaticData =
-                noteData['chromatic_note_data'] as Map<String, dynamic>;
+          if (noteMap['chromatic_note_data'] != null) {
+            final chromaticData = Map<String, dynamic>.from(
+                noteMap['chromatic_note_data'] as Map);
             final chromaticNote = ChromaticNote(
               id: chromaticData['id'] ?? 0,
               instrumentId: chromaticData['instrument_id'] ?? 0,
@@ -654,11 +663,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 '🎵 Restored ChromaticNote for offline: ${chromaticNote.englishName}');
           } else {
             print(
-                '⚠️ No ChromaticNote data in cache for note ${noteData['note_id']}');
+                '⚠️ No ChromaticNote data in cache for note ${noteMap['note_id']}');
             // Intentar usar los datos básicos si están disponibles
-            if (noteData['note_name'] != null &&
-                noteData['note_name'] != 'Unknown') {
-              print('   📝 Using basic cached data: ${noteData['note_name']}');
+            if (noteMap['note_name'] != null &&
+                noteMap['note_name'] != 'Unknown') {
+              print('   📝 Using basic cached data: ${noteMap['note_name']}');
             }
           }
 
@@ -1248,19 +1257,30 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       // Guardar en Hive para acceso offline
       await box.put(songCacheKey, songCacheData);
 
-      print('✅ Song data cached successfully for offline use');
-      print('   📝 Song: ${widget.songName}');
-      print('   🆔 ID: ${widget.songId}');
-      print('   🎵 Notes: ${songNotes.length}');
-      print('   � Quality metrics:');
-      print(
-          '      🎯 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
-      print(
-          '      🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
-      print('   �💾 Cache key: $songCacheKey');
-      print('   📅 Timestamp: ${DateTime.fromMillisecondsSinceEpoch(now)}');
+      // CRÍTICO: Forzar escritura en disco para persistencia
+      await box.flush();
+
+      // VERIFICACIÓN: Confirmar que se guardó correctamente
+      final verifyData = box.get(songCacheKey);
+      if (verifyData != null) {
+        print('VERIFIED: Song data cached and persisted successfully!');
+        print('   Song: ${widget.songName}');
+        print('   ID: ${widget.songId}');
+        print('   Notes: ${songNotes.length}');
+        print('   Quality metrics:');
+        print(
+            '      ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+        print(
+            '      Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
+        print('   Cache key: $songCacheKey');
+        print('   Timestamp: ${DateTime.fromMillisecondsSinceEpoch(now)}');
+        print('   Hive box path: ${box.path}');
+        print('   Total keys in box: ${box.keys.length}');
+      } else {
+        print('ERROR: Failed to verify cached data after flush!');
+      }
     } catch (e) {
-      print('❌ Error caching song data offline: $e');
+      print('Error caching song data offline: $e');
     }
   }
 

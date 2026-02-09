@@ -23,10 +23,17 @@ void main() async {
 
   // Initialize Hive
   await Hive.initFlutter();
-  await Hive.openBox('offline_data');
+
+  // Abrir las cajas
+  final offlineBox = await Hive.openBox('offline_data');
   await Hive.openBox('pending_actions');
-  debugPrint(
-      'Hive initialized and boxes opened: offline_data, pending_actions');
+
+  debugPrint('========================================');
+  debugPrint('Hive initialized and boxes opened');
+  debugPrint('Offline box path: ${offlineBox.path}');
+  debugPrint('Total keys in offline_data: ${offlineBox.keys.length}');
+  debugPrint('Keys: ${offlineBox.keys.toList()}');
+  debugPrint('========================================');
 
   // Initialize Supabase
   await Supabase.initialize(
