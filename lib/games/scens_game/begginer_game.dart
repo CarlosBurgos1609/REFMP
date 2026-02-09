@@ -541,6 +541,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             }
           }
 
+          // NUEVO: Cachear las notas cargadas para uso offline
+          print('💾 Caching loaded notes for offline use...');
+          await _cacheSongDataOffline();
+
           // NUEVO: Precargar TODOS los audios durante el logo
           _precacheAllAudioFiles();
 
@@ -913,32 +917,28 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print(
             '   🔊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
 
-        // NUEVO: Solo actualizar cache si los datos son de buena calidad
-        if (chromaticQuality > 0.5 && audioQuality > 0.5) {
-          print('✅ Data quality is good, updating cache...');
+        // MEJORADO: SIEMPRE cachear los datos para uso offline
+        print('💾 Updating cache for offline use (quality checks removed)...');
 
-          // Actualizar cache offline con los datos frescos
-          await _cacheSongDataOffline();
+        // Actualizar cache offline con los datos frescos
+        await _cacheSongDataOffline();
 
-          // Reset del índice de notas
-          currentNoteIndex = 0;
+        // Reset del índice de notas
+        currentNoteIndex = 0;
 
-          print('🎉 Cache updated successfully with fresh high-quality data');
+        print('🎉 Cache updated successfully for offline use');
+        print('   📊 Cached ${freshNotes.length} notes');
+        print(
+            '   📊 ChromaticNote coverage: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
+        print(
+            '   📊 Audio URL coverage: ${(audioQuality * 100).toStringAsFixed(1)}%');
 
-          // MEJORADO: Solo precargar audios si están disponibles
-          if (audioQuality > 0.8) {
-            // 80% de cobertura de audio
-            print('🔊 Starting audio precaching...');
-            await _precacheAllAudioFiles();
-          } else {
-            print('⚠️ Audio coverage is low, skipping precache');
-          }
+        // Precargar audios si están disponibles (sin bloquear el caché)
+        if (audioQuality > 0) {
+          print('🔊 Starting audio precaching...');
+          _precacheAllAudioFiles(); // Sin await para no bloquear
         } else {
-          print('⚠️ Fresh data quality is poor, keeping existing cache');
-          print(
-              '   📊 ChromaticNote: ${(chromaticQuality * 100).toStringAsFixed(1)}%');
-          print(
-              '   📊 Audio URLs: ${(audioQuality * 100).toStringAsFixed(1)}%');
+          print('⚠️ No audio URLs available for precaching');
         }
       } else {
         print('⚠️ No fresh data available from database');

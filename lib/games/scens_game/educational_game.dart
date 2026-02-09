@@ -1,6 +1,7 @@
 // ignore_for_file: unused_local_variable
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,6 +9,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:refmp/games/game/dialogs/pause_dialog.dart';
 import 'package:refmp/games/game/dialogs/back_dialog.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para caché offline
+import 'package:connectivity_plus/connectivity_plus.dart'; // NUEVO: Para verificar conectividad
 
 /// Juego educativo que muestra una partitura y hace caer notas
 /// El estudiante debe presionar los pistones correctos sin reproducir sonido
@@ -94,7 +97,23 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     super.initState();
     _setupScreen();
     _initializeAnimations();
+    _initializeHive(); // NUEVO: Inicializar Hive
     _loadGameData();
+  }
+
+  // NUEVO: Inicializar Hive si no está abierto
+  Future<void> _initializeHive() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        debugPrint('📂 Opening Hive offline_data box...');
+        await Hive.openBox('offline_data');
+        debugPrint('✅ Hive box opened successfully');
+      } else {
+        debugPrint('✅ Hive box already open');
+      }
+    } catch (e) {
+      debugPrint('❌ Error initializing Hive: $e');
+    }
   }
 
   @override
@@ -151,10 +170,28 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
   // Cargar datos del juego desde la base de datos
   Future<void> _loadGameData() async {
+    debugPrint('🔄 Loading game data...');
+    debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
+
+    // NUEVO: Primero intentar cargar desde caché offline
+    final cachedNotes = await _loadGameDataFromCache();
+    if (cachedNotes != null && cachedNotes.isNotEmpty) {
+      gameNotes = cachedNotes;
+      totalNotes = gameNotes.length;
+      debugPrint('✅ Loaded ${gameNotes.length} notes from cache');
+
+      setState(() {
+        isLoadingData = false;
+      });
+      _startLogoTimer();
+      return;
+    }
+
+    // Si no hay caché o está vacío, cargar desde la base de datos
     final supabase = Supabase.instance.client;
 
     try {
-      debugPrint('🎮 Cargando datos del juego educativo...');
+      debugPrint('🎮 Cargando datos del juego educativo desde BD...');
       debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
 
       // Cargar notas desde game_song_sublevel
@@ -195,6 +232,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         debugPrint('✅ Cargadas ${gameNotes.length} notas del juego');
         debugPrint(
             '⏱️ Primera nota: ${gameNotes.first.startTimeMs}ms, Última nota: ${gameNotes.last.startTimeMs}ms');
+
+        // NUEVO: Guardar en caché para uso offline
+        await _saveGameDataToCache(gameNotes);
 
         // Iniciar el juego después de cargar
         setState(() {
@@ -1166,6 +1206,80 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         });
       }
     });
+  }
+
+  // NUEVO: Guardar datos del juego en caché para uso offline
+  Future<void> _saveGameDataToCache(List<GameNote> notes) async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final cacheKey = 'educational_sublevel_${widget.sublevelId}_notes';
+
+      final cacheData = {
+        'sublevel_id': widget.sublevelId,
+        'title': widget.title,
+        'cached_timestamp': DateTime.now().millisecondsSinceEpoch,
+        'notes_count': notes.length,
+        'notes_data': notes
+            .map((note) => {
+                  'id': note.id,
+                  'start_time_ms': note.startTimeMs,
+                  'duration_ms': note.durationMs,
+                  'order_index': note.orderIndex,
+                  'note_name': note.noteName,
+                  'required_pistons': note.requiredPistons,
+                })
+            .toList(),
+      };
+
+      await box.put(cacheKey, cacheData);
+      debugPrint(
+          '💾 Cached ${notes.length} notes for sublevel ${widget.sublevelId}');
+      debugPrint('   🔑 Cache key: $cacheKey');
+    } catch (e) {
+      debugPrint('❌ Error saving game data to cache: $e');
+    }
+  }
+
+  // NUEVO: Cargar datos del juego desde caché
+  Future<List<GameNote>?> _loadGameDataFromCache() async {
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final cacheKey = 'educational_sublevel_${widget.sublevelId}_notes';
+      final cachedData = box.get(cacheKey);
+
+      if (cachedData == null) {
+        debugPrint('📱 No cached data found for sublevel ${widget.sublevelId}');
+        return null;
+      }
+
+      debugPrint('📱 Loading from cache for sublevel ${widget.sublevelId}');
+      final notesData = cachedData['notes_data'] as List;
+
+      final notes = notesData.map((noteData) {
+        return GameNote(
+          id: noteData['id'],
+          startTimeMs: noteData['start_time_ms'],
+          durationMs: noteData['duration_ms'],
+          orderIndex: noteData['order_index'],
+          noteName: noteData['note_name'],
+          requiredPistons: List<int>.from(noteData['required_pistons'] ?? []),
+        );
+      }).toList();
+
+      debugPrint('✅ Loaded ${notes.length} notes from cache');
+      return notes;
+    } catch (e) {
+      debugPrint('❌ Error loading game data from cache: $e');
+      return null;
+    }
   }
 
   @override
