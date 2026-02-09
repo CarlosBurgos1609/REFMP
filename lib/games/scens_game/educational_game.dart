@@ -1,7 +1,6 @@
 // ignore_for_file: unused_local_variable
 
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,7 +9,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:refmp/games/game/dialogs/pause_dialog.dart';
 import 'package:refmp/games/game/dialogs/back_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para caché offline
-import 'package:connectivity_plus/connectivity_plus.dart'; // NUEVO: Para verificar conectividad
 
 /// Juego educativo que muestra una partitura y hace caer notas
 /// El estudiante debe presionar los pistones correctos sin reproducir sonido
