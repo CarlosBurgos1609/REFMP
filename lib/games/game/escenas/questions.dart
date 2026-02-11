@@ -5,6 +5,7 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:refmp/games/scens_game/educational_game.dart';
+import 'package:refmp/games/game/escenas/tips_page.dart';
 
 class QuestionPage extends StatefulWidget {
   final String sublevelId;
@@ -56,7 +57,15 @@ class _QuestionPageState extends State<QuestionPage> {
       loadVideoUrl();
     } else if (widget.sublevelType == 'Game' ||
         widget.sublevelType == 'Juego') {
-      loadGameDataAndNavigate();
+      // Ejecutar después de que el widget esté construido
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        loadGameDataAndNavigate();
+      });
+    } else if (widget.sublevelType == 'Tips' || widget.sublevelType == 'Tip') {
+      // Ejecutar después de que el widget esté construido
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        loadTipsAndNavigate();
+      });
     }
   }
 
@@ -206,6 +215,47 @@ class _QuestionPageState extends State<QuestionPage> {
     } catch (e) {
       debugPrint('❌ Error al cargar el video: $e');
       debugPrint('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  Future<void> loadTipsAndNavigate() async {
+    try {
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('💡 INICIANDO CARGA DE TIPS');
+      debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      if (mounted) {
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TipsPage(
+              sublevelId: widget.sublevelId,
+              sublevelTitle: widget.sublevelTitle,
+            ),
+          ),
+        );
+
+        debugPrint('🔙 Regresó de TipsPage con resultado: $result');
+        if (mounted) {
+          Navigator.pop(context, result ?? false);
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('❌ ERROR CRÍTICO AL CARGAR TIPS');
+      debugPrint('🔴 Error: $e');
+      debugPrint('📍 Stack trace: $stackTrace');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error crítico: $e'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+        Navigator.pop(context, false);
+      }
     }
   }
 
@@ -1491,9 +1541,19 @@ class _QuestionPageState extends State<QuestionPage> {
       }
     }
 
-// Si es tipo Game o Juego, la navegación se maneja en initState
+// Si es tipo Game, Juego o Tips, la navegación se maneja en initState
     // No debería llegar aquí, pero por si acaso mostramos loading
-    if (widget.sublevelType == 'Game' || widget.sublevelType == 'Juego') {
+    if (widget.sublevelType == 'Game' ||
+        widget.sublevelType == 'Juego' ||
+        widget.sublevelType == 'Tips' ||
+        widget.sublevelType == 'Tip') {
+      String loadingMessage = 'Cargando';
+      if (widget.sublevelType == 'Tips' || widget.sublevelType == 'Tip') {
+        loadingMessage = 'Cargando tips...';
+      } else {
+        loadingMessage = 'Cargando juego...';
+      }
+
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -1513,7 +1573,7 @@ class _QuestionPageState extends State<QuestionPage> {
               CircularProgressIndicator(color: Colors.blue),
               SizedBox(height: 16),
               Text(
-                'Cargando juego...',
+                loadingMessage,
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.grey[600],

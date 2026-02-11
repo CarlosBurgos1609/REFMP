@@ -54,6 +54,8 @@ class _HomePageState extends State<HomePage>
   List<dynamic> sedes = [];
   List<dynamic> games = [];
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +64,9 @@ class _HomePageState extends State<HomePage>
     fetchGamesData();
     _checkNotificationPermission();
 
-    Connectivity().onConnectivityChanged.listen((result) async {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((result) async {
+      if (!mounted) return;
       if (result != ConnectivityResult.none) {
         // Conexión restaurada, recarga los datos
         await fetchSedes();
@@ -80,7 +84,8 @@ class _HomePageState extends State<HomePage>
 
   @override
   void dispose() {
-    _timer.cancel(); // <-- Cancela el timer primero
+    _connectivitySubscription?.cancel();
+    _timer.cancel();
     _pageController.dispose();
     _gamesTimer.cancel();
     _gamesPageController.dispose();
@@ -292,7 +297,7 @@ class _HomePageState extends State<HomePage>
 
       if (!isOnline) {
         final cachedProfileImage = box.get(cacheKey);
-        if (cachedProfileImage != null) {
+        if (cachedProfileImage != null && mounted) {
           setState(() {
             profileImageUrl = cachedProfileImage;
           });
@@ -321,9 +326,11 @@ class _HomePageState extends State<HomePage>
           final imageUrl = response['profile_image'];
           // Pre-cache the profile image
           await CustomCacheManager.instance.downloadFile(imageUrl);
-          setState(() {
-            profileImageUrl = imageUrl;
-          });
+          if (mounted) {
+            setState(() {
+              profileImageUrl = imageUrl;
+            });
+          }
           await box.put(cacheKey, imageUrl);
           break;
         }
@@ -338,7 +345,7 @@ class _HomePageState extends State<HomePage>
     const cacheKey = 'games_data';
 
     final cachedGames = box.get(cacheKey);
-    if (cachedGames != null) {
+    if (cachedGames != null && mounted) {
       setState(() {
         games = cachedGames;
       });
@@ -358,9 +365,11 @@ class _HomePageState extends State<HomePage>
             await CustomCacheManager.instance.downloadFile(imageUrl);
           }
         }
-        setState(() {
-          games = response;
-        });
+        if (mounted) {
+          setState(() {
+            games = response;
+          });
+        }
         await box.put(cacheKey, response);
         debugPrint('Juegos actualizados y guardados en cache');
       }
@@ -552,9 +561,11 @@ class _HomePageState extends State<HomePage>
                             controller: _pageController,
                             itemCount: sedes.length,
                             onPageChanged: (index) {
-                              setState(() {
-                                _currentPage = index;
-                              });
+                              if (mounted) {
+                                setState(() {
+                                  _currentPage = index;
+                                });
+                              }
                             },
                             itemBuilder: (context, index) {
                               final sede = sedes[index];
@@ -770,9 +781,11 @@ class _HomePageState extends State<HomePage>
                                         controller: _gamesPageController,
                                         itemCount: games.length,
                                         onPageChanged: (index) {
-                                          setState(() {
-                                            _currentGamePage = index;
-                                          });
+                                          if (mounted) {
+                                            setState(() {
+                                              _currentGamePage = index;
+                                            });
+                                          }
                                         },
                                         itemBuilder: (context, index) {
                                           final game = games[index];
