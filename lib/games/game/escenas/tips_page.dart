@@ -764,7 +764,8 @@ class _TipsPageState extends State<TipsPage> {
                                             isDarkMode
                                                 ? Colors.grey[900]!
                                                     .withOpacity(0.85)
-                                                : Colors.white.withOpacity(0.85),
+                                                : Colors.white
+                                                    .withOpacity(0.85),
                                           ],
                                         ),
                                       ),
@@ -802,7 +803,8 @@ class _TipsPageState extends State<TipsPage> {
                                             isDarkMode
                                                 ? Colors.grey[900]!
                                                     .withOpacity(0.85)
-                                                : Colors.white.withOpacity(0.85),
+                                                : Colors.white
+                                                    .withOpacity(0.85),
                                           ],
                                         ),
                                       ),
