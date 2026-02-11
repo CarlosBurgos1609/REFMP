@@ -9,6 +9,8 @@ void showCongratulationsDialog(
   required int missedNotes,
   required int coins, // Monedas ganadas
   required VoidCallback onContinue,
+  String? source, // NUEVO: Opcional - origen de los puntos
+  String? sourceName, // NUEVO: Opcional - nombre del elemento
 }) {
   showDialog(
     context: context,
@@ -78,7 +80,9 @@ void showCongratulationsDialog(
                 const SizedBox(height: 6), // Reducido de 8 a 6
 
                 Text(
-                  'Has completado la canción',
+                  sourceName != null
+                      ? 'Has completado: $sourceName'
+                      : 'Has completado la canción',
                   style: TextStyle(
                     fontSize: 14, // Reducido de 16 a 14
                     color: themeProvider.isDarkMode
@@ -86,6 +90,8 @@ void showCongratulationsDialog(
                         : Colors.grey[600],
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 16), // Reducido de 24 a 16
 
@@ -199,7 +205,7 @@ Widget _buildStatCard({
   required String title,
   required String value,
   required Color valueColor,
-  required dynamic themeProvider,
+  required ThemeProvider themeProvider,
 }) {
   return Container(
     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),

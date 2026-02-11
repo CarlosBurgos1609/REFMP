@@ -1854,6 +1854,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       correctNotes: correctNotes,
       missedNotes: totalNotes - correctNotes,
       coins: totalCoins, // Monedas ganadas por completar la canción
+      source: 'beginner_game',
+      sourceName: widget.songName,
       onContinue: () {
         Navigator.pop(context); // Regresar al menú anterior
       },
@@ -1955,9 +1957,61 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print('✅ Nuevo registro en users_games creado');
       }
 
+      // Calcular stars basado en accuracy
+      final stars = accuracy >= 0.9
+          ? 3
+          : accuracy >= 0.7
+              ? 2
+              : accuracy >= 0.5
+                  ? 1
+                  : 0;
+
+      // Registrar en historial de XP
+      await _recordXpHistory(
+        user.id,
+        experiencePoints,
+        'beginner_game',
+        widget.songId ?? 'unknown',
+        widget.songName,
+        {
+          'difficulty': widget.songDifficulty ?? 'fácil',
+          'coins_earned': totalCoins,
+          'accuracy': accuracy,
+          'stars': stars,
+        },
+      );
+
       print('✅ Guardado completado exitosamente');
     } catch (e) {
       print('❌ Error al guardar puntos y monedas: $e');
+    }
+  }
+
+  Future<void> _recordXpHistory(
+    String userId,
+    int pointsEarned,
+    String source,
+    String sourceId,
+    String sourceName,
+    Map<String, dynamic> sourceDetails,
+  ) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      await supabase.from('xp_history').insert({
+        'user_id': userId,
+        'points_earned': pointsEarned,
+        'source': source,
+        'source_id': sourceId,
+        'source_name': sourceName,
+        'source_details': sourceDetails,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print('✅ Historial de XP registrado: +$pointsEarned XP desde $source');
+    } catch (e) {
+      print('❌ Error al registrar historial de XP: $e');
+      // No fallar el proceso principal si falla el historial
     }
   }
 

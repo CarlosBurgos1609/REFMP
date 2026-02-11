@@ -8,6 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:refmp/games/game/dialogs/pause_dialog.dart';
 import 'package:refmp/games/game/dialogs/back_dialog.dart';
+import 'package:refmp/games/game/dialogs/congratulations_dialog.dart'; // NUEVO: Usar diálogo centralizado
 import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para caché offline
 
 /// Juego educativo que muestra una partitura y hace caer notas
@@ -815,256 +816,25 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _showResultsDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        // Determinar tema (claro u oscuro)
-        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    // Guardar puntos de experiencia antes de mostrar el diálogo
+    if (experiencePoints > 0) {
+      _saveExperiencePoints();
+    }
 
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxHeight: 400),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Icono de check animado
-                  TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 800),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.green, width: 2),
-                          ),
-                          child: const Icon(
-                            Icons.check_circle_rounded,
-                            color: Colors.green,
-                            size: 30,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Título
-                  Text(
-                    '¡Felicitaciones!',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: isDarkMode ? Colors.white : Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-
-                  Text(
-                    'Has completado el juego',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDarkMode ? Colors.grey[300] : Colors.grey[600],
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Estadísticas en una fila
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isDarkMode
-                          ? Colors.grey[800]?.withOpacity(0.3)
-                          : Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isDarkMode
-                            ? Colors.grey[600]!.withOpacity(0.3)
-                            : Colors.grey.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        // Experiencia
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.star,
-                            iconColor: Colors.purple,
-                            title: 'Experiencia',
-                            value: '$experiencePoints',
-                            valueColor: Colors.purple,
-                            isDarkMode: isDarkMode,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-
-                        // Monedas
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.monetization_on,
-                            iconColor: Colors.amber,
-                            title: 'Monedas',
-                            value: '${widget.coins}',
-                            valueColor: Colors.amber,
-                            isDarkMode: isDarkMode,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-
-                        // Notas acertadas
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.check_rounded,
-                            iconColor: Colors.green,
-                            title: 'Correctas',
-                            value: '$correctNotes',
-                            valueColor: Colors.green,
-                            isDarkMode: isDarkMode,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-
-                        // Notas falladas
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.close_rounded,
-                            iconColor: Colors.red,
-                            title: 'Fallos',
-                            value: '${totalNotes - correctNotes}',
-                            valueColor: Colors.red,
-                            isDarkMode: isDarkMode,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Botón Continuar
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 2,
-                    ),
-                    onPressed: () async {
-                      // Guardar puntos de experiencia si hubo notas correctas
-                      if (experiencePoints > 0) {
-                        await _saveExperiencePoints();
-                      }
-                      // Cerrar diálogo primero
-                      if (mounted) {
-                        Navigator.of(context).pop(); // Cerrar diálogo
-                        // Pequeño delay para asegurar que el contexto es estable
-                        await Future.delayed(Duration(milliseconds: 100));
-                        // Ahora cerrar la página del juego
-                        if (mounted) {
-                          Navigator.of(context).pop(correctNotes > 0);
-                        }
-                      }
-                    },
-                    child: const Text(
-                      'Continuar',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
+    // Usar el diálogo centralizado con información del historial
+    showCongratulationsDialog(
+      context,
+      experiencePoints: experiencePoints,
+      correctNotes: correctNotes,
+      missedNotes: totalNotes - correctNotes,
+      coins: widget.coins,
+      source: 'educational_game',
+      sourceName: widget.title,
+      onContinue: () {
+        if (mounted) {
+          Navigator.of(context).pop(correctNotes > 0);
+        }
       },
-    );
-  }
-
-  // Widget helper para crear tarjetas de estadísticas
-  Widget _buildStatCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String value,
-    required Color valueColor,
-    required bool isDarkMode,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: iconColor.withOpacity(0.3)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Icono
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: iconColor,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Título
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 9,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-
-          // Valor
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: valueColor,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 
@@ -1162,9 +932,62 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         debugPrint('✅ Nuevo registro en users_games creado');
       }
 
+      // Calcular accuracy y stars para el historial
+      final accuracy = totalNotes > 0 ? correctNotes / totalNotes : 0.0;
+      final stars = accuracy >= 0.9
+          ? 3
+          : accuracy >= 0.7
+              ? 2
+              : accuracy >= 0.5
+                  ? 1
+                  : 0;
+
+      // Registrar en historial de XP
+      await _recordXpHistory(
+        user.id,
+        experiencePoints,
+        'educational_game',
+        widget.sublevelId,
+        widget.title,
+        {
+          'coins_earned': experiencePoints ~/ 10,
+          'accuracy': accuracy,
+          'stars': stars,
+        },
+      );
+
       debugPrint('✅ Guardado completado exitosamente');
     } catch (e) {
       debugPrint('❌ Error al guardar puntos: $e');
+    }
+  }
+
+  Future<void> _recordXpHistory(
+    String userId,
+    int pointsEarned,
+    String source,
+    String sourceId,
+    String sourceName,
+    Map<String, dynamic> sourceDetails,
+  ) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      await supabase.from('xp_history').insert({
+        'user_id': userId,
+        'points_earned': pointsEarned,
+        'source': source,
+        'source_id': sourceId,
+        'source_name': sourceName,
+        'source_details': sourceDetails,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint(
+          '✅ Historial de XP registrado: +$pointsEarned XP desde $source');
+    } catch (e) {
+      debugPrint('❌ Error al registrar historial de XP: $e');
+      // No fallar el proceso principal si falla el historial
     }
   }
 

@@ -978,12 +978,12 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         return;
       }
 
-      // Obtener el inicio de la semana (domingo)
+      // Obtener los últimos 7 días (hoy es el día 6)
       final now = DateTime.now();
-      final currentWeekday = now.weekday % 7; // 0=Domingo, 6=Sábado
-      final startOfWeek = now.subtract(Duration(days: currentWeekday));
-      final startOfWeekMidnight =
-          DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Calcular el inicio de los últimos 7 días (hace 6 días)
+      final startDate = today.subtract(const Duration(days: 6));
 
       // Nombres de los días para debug
       final dayNames = [
@@ -996,50 +996,61 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
         'Sábado'
       ];
 
-      debugPrint('Start of week: $startOfWeekMidnight (${dayNames[0]})');
-      debugPrint('Current day: ${dayNames[currentWeekday]}');
+      debugPrint('📅 Fetching last 7 days XP:');
+      debugPrint('   Start: $startDate');
+      debugPrint('   Today: $today');
 
-      // Consultar el historial de partidas de esta semana
+      // Consultar el historial de XP de los últimos 7 días
       final response = await supabase
-          .from('games_history')
-          .select('points_xp, created_at')
+          .from('xp_history')
+          .select('points_earned, created_at, source, source_name')
           .eq('user_id', userId)
-          .gte('created_at', startOfWeekMidnight.toIso8601String())
+          .gte('created_at', startDate.toIso8601String())
+          .lte('created_at',
+              today.add(const Duration(days: 1)).toIso8601String())
           .order('created_at', ascending: true);
 
-      debugPrint('Query result: ${response.length} games found');
+      debugPrint('Query result: ${response.length} XP records found');
 
-      // Agrupar puntos por día de la semana
+      // Agrupar puntos por índice de día (0 = hace 6 días, 6 = hoy)
       Map<int, double> xpByDay = {
-        0: 0.0, // Domingo
-        1: 0.0, // Lunes
-        2: 0.0, // Martes
-        3: 0.0, // Miércoles
-        4: 0.0, // Jueves
-        5: 0.0, // Viernes
-        6: 0.0, // Sábado
+        0: 0.0, // Hace 6 días
+        1: 0.0, // Hace 5 días
+        2: 0.0, // Hace 4 días
+        3: 0.0, // Hace 3 días
+        4: 0.0, // Hace 2 días
+        5: 0.0, // Ayer
+        6: 0.0, // Hoy
       };
 
       if (response.isEmpty) {
         // Si no hay historial, mostrar los puntos del día actual
-        debugPrint(
-            '⚠️ No games_history found, using pointsXpWeekend for current day');
+        debugPrint('⚠️ No xp_history found, using pointsXpWeekend for today');
         if (pointsXpWeekend > 0) {
-          xpByDay[currentWeekday] = pointsXpWeekend.toDouble();
-          debugPrint(
-              'Showing $pointsXpWeekend XP on current day (${dayNames[currentWeekday]})');
+          xpByDay[6] = pointsXpWeekend.toDouble(); // Índice 6 = hoy
+          debugPrint('Showing $pointsXpWeekend XP on today');
         }
       } else {
-        // Procesar historial de juegos
-        for (var game in response) {
-          final createdAt = DateTime.parse(game['created_at']);
-          final dayOfWeek = createdAt.weekday % 7; // 0=Domingo, 6=Sábado
-          final points = (game['points_xp'] as num?)?.toDouble() ?? 0.0;
+        // Procesar historial de XP
+        for (var record in response) {
+          final createdAt = DateTime.parse(record['created_at']);
+          final recordDate =
+              DateTime(createdAt.year, createdAt.month, createdAt.day);
 
-          xpByDay[dayOfWeek] = (xpByDay[dayOfWeek] ?? 0.0) + points;
+          // Calcular cuántos días atrás fue este registro
+          final daysDifference = today.difference(recordDate).inDays;
 
-          debugPrint(
-              'Game on ${dayNames[dayOfWeek]}: +$points XP -> Total: ${xpByDay[dayOfWeek]}');
+          // Mapear a índice (0 = hace 6 días, 6 = hoy)
+          final dayIndex = 6 - daysDifference;
+
+          if (dayIndex >= 0 && dayIndex <= 6) {
+            final points = (record['points_earned'] as num?)?.toDouble() ?? 0.0;
+            xpByDay[dayIndex] = (xpByDay[dayIndex] ?? 0.0) + points;
+
+            final dayName = dayNames[recordDate.weekday % 7];
+            debugPrint(
+                'XP on $dayName (${recordDate.day}/${recordDate.month}): +$points XP -> Total: ${xpByDay[dayIndex]}');
+          }
         }
       }
 
@@ -1053,10 +1064,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
       await box.put(cacheKey,
           xpByDay.map((key, value) => MapEntry(key.toString(), value)));
 
-      debugPrint('Online: Fetched weekly XP data:');
-      xpByDay.forEach((day, xp) {
-        debugPrint('  ${dayNames[day]}: $xp XP');
-      });
+      debugPrint('Online: Fetched last 7 days XP data:');
+      for (int i = 0; i < 7; i++) {
+        final date = today.subtract(Duration(days: 6 - i));
+        final dayName = dayNames[date.weekday % 7];
+        final label = i == 6 ? 'Hoy' : dayName;
+        debugPrint(
+            '  Day $i ($label - ${date.day}/${date.month}): ${xpByDay[i]} XP');
+      }
     } catch (e, stackTrace) {
       debugPrint('Error fetching weekly XP data: $e\nStack trace: $stackTrace');
       if (_canUpdateState()) {
@@ -2007,15 +2022,26 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
     // Preparar datos para el gráfico
     List<FlSpot> userSpots = [];
 
-    // Días de la semana (0=Domingo, 6=Sábado)
-    final dayNames = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
+    // Calcular los últimos 7 días con nombres dinámicos
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dayNamesShort = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
+
+    // Generar etiquetas de días dinámicas (últimos 7 días hasta hoy)
+    List<String> dynamicDayLabels = [];
+    for (int i = 0; i < 7; i++) {
+      final date = today.subtract(Duration(days: 6 - i));
+      final dayName = dayNamesShort[date.weekday % 7];
+      final isToday = i == 6;
+      dynamicDayLabels.add(isToday ? 'Hoy' : dayName);
+    }
 
     // Obtener datos del usuario actual
     debugPrint('📊 Building chart with weeklyXpData: $weeklyXpData');
     for (int i = 0; i < 7; i++) {
       final xp = weeklyXpData[i] ?? 0.0;
       userSpots.add(FlSpot(i.toDouble(), xp));
-      debugPrint('  Day $i (${dayNames[i]}): $xp XP');
+      debugPrint('  Day $i (${dynamicDayLabels[i]}): $xp XP');
     }
 
     // Calcular máximo para el eje Y
@@ -2057,7 +2083,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
               ),
               const SizedBox(width: 8),
               Text(
-                'EXP de esta semana',
+                'EXP últimos 7 días',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -2112,10 +2138,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
-                            dayNames[value.toInt()],
+                            dynamicDayLabels[value.toInt()],
                             style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.black54,
-                              fontWeight: FontWeight.bold,
+                              color: value.toInt() == 6
+                                  ? Colors.blue // Resaltar "Hoy" en azul
+                                  : (isDark ? Colors.white70 : Colors.black54),
+                              fontWeight: value.toInt() == 6
+                                  ? FontWeight.w900 // "Hoy" más bold
+                                  : FontWeight.bold,
                               fontSize: 12,
                             ),
                           ),
@@ -2192,8 +2222,14 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                     getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                       return touchedBarSpots.map((barSpot) {
                         final flSpot = barSpot;
+                        final dayIndex = flSpot.x.toInt();
+                        final date =
+                            today.subtract(Duration(days: 6 - dayIndex));
+                        final dayLabel =
+                            dayIndex == 6 ? 'Hoy' : '${date.day}/${date.month}';
+
                         return LineTooltipItem(
-                          '${flSpot.y.toInt()} XP',
+                          '$dayLabel\n${flSpot.y.toInt()} XP',
                           TextStyle(
                             color: barSpot.bar.color,
                             fontWeight: FontWeight.bold,

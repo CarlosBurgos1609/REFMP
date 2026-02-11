@@ -258,8 +258,50 @@ class _TipsPageState extends State<TipsPage> {
 
         debugPrint('✅ Nuevo registro creado en users_games');
       }
+
+      // Registrar en historial de XP
+      await _recordXpHistory(
+        user.id,
+        totalExperience,
+        'tips_completion',
+        widget.sublevelId,
+        widget.sublevelTitle,
+        {
+          'total_tips': tips.length,
+          'coins_earned': totalExperience ~/ 10,
+        },
+      );
     } catch (e) {
       debugPrint('❌ Error al actualizar users_games: $e');
+    }
+  }
+
+  Future<void> _recordXpHistory(
+    String userId,
+    int pointsEarned,
+    String source,
+    String sourceId,
+    String sourceName,
+    Map<String, dynamic> sourceDetails,
+  ) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      await supabase.from('xp_history').insert({
+        'user_id': userId,
+        'points_earned': pointsEarned,
+        'source': source,
+        'source_id': sourceId,
+        'source_name': sourceName,
+        'source_details': sourceDetails,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint(
+          '✅ Historial de XP registrado: +$pointsEarned XP desde $source');
+    } catch (e) {
+      debugPrint('❌ Error al registrar historial de XP: $e');
+      // No fallar el proceso principal si falla el historial
     }
   }
 
