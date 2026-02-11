@@ -726,9 +726,9 @@ class _TipsPageState extends State<TipsPage> {
                                   controller: _scrollController,
                                   physics: BouncingScrollPhysics(),
                                   child: Padding(
-                                    padding: EdgeInsets.only(
-                                      top: _showTopArrow ? 35 : 0,
-                                      bottom: _showBottomArrow ? 35 : 0,
+                                    padding: const EdgeInsets.only(
+                                      top: 32,
+                                      bottom: 32,
                                     ),
                                     child: Text(
                                       currentTip['description'] ?? '',
@@ -744,69 +744,81 @@ class _TipsPageState extends State<TipsPage> {
                                 ),
                               ),
                               // Indicador de scroll superior
-                              if (_showTopArrow)
-                                Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
-                                        colors: [
-                                          Colors.transparent,
-                                          isDarkMode
-                                              ? Colors.grey[900]!
-                                                  .withOpacity(0.85)
-                                              : Colors.white.withOpacity(0.85),
-                                        ],
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: IgnorePointer(
+                                  ignoring: !_showTopArrow,
+                                  child: AnimatedOpacity(
+                                    opacity: _showTopArrow ? 1.0 : 0.0,
+                                    duration: Duration(milliseconds: 200),
+                                    child: Container(
+                                      height: 35,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.bottomCenter,
+                                          end: Alignment.topCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            isDarkMode
+                                                ? Colors.grey[900]!
+                                                    .withOpacity(0.85)
+                                                : Colors.white.withOpacity(0.85),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.keyboard_arrow_up,
-                                        color: isDarkMode
-                                            ? Colors.white.withOpacity(0.7)
-                                            : Colors.black54,
-                                        size: 20,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.keyboard_arrow_up,
+                                          color: isDarkMode
+                                              ? Colors.white.withOpacity(0.7)
+                                              : Colors.black54,
+                                          size: 20,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
+                              ),
                               // Indicador de scroll inferior
-                              if (_showBottomArrow)
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    height: 35,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.transparent,
-                                          isDarkMode
-                                              ? Colors.grey[900]!
-                                                  .withOpacity(0.85)
-                                              : Colors.white.withOpacity(0.85),
-                                        ],
+                              Positioned(
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                child: IgnorePointer(
+                                  ignoring: !_showBottomArrow,
+                                  child: AnimatedOpacity(
+                                    opacity: _showBottomArrow ? 1.0 : 0.0,
+                                    duration: Duration(milliseconds: 200),
+                                    child: Container(
+                                      height: 35,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            isDarkMode
+                                                ? Colors.grey[900]!
+                                                    .withOpacity(0.85)
+                                                : Colors.white.withOpacity(0.85),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    child: Center(
-                                      child: Icon(
-                                        Icons.keyboard_arrow_down,
-                                        color: isDarkMode
-                                            ? Colors.white.withOpacity(0.7)
-                                            : Colors.black54,
-                                        size: 20,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.keyboard_arrow_down,
+                                          color: isDarkMode
+                                              ? Colors.white.withOpacity(0.7)
+                                              : Colors.black54,
+                                          size: 20,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         ],
