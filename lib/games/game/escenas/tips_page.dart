@@ -24,10 +24,50 @@ class _TipsPageState extends State<TipsPage> {
   bool isLoading = true;
   bool showCompletionButton = false;
 
+  // Para el control del scroll de la descripción
+  late ScrollController _scrollController;
+  bool _showTopArrow = false;
+  bool _showBottomArrow = false;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
     loadTips();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+
+    setState(() {
+      // Mostrar flecha superior si no está en el tope (con margen de 10px)
+      _showTopArrow = currentScroll > 10;
+      // Mostrar flecha inferior si no está en el fondo (con margen de 10px)
+      _showBottomArrow = currentScroll < (maxScroll - 10);
+    });
+  }
+
+  void _checkScrollable() {
+    // Verificar después de que se construya el widget si el contenido es scrolleable
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        setState(() {
+          _showBottomArrow = _scrollController.position.maxScrollExtent > 0;
+          _showTopArrow = false;
+        });
+      }
+    });
   }
 
   Future<void> loadTips() async {
@@ -52,6 +92,9 @@ class _TipsPageState extends State<TipsPage> {
         isLoading = false;
       });
 
+      // Verificar si el contenido es scrolleable
+      _checkScrollable();
+
       debugPrint('✅ Tips cargados: ${tips.length}');
       if (tips.isNotEmpty) {
         // Los puntos XP están en el primer tip (se otorgan al completar TODAS las viñetas)
@@ -75,7 +118,10 @@ class _TipsPageState extends State<TipsPage> {
     if (currentTipIndex < tips.length - 1) {
       setState(() {
         currentTipIndex++;
+        // Reset scroll al cambiar de tip
+        _scrollController.jumpTo(0);
       });
+      _checkScrollable();
     } else {
       // Última viñeta alcanzada, mostrar botón de completado
       setState(() {
@@ -89,7 +135,10 @@ class _TipsPageState extends State<TipsPage> {
       setState(() {
         currentTipIndex--;
         showCompletionButton = false; // Ocultar botón si regresa
+        // Reset scroll al cambiar de tip
+        _scrollController.jumpTo(0);
       });
+      _checkScrollable();
     }
   }
 
@@ -473,7 +522,7 @@ class _TipsPageState extends State<TipsPage> {
                   ? Image.network(
                       currentTip['img_url'],
                       fit: BoxFit.cover,
-                      alignment: Alignment.center,
+                      alignment: Alignment.topCenter,
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Container(
@@ -623,7 +672,7 @@ class _TipsPageState extends State<TipsPage> {
                             ],
                           ),
                           SizedBox(height: 12),
-                          // Descripción con scroll e indicador
+                          // Descripción con scroll e indicadores dinámicos
                           Stack(
                             children: [
                               ConstrainedBox(
@@ -632,49 +681,90 @@ class _TipsPageState extends State<TipsPage> {
                                       MediaQuery.of(context).size.height * 0.15,
                                 ),
                                 child: SingleChildScrollView(
+                                  controller: _scrollController,
                                   physics: BouncingScrollPhysics(),
-                                  child: Text(
-                                    currentTip['description'] ?? '',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      color: isDarkMode
-                                          ? Colors.white.withOpacity(0.9)
-                                          : Colors.black87,
-                                      height: 1.5,
+                                  child: Padding(
+                                    padding: EdgeInsets.only(
+                                      top: _showTopArrow ? 35 : 0,
+                                      bottom: _showBottomArrow ? 35 : 0,
+                                    ),
+                                    child: Text(
+                                      currentTip['description'] ?? '',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.9)
+                                            : Colors.black87,
+                                        height: 1.5,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                              // Indicador de scroll (gradiente inferior)
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                child: Container(
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Colors.transparent,
-                                        isDarkMode
-                                            ? Colors.grey[900]!.withOpacity(0.7)
-                                            : Colors.white.withOpacity(0.7),
-                                      ],
+                              // Indicador de scroll superior
+                              if (_showTopArrow)
+                                Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    height: 35,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                        colors: [
+                                          Colors.transparent,
+                                          isDarkMode
+                                              ? Colors.grey[900]!
+                                                  .withOpacity(0.85)
+                                              : Colors.white.withOpacity(0.85),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.keyboard_arrow_down,
-                                      color: isDarkMode
-                                          ? Colors.white.withOpacity(0.6)
-                                          : Colors.black54,
-                                      size: 20,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.keyboard_arrow_up,
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.7)
+                                            : Colors.black54,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              // Indicador de scroll inferior
+                              if (_showBottomArrow)
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    height: 35,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.transparent,
+                                          isDarkMode
+                                              ? Colors.grey[900]!
+                                                  .withOpacity(0.85)
+                                              : Colors.white.withOpacity(0.85),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.keyboard_arrow_down,
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.7)
+                                            : Colors.black54,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ],
