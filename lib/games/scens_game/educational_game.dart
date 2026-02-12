@@ -96,6 +96,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     super.initState();
     _setupScreen();
     _initializeAnimations();
+    _setupAudioListeners(); // Configurar listeners UNA SOLA VEZ
     _initializeHive(); // NUEVO: Inicializar Hive
     _loadGameData();
   }
@@ -321,26 +322,31 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _startLogoTimer() {
-    // PRECARGAR audio durante el logo screen (sin reproducir)
-    if (widget.backgroundAudioUrl != null) {
-      _preloadBackgroundAudio();
-      debugPrint('🎵 Audio precargándose durante logo screen');
-    }
+    logoTimer = Timer(const Duration(seconds: 3), () async {
+      if (!mounted) return;
 
-    logoTimer = Timer(const Duration(seconds: 3), () {
+      // Precargar audio ANTES de iniciar countdown (primera carga del juego)
+      if (widget.backgroundAudioUrl != null) {
+        debugPrint('🎵 Precargando audio antes del countdown...');
+        await _preloadBackgroundAudio();
+        debugPrint('✅ Audio listo - iniciando countdown');
+      }
+
       if (mounted) {
         setState(() {
           showLogo = false;
           showCountdown = true;
         });
+        // Iniciar countdown (el audio se reproducirá automáticamente)
         _startCountdown();
       }
     });
   }
 
   void _startCountdown() {
-    // INICIAR reproducción del audio JUSTO cuando empieza el countdown
+    // Reproducir audio INMEDIATAMENTE al iniciar countdown (ya está precargado)
     _startBackgroundAudio();
+    debugPrint('⏱️ Countdown iniciado con audio sincronizado');
 
     countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (countdownNumber > 1) {
@@ -351,9 +357,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         timer.cancel();
         setState(() {
           showCountdown = false;
-          isGameActive = true; // Activar juego DESPUÉS del countdown
+          isGameActive = true;
         });
-        // Iniciar notas y actualización DESPUÉS del countdown
+        // Iniciar juego después del countdown
         _spawnNotes();
         _updateGame();
       }
@@ -372,30 +378,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       // SOLO configurar la fuente, NO reproducir
       await _audioPlayer.setSource(UrlSource(widget.backgroundAudioUrl!));
       debugPrint('✅ Audio precargado y listo');
-
-      // Obtener duración del audio (solo una vez)
-      _audioPlayer.onDurationChanged.listen((Duration duration) {
-        if (mounted && audioDurationMs == 0) {
-          setState(() {
-            audioDurationMs = duration.inMilliseconds;
-          });
-          debugPrint('⏱️ Duración del audio: ${audioDurationMs}ms');
-        }
-      });
-
-      // Detectar cuando termina el audio (evitar múltiples llamadas)
-      _audioPlayer.onPlayerComplete.listen((event) {
-        debugPrint('🎵 Audio terminado - finalizando juego');
-        if (mounted && isGameActive && !isGamePaused) {
-          Future.delayed(Duration(milliseconds: 500), () {
-            if (mounted && isGameActive) {
-              _endGame();
-            }
-          });
-        }
-      });
-
-      debugPrint('✅ Audio listo para reproducción');
     } catch (e) {
       debugPrint('❌ Error al precargar audio: $e');
       if (mounted) {
@@ -409,12 +391,39 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     }
   }
 
-  // INICIAR reproducción del audio precargado INMEDIATAMENTE
+  // Configurar listeners del audio player (se llama UNA SOLA VEZ en initState)
+  void _setupAudioListeners() {
+    // Obtener duración del audio (solo una vez)
+    _audioPlayer.onDurationChanged.listen((Duration duration) {
+      if (mounted && audioDurationMs == 0) {
+        setState(() {
+          audioDurationMs = duration.inMilliseconds;
+        });
+        debugPrint('⏱️ Duración del audio: ${audioDurationMs}ms');
+      }
+    });
+
+    // Detectar cuando termina el audio (evitar múltiples llamadas)
+    _audioPlayer.onPlayerComplete.listen((event) {
+      debugPrint('🎵 Audio terminado - finalizando juego');
+      if (mounted && isGameActive && !isGamePaused) {
+        Future.delayed(Duration(milliseconds: 500), () {
+          if (mounted && isGameActive) {
+            _endGame();
+          }
+        });
+      }
+    });
+
+    debugPrint('✅ Listeners de audio configurados');
+  }
+
+  // INICIAR reproducción del audio precargado (sin await para ejecución inmediata)
   void _startBackgroundAudio() {
     try {
-      debugPrint('▶️ Iniciando reproducción del audio precargado...');
+      debugPrint('▶️ Reproduciendo audio precargado...');
 
-      // Reproducir el audio que ya fue precargado (SIN await para ejecución inmediata)
+      // Resume (audio ya está en memoria)
       _audioPlayer.resume();
 
       if (mounted) {
@@ -425,8 +434,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       debugPrint('✅ Audio reproduciéndose');
     } catch (e) {
-      debugPrint('❌ Error al iniciar audio: $e');
-      // Intentar reproducir directamente como fallback
+      debugPrint('❌ Error al reproducir: $e');
+      // Fallback: intentar play directo
       try {
         _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
         if (mounted) {
@@ -722,6 +731,41 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     });
   }
 
+  void _showExitConfirmation() {
+    if (!isGameActive || isGamePaused) {
+      // Si ya está pausado, solo mostrar confirmación de salida
+      _showExitDialog();
+      return;
+    }
+
+    // Pausar el juego antes de mostrar confirmación
+    setState(() {
+      isGamePaused = true;
+    });
+
+    gameUpdateTimer?.cancel();
+    _audioPlayer.pause();
+
+    // Mostrar diálogo de confirmación de salida
+    _showExitDialog();
+  }
+
+  void _showExitDialog() {
+    showBackDialog(
+      context,
+      widget.title,
+      onCancel: () {
+        // Cancelar salida y reanudar el juego
+        _resumeGame();
+      },
+      onRestart: () {
+        // Reiniciar el nivel
+        _restartGame();
+      },
+      // El botón "Sí, estoy seguro" ya maneja la salida con doble Navigator.pop()
+    );
+  }
+
   void _pauseGame() {
     if (!isGameActive || isGamePaused) return;
 
@@ -754,6 +798,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _restartGame() {
+    debugPrint('🔄 Reiniciando juego...');
+
     // Reiniciar variables del juego
     setState(() {
       isGameActive = false;
@@ -783,10 +829,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     feedbackTimer?.cancel();
     countdownTimer?.cancel();
     _endGameTimer?.cancel();
+    logoTimer?.cancel(); // También cancelar logo timer si existe
 
-    // Detener audio de forma segura
+    // CRÍTICO: Solo detener el audio (NO liberar para mantener listeners)
     try {
+      debugPrint('🛑 Deteniendo audio...');
       _audioPlayer.stop();
+      debugPrint('✅ Audio detenido');
     } catch (e) {
       debugPrint('⚠️ Error al detener audio en restart: $e');
     }
@@ -801,18 +850,47 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     gameStartTime = 0;
     audioDurationMs = 0;
 
-    // Precargar audio nuevamente
+    // FLUJO COMPLETO: Precargar audio → Mostrar logo → Countdown con audio → Juego
     if (widget.backgroundAudioUrl != null) {
-      _preloadBackgroundAudio();
-      debugPrint('🎵 Audio precargándose para reinicio');
+      debugPrint('🎵 Precargando audio para reinicio...');
+      _preloadBackgroundAudio().then((_) {
+        if (mounted) {
+          debugPrint('✅ Audio precargado - mostrando logo');
+          // Mostrar logo screen después de precargar
+          setState(() {
+            showLogo = true;
+            showCountdown = false;
+            countdownNumber = 3;
+          });
+          // Timer simple del logo (audio ya precargado)
+          logoTimer = Timer(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                showLogo = false;
+                showCountdown = true;
+              });
+              _startCountdown();
+            }
+          });
+        }
+      });
+    } else {
+      // Si no hay audio, mostrar logo directamente
+      setState(() {
+        showLogo = true;
+        showCountdown = false;
+        countdownNumber = 3;
+      });
+      logoTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            showLogo = false;
+            showCountdown = true;
+          });
+          _startCountdown();
+        }
+      });
     }
-
-    // Iniciar countdown nuevamente
-    setState(() {
-      showCountdown = true;
-      countdownNumber = 3;
-    });
-    _startCountdown();
   }
 
   void _showResultsDialog() {
@@ -1347,30 +1425,22 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       ),
       child: Row(
         children: [
-          // Botón atrás
+          // Botón de salir (mismo diseño que pausa)
           Container(
             decoration: BoxDecoration(
-              color: Colors.red,
+              color: Colors.blue,
               borderRadius: BorderRadius.circular(25),
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.red.withOpacity(0.3),
+                  color: Colors.blue.withOpacity(0.3),
                   blurRadius: 10,
                   offset: const Offset(0, 5),
                 ),
               ],
             ),
             child: IconButton(
-              onPressed: () {
-                _pauseGame();
-                showBackDialog(
-                  context,
-                  widget.title,
-                  onCancel: _resumeGame,
-                  onRestart: _restartGame,
-                );
-              },
+              onPressed: () => _showExitConfirmation(),
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,
                 color: Colors.white,
