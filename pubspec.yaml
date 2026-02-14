@@ -122,14 +122,16 @@ flutter_native_splash:
   image: assets/images/logo.png
   android: true
   ios: true
-  fullscreen: true
-  image_dark: assets/images/logodark.png # Opcional si quieres lo mismo en modo oscuro
-  background_image: null
-  branding: null
-  branding_mode: center
+  fullscreen: false
+  image_dark: assets/images/rednight.png
   android_gravity: center
   ios_content_mode: center
   android_screen_orientation: portrait
+  android_12:
+    image: assets/images/logo.png
+    image_dark: assets/images/rednight.png
+    color: "#FFFFFF"
+    color_dark: "#000000"
 
 
 
