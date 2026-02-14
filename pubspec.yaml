@@ -127,11 +127,14 @@ flutter_native_splash:
   android_gravity: center
   ios_content_mode: center
   android_screen_orientation: portrait
+  web: false
   android_12:
     image: assets/images/logo.png
     image_dark: assets/images/rednight.png
     color: "#FFFFFF"
     color_dark: "#000000"
+    icon_background_color: "#FFFFFF"
+    icon_background_color_dark: "#000000"
 
 
 
