@@ -113,7 +113,7 @@ class _TipsPageState extends State<TipsPage> {
           isLoading = false;
         });
         debugPrint('💾 Tips cargados desde caché: ${tips.length}');
-        
+
         // Cargar puntos XP del caché
         if (tips.isNotEmpty) {
           totalExperience = tips.first['experience_points'] ?? 0;
@@ -169,7 +169,8 @@ class _TipsPageState extends State<TipsPage> {
       if (tips.isNotEmpty) {
         // Los puntos XP están en el primer tip (se otorgan al completar TODAS las viñetas)
         totalExperience = tips.first['experience_points'] ?? 0;
-        debugPrint('⭐ Puntos XP totales por completar todos los tips: $totalExperience');
+        debugPrint(
+            '⭐ Puntos XP totales por completar todos los tips: $totalExperience');
         debugPrint('💰 Monedas a ganar: ${totalExperience ~/ 10}');
       } else {
         debugPrint('⚠️ No hay tips cargados, no se otorgarán puntos');
@@ -192,7 +193,8 @@ class _TipsPageState extends State<TipsPage> {
         // Cargar puntos XP del caché
         if (tips.isNotEmpty) {
           totalExperience = tips.first['experience_points'] ?? 0;
-          debugPrint('📦 Tips cargados desde caché de emergencia: ${tips.length}');
+          debugPrint(
+              '📦 Tips cargados desde caché de emergencia: ${tips.length}');
           debugPrint('⭐ Puntos XP desde caché: $totalExperience');
         }
 

@@ -84,7 +84,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   bool isAudioPlaying = false;
   int audioDurationMs = 0;
   String? _localAudioPath; // NUEVO: Ruta local del audio cacheado
-  bool _audioLoaded = false; // NUEVO: Flag para indicar si el audio se cargó correctamente
+  bool _audioLoaded =
+      false; // NUEVO: Flag para indicar si el audio se cargó correctamente
 
   // Control de fin de juego
   bool _isCheckingGameEnd = false;
@@ -214,18 +215,19 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           cachedData['audioPath']; // Cargar ruta de audio cacheado
       totalNotes = gameNotes.length;
       debugPrint('✅ Loaded ${gameNotes.length} notes from cache');
-      
+
       if (_localAudioPath != null) {
         debugPrint('🎵 Audio local encontrado: $_localAudioPath');
       } else if (widget.backgroundAudioUrl != null) {
         debugPrint('⚠️ No hay audio en caché, verificando conectividad...');
-        
+
         // Intentar descargar audio si hay conexión
         final isOnline = await _checkConnectivity();
         if (isOnline) {
           debugPrint('🌐 Conexión disponible, descargando audio...');
-          _localAudioPath = await _downloadAndCacheAudio(widget.backgroundAudioUrl!);
-          
+          _localAudioPath =
+              await _downloadAndCacheAudio(widget.backgroundAudioUrl!);
+
           if (_localAudioPath != null) {
             debugPrint('✅ Audio descargado y guardado: $_localAudioPath');
             // Actualizar caché con la nueva ruta de audio
@@ -311,11 +313,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           debugPrint('🎵 Descargando audio antes de guardar en caché...');
           _localAudioPath =
               await _downloadAndCacheAudio(widget.backgroundAudioUrl!);
-          
+
           if (_localAudioPath != null) {
             debugPrint('✅ Audio descargado exitosamente: $_localAudioPath');
           } else {
-            debugPrint('⚠️ No se pudo descargar el audio, se usará URL cuando haya conexión');
+            debugPrint(
+                '⚠️ No se pudo descargar el audio, se usará URL cuando haya conexión');
           }
         }
 
@@ -434,7 +437,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   void _startCountdown() {
     // Reproducir audio INMEDIATAMENTE al iniciar countdown (ya está precargado)
     _startBackgroundAudio();
-    
+
     if (_audioLoaded) {
       debugPrint('⏱️ Countdown iniciado con audio sincronizado');
     } else {
@@ -470,7 +473,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       // PRIORIDAD 1: Usar audio local si existe
       if (_localAudioPath != null && await File(_localAudioPath!).exists()) {
         debugPrint('🎵 Usando audio local: $_localAudioPath');
-        await _audioPlayer.setSource(DeviceFileSource(_localAudioPath!)).timeout(
+        await _audioPlayer
+            .setSource(DeviceFileSource(_localAudioPath!))
+            .timeout(
           Duration(seconds: 5),
           onTimeout: () {
             throw TimeoutException('Timeout cargando audio local');
@@ -481,10 +486,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       } else if (widget.backgroundAudioUrl != null) {
         // PRIORIDAD 2: Intentar desde URL solo si hay conexión
         final isOnline = await _checkConnectivity();
-        
+
         if (isOnline) {
           debugPrint('🔗 Usando audio desde URL: ${widget.backgroundAudioUrl}');
-          await _audioPlayer.setSource(UrlSource(widget.backgroundAudioUrl!)).timeout(
+          await _audioPlayer
+              .setSource(UrlSource(widget.backgroundAudioUrl!))
+              .timeout(
             Duration(seconds: 10),
             onTimeout: () {
               throw TimeoutException('Timeout cargando audio desde URL');
@@ -493,7 +500,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           _audioLoaded = true;
           debugPrint('✅ Audio de URL precargado y listo');
         } else {
-          debugPrint('⚠️ Sin conexión y sin audio local - jugando en modo silencioso');
+          debugPrint(
+              '⚠️ Sin conexión y sin audio local - jugando en modo silencioso');
           _audioLoaded = false;
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -869,7 +877,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
     // Calcular puntuación y experiencia
     final accuracy = totalNotes > 0 ? correctNotes / totalNotes : 0;
-    
+
     // Dar puntos completos si completa el nivel (accuracy > 60%)
     // De lo contrario, dar puntos proporcionales a la precisión
     if (accuracy >= 0.6) {
