@@ -113,6 +113,13 @@ class _TipsPageState extends State<TipsPage> {
           isLoading = false;
         });
         debugPrint('💾 Tips cargados desde caché: ${tips.length}');
+        
+        // Cargar puntos XP del caché
+        if (tips.isNotEmpty) {
+          totalExperience = tips.first['experience_points'] ?? 0;
+          debugPrint('⭐ Puntos XP desde caché: $totalExperience');
+          debugPrint('💰 Monedas desde caché: ${totalExperience ~/ 10}');
+        }
       }
 
       // SEGUNDO: Verificar si hay internet y actualizar
@@ -162,7 +169,10 @@ class _TipsPageState extends State<TipsPage> {
       if (tips.isNotEmpty) {
         // Los puntos XP están en el primer tip (se otorgan al completar TODAS las viñetas)
         totalExperience = tips.first['experience_points'] ?? 0;
-        debugPrint('⭐ Puntos XP totales: $totalExperience');
+        debugPrint('⭐ Puntos XP totales por completar todos los tips: $totalExperience');
+        debugPrint('💰 Monedas a ganar: ${totalExperience ~/ 10}');
+      } else {
+        debugPrint('⚠️ No hay tips cargados, no se otorgarán puntos');
       }
     } catch (e) {
       debugPrint('❌ Error al cargar tips: $e');
@@ -178,6 +188,13 @@ class _TipsPageState extends State<TipsPage> {
               .toList();
           isLoading = false;
         });
+
+        // Cargar puntos XP del caché
+        if (tips.isNotEmpty) {
+          totalExperience = tips.first['experience_points'] ?? 0;
+          debugPrint('📦 Tips cargados desde caché de emergencia: ${tips.length}');
+          debugPrint('⭐ Puntos XP desde caché: $totalExperience');
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -217,19 +234,19 @@ class _TipsPageState extends State<TipsPage> {
     }
   }
 
-  Future<void> _saveExperiencePoints() async {
+  Future<bool> _saveExperiencePoints() async {
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
       if (user == null) {
         debugPrint('Error: Usuario no autenticado');
-        return;
+        return false;
       }
 
       if (totalExperience <= 0) {
         debugPrint('No hay puntos de experiencia para guardar');
-        return;
+        return false;
       }
 
       debugPrint('Iniciando guardado de puntos de experiencia...');
@@ -289,6 +306,7 @@ class _TipsPageState extends State<TipsPage> {
         await _updateUserGamePoints();
 
         debugPrint('✅ Guardado de puntos completado exitosamente');
+        return true;
       } else {
         // Guardar offline usando el servicio de sincronización
         debugPrint('📱 Sin conexión, guardando puntos OFFLINE');
@@ -312,18 +330,14 @@ class _TipsPageState extends State<TipsPage> {
         );
 
         debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Puntos guardados. Se sincronizarán al conectarse'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+        debugPrint('   ⭐ XP: $totalExperience');
+        debugPrint('   💰 Monedas: ${totalExperience ~/ 10}');
+        return true; // Éxito offline
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error crítico al guardar puntos de experiencia: $e');
+      debugPrint('🔍 Stack trace: $stackTrace');
+      return false;
     }
   }
 
@@ -540,8 +554,54 @@ class _TipsPageState extends State<TipsPage> {
                     onPressed: () async {
                       // Guardar puntos de experiencia
                       if (totalExperience > 0) {
-                        await _saveExperiencePoints();
+                        // Mostrar indicador de carga
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+
+                        // Guardar puntos
+                        final success = await _saveExperiencePoints();
+
+                        // Cerrar indicador de carga
+                        if (mounted) Navigator.of(context).pop();
+
+                        // Verificar conectividad para mensaje apropiado
+                        final isOnline = await _checkConnectivity();
+
+                        // Mostrar resultado
+                        if (mounted) {
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isOnline
+                                      ? '✅ ¡$totalExperience XP guardados!'
+                                      : '💾 Puntos guardados. Se sincronizarán al conectarse',
+                                ),
+                                backgroundColor:
+                                    isOnline ? Colors.green : Colors.orange,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('❌ Error al guardar puntos'),
+                                backgroundColor: Colors.red,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                        }
+
+                        // Esperar un momento para que se vea el SnackBar
+                        await Future.delayed(Duration(milliseconds: 300));
                       }
+
                       if (mounted) {
                         Navigator.of(context).pop(); // Cerrar diálogo
                         Navigator.pop(
