@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Handler para notificaciones en segundo plano
 @pragma('vm:entry-point')
@@ -172,12 +173,33 @@ class NotificationService {
     debugPrint('⏹️ Polling de notificaciones detenido');
   }
 
+  /// Verificar conectividad
+  static Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Verifica si hay notificaciones nuevas
   static Future<void> _checkForNewNotifications() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
     if (userId == null) {
       debugPrint('⚠️ No hay usuario autenticado para polling');
+      return;
+    }
+
+    // Verificar conexión antes de intentar cargar
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) {
+      debugPrint('📱 Sin conexión, saltando polling de notificaciones');
       return;
     }
 

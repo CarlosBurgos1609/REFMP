@@ -1,15 +1,20 @@
 // ignore_for_file: unused_local_variable
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:refmp/games/game/dialogs/pause_dialog.dart';
 import 'package:refmp/games/game/dialogs/back_dialog.dart';
-import 'package:refmp/games/game/dialogs/congratulations_dialog.dart'; // NUEVO: Usar diálogo centralizado
-import 'package:hive_flutter/hive_flutter.dart'; // NUEVO: Para caché offline
+import 'package:refmp/games/game/dialogs/congratulations_dialog.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:refmp/services/offline_sync_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 /// Juego educativo que muestra una partitura y hace caer notas
 /// El estudiante debe presionar los pistones correctos sin reproducir sonido
@@ -78,9 +83,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isAudioPlaying = false;
   int audioDurationMs = 0;
+  String? _localAudioPath; // NUEVO: Ruta local del audio cacheado
 
   // Control de fin de juego
   bool _isCheckingGameEnd = false;
+
+  // NUEVO: Sincronización offline
+  final OfflineSyncService _syncService = OfflineSyncService();
 
   // Animación
   late AnimationController _noteAnimationController;
@@ -97,13 +106,14 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     _setupScreen();
     _initializeAnimations();
     _setupAudioListeners(); // Configurar listeners UNA SOLA VEZ
-    _initializeHive(); // NUEVO: Inicializar Hive
+    _initializeServices(); // NUEVO: Inicializar servicios
     _loadGameData();
   }
 
-  // NUEVO: Inicializar Hive si no está abierto
-  Future<void> _initializeHive() async {
+  // NUEVO: Inicializar servicios de caché y sincronización
+  Future<void> _initializeServices() async {
     try {
+      // Inicializar Hive
       if (!Hive.isBoxOpen('offline_data')) {
         debugPrint('📂 Opening Hive offline_data box...');
         await Hive.openBox('offline_data');
@@ -111,8 +121,30 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       } else {
         debugPrint('✅ Hive box already open');
       }
+
+      // Inicializar servicio de sincronización
+      await _syncService.initialize();
+
+      // Verificar conectividad y sincronizar en segundo plano
+      final isOnline = await _checkConnectivity();
+      if (isOnline) {
+        _syncService.syncAllPendingData(); // Sin await, en segundo plano
+      }
     } catch (e) {
-      debugPrint('❌ Error initializing Hive: $e');
+      debugPrint('❌ Error inicializando servicios: $e');
+    }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -173,12 +205,17 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     debugPrint('🔄 Loading game data...');
     debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
 
-    // NUEVO: Primero intentar cargar desde caché offline
-    final cachedNotes = await _loadGameDataFromCache();
-    if (cachedNotes != null && cachedNotes.isNotEmpty) {
-      gameNotes = cachedNotes;
+    // PRIMERO: Intentar cargar desde caché offline
+    final cachedData = await _loadGameDataFromCache();
+    if (cachedData != null) {
+      gameNotes = cachedData['notes'];
+      _localAudioPath =
+          cachedData['audioPath']; // Cargar ruta de audio cacheado
       totalNotes = gameNotes.length;
       debugPrint('✅ Loaded ${gameNotes.length} notes from cache');
+      if (_localAudioPath != null) {
+        debugPrint('🎵 Audio local encontrado: $_localAudioPath');
+      }
 
       setState(() {
         isLoadingData = false;
@@ -187,7 +224,22 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       return;
     }
 
-    // Si no hay caché o está vacío, cargar desde la base de datos
+    // SEGUNDO: Verificar conectividad antes de intentar cargar desde Supabase
+    final isOnline = await _checkConnectivity();
+    if (!isOnline) {
+      debugPrint('📱 Sin conexión y sin caché disponible');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Sin conexión. No hay datos guardados para este juego.')),
+        );
+        Navigator.pop(context, false);
+      }
+      return;
+    }
+
+    // TERCERO: Hay internet, cargar desde la base de datos
     final supabase = Supabase.instance.client;
 
     try {
@@ -233,8 +285,14 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         debugPrint(
             '⏱️ Primera nota: ${gameNotes.first.startTimeMs}ms, Última nota: ${gameNotes.last.startTimeMs}ms');
 
-        // NUEVO: Guardar en caché para uso offline
-        await _saveGameDataToCache(gameNotes);
+        // NUEVO: Descargar y cachear audio si existe
+        if (widget.backgroundAudioUrl != null) {
+          _localAudioPath =
+              await _downloadAndCacheAudio(widget.backgroundAudioUrl!);
+        }
+
+        // NUEVO: Guardar en caché para uso offline (incluyendo audio)
+        await _saveGameDataToCache(gameNotes, _localAudioPath);
 
         // Iniciar el juego después de cargar
         setState(() {
@@ -370,13 +428,19 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   Future<void> _preloadBackgroundAudio() async {
     try {
       debugPrint('📥 Precargando audio...');
-      debugPrint('🔗 URL: ${widget.backgroundAudioUrl}');
 
       // Configurar modo de reproducción
       await _audioPlayer.setReleaseMode(ReleaseMode.stop);
 
-      // SOLO configurar la fuente, NO reproducir
-      await _audioPlayer.setSource(UrlSource(widget.backgroundAudioUrl!));
+      // NUEVO: Usar audio local si existe, sino usar URL
+      if (_localAudioPath != null && await File(_localAudioPath!).exists()) {
+        debugPrint('🎵 Usando audio local: $_localAudioPath');
+        await _audioPlayer.setSource(DeviceFileSource(_localAudioPath!));
+      } else if (widget.backgroundAudioUrl != null) {
+        debugPrint('🔗 Usando audio desde URL: ${widget.backgroundAudioUrl}');
+        await _audioPlayer.setSource(UrlSource(widget.backgroundAudioUrl!));
+      }
+
       debugPrint('✅ Audio precargado y listo');
     } catch (e) {
       debugPrint('❌ Error al precargar audio: $e');
@@ -435,9 +499,13 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       debugPrint('✅ Audio reproduciéndose');
     } catch (e) {
       debugPrint('❌ Error al reproducir: $e');
-      // Fallback: intentar play directo
+      // Fallback: intentar play directo con fuente correcta
       try {
-        _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
+        if (_localAudioPath != null && File(_localAudioPath!).existsSync()) {
+          _audioPlayer.play(DeviceFileSource(_localAudioPath!));
+        } else if (widget.backgroundAudioUrl != null) {
+          _audioPlayer.play(UrlSource(widget.backgroundAudioUrl!));
+        }
         if (mounted) {
           setState(() {
             isAudioPlaying = true;
@@ -934,82 +1002,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       debugPrint('💾 Guardando $experiencePoints puntos XP...');
 
-      // 1. Actualizar en tabla de perfil del usuario
-      bool profileUpdated = false;
-      List<String> tables = [
-        'users',
-        'students',
-        'graduates',
-        'teachers',
-        'advisors',
-        'parents'
-      ];
-
-      for (String table in tables) {
-        try {
-          final userRecord = await supabase
-              .from(table)
-              .select('points_xp')
-              .eq('user_id', user.id)
-              .maybeSingle();
-
-          if (userRecord != null) {
-            final currentXP = userRecord['points_xp'] ?? 0;
-            final newXP = currentXP + experiencePoints;
-
-            await supabase
-                .from(table)
-                .update({'points_xp': newXP}).eq('user_id', user.id);
-
-            debugPrint(
-                '✅ Perfil actualizado en $table: $currentXP → $newXP XP');
-            profileUpdated = true;
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-
-      // 2. Actualizar en users_games
-      final existingRecord = await supabase
-          .from('users_games')
-          .select('points_xp_totally, points_xp_weekend, coins')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      if (existingRecord != null) {
-        final currentTotal = existingRecord['points_xp_totally'] ?? 0;
-        final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
-        final currentCoins = existingRecord['coins'] ?? 0;
-
-        final newTotal = currentTotal + experiencePoints;
-        final newWeekend = currentWeekend + experiencePoints;
-        final newCoins = currentCoins + (experiencePoints ~/ 10);
-
-        await supabase.from('users_games').update({
-          'points_xp_totally': newTotal,
-          'points_xp_weekend': newWeekend,
-          'coins': newCoins,
-        }).eq('user_id', user.id);
-
-        debugPrint(
-            '✅ users_games actualizado: +$experiencePoints XP, +${experiencePoints ~/ 10} monedas');
-      } else {
-        final newCoins = experiencePoints ~/ 10;
-
-        await supabase.from('users_games').insert({
-          'user_id': user.id,
-          'nickname': 'Usuario',
-          'points_xp_totally': experiencePoints,
-          'points_xp_weekend': experiencePoints,
-          'coins': newCoins,
-          'created_at': DateTime.now().toIso8601String(),
-        });
-
-        debugPrint('✅ Nuevo registro en users_games creado');
-      }
-
       // Calcular accuracy y stars para el historial
       final accuracy = totalNotes > 0 ? correctNotes / totalNotes : 0.0;
       final stars = accuracy >= 0.9
@@ -1020,19 +1012,131 @@ class _EducationalGamePageState extends State<EducationalGamePage>
                   ? 1
                   : 0;
 
-      // Registrar en historial de XP
-      await _recordXpHistory(
-        user.id,
-        experiencePoints,
-        'educational_game',
-        widget.sublevelId,
-        widget.title,
-        {
-          'coins_earned': experiencePoints ~/ 10,
-          'accuracy': accuracy,
-          'stars': stars,
-        },
-      );
+      // NUEVO: Verificar si estamos online
+      final isOnline = await _checkConnectivity();
+
+      if (isOnline) {
+        // Guardar directamente en Supabase
+        debugPrint('🌐 Guardando puntos ONLINE');
+
+        // 1. Actualizar en tabla de perfil del usuario
+        bool profileUpdated = false;
+        List<String> tables = [
+          'users',
+          'students',
+          'graduates',
+          'teachers',
+          'advisors',
+          'parents'
+        ];
+
+        for (String table in tables) {
+          try {
+            final userRecord = await supabase
+                .from(table)
+                .select('points_xp')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+            if (userRecord != null) {
+              final currentXP = userRecord['points_xp'] ?? 0;
+              final newXP = currentXP + experiencePoints;
+
+              await supabase
+                  .from(table)
+                  .update({'points_xp': newXP}).eq('user_id', user.id);
+
+              debugPrint(
+                  '✅ Perfil actualizado en $table: $currentXP → $newXP XP');
+              profileUpdated = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        // 2. Actualizar en users_games
+        final existingRecord = await supabase
+            .from('users_games')
+            .select('points_xp_totally, points_xp_weekend, coins')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (existingRecord != null) {
+          final currentTotal = existingRecord['points_xp_totally'] ?? 0;
+          final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
+          final currentCoins = existingRecord['coins'] ?? 0;
+
+          final newTotal = currentTotal + experiencePoints;
+          final newWeekend = currentWeekend + experiencePoints;
+          final newCoins = currentCoins + (experiencePoints ~/ 10);
+
+          await supabase.from('users_games').update({
+            'points_xp_totally': newTotal,
+            'points_xp_weekend': newWeekend,
+            'coins': newCoins,
+          }).eq('user_id', user.id);
+
+          debugPrint(
+              '✅ users_games actualizado: +$experiencePoints XP, +${experiencePoints ~/ 10} monedas');
+        } else {
+          final newCoins = experiencePoints ~/ 10;
+
+          await supabase.from('users_games').insert({
+            'user_id': user.id,
+            'nickname': 'Usuario',
+            'points_xp_totally': experiencePoints,
+            'points_xp_weekend': experiencePoints,
+            'coins': newCoins,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+          debugPrint('✅ Nuevo registro en users_games creado');
+        }
+
+        // Registrar en historial de XP
+        await _recordXpHistory(
+          user.id,
+          experiencePoints,
+          'educational_game',
+          widget.sublevelId,
+          widget.title,
+          {
+            'coins_earned': experiencePoints ~/ 10,
+            'accuracy': accuracy,
+            'stars': stars,
+          },
+        );
+
+        debugPrint('✅ Puntos guardados exitosamente ONLINE');
+      } else {
+        // Guardar offline usando el servicio de sincronización
+        debugPrint('📱 Sin conexión, guardando puntos OFFLINE');
+
+        await _syncService.savePendingXP(
+          userId: user.id,
+          points: experiencePoints,
+          source: 'educational_game',
+          sourceId: widget.sublevelId,
+          sourceName: widget.title,
+          sourceDetails: {
+            'coins_earned': experiencePoints ~/ 10,
+            'accuracy': accuracy,
+            'stars': stars,
+            'correct_notes': correctNotes,
+            'total_notes': totalNotes,
+          },
+        );
+
+        await _syncService.savePendingCoins(
+          userId: user.id,
+          coins: experiencePoints ~/ 10,
+          source: 'educational_game',
+        );
+
+        debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
+      }
 
       debugPrint('✅ Guardado completado exitosamente');
     } catch (e) {
@@ -1107,8 +1211,44 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     });
   }
 
-  // NUEVO: Guardar datos del juego en caché para uso offline
-  Future<void> _saveGameDataToCache(List<GameNote> notes) async {
+  // NUEVO: Descargar y cachear audio localmente
+  Future<String?> _downloadAndCacheAudio(String audioUrl) async {
+    try {
+      debugPrint('⬇️ Descargando audio: $audioUrl');
+
+      // Obtener directorio de caché
+      final cacheDir = await getApplicationCacheDirectory();
+      final audioFileName = 'audio_${widget.sublevelId}.mp3';
+      final localPath = '${cacheDir.path}/$audioFileName';
+
+      // Si ya existe, retornar la ruta
+      if (await File(localPath).exists()) {
+        debugPrint('✅ Audio ya existe en caché: $localPath');
+        return localPath;
+      }
+
+      // Descargar el archivo
+      final response = await http.get(Uri.parse(audioUrl));
+      if (response.statusCode == 200) {
+        final file = File(localPath);
+        await file.writeAsBytes(response.bodyBytes);
+        debugPrint('✅ Audio descargado y guardado: $localPath');
+        debugPrint(
+            '   📊 Tamaño: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
+        return localPath;
+      } else {
+        debugPrint('❌ Error al descargar audio: HTTP ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ Error descargando audio: $e');
+      return null;
+    }
+  }
+
+  // NUEVO: Guardar datos del juego en caché para uso offline (incluyendo audio)
+  Future<void> _saveGameDataToCache(
+      List<GameNote> notes, String? audioPath) async {
     try {
       if (!Hive.isBoxOpen('offline_data')) {
         await Hive.openBox('offline_data');
@@ -1122,6 +1262,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         'title': widget.title,
         'cached_timestamp': DateTime.now().millisecondsSinceEpoch,
         'notes_count': notes.length,
+        'audio_path': audioPath, // NUEVO: Guardar ruta del audio local
         'notes_data': notes
             .map((note) => {
                   'id': note.id,
@@ -1141,14 +1282,17 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       debugPrint(
           '💾 Cached ${notes.length} notes for sublevel ${widget.sublevelId}');
+      if (audioPath != null) {
+        debugPrint('🎵 Cached audio path: $audioPath');
+      }
       debugPrint('   🔑 Cache key: $cacheKey');
     } catch (e) {
       debugPrint('❌ Error saving game data to cache: $e');
     }
   }
 
-  // NUEVO: Cargar datos del juego desde caché
-  Future<List<GameNote>?> _loadGameDataFromCache() async {
+  // NUEVO: Cargar datos del juego desde caché (incluyendo audio)
+  Future<Map<String, dynamic>?> _loadGameDataFromCache() async {
     try {
       if (!Hive.isBoxOpen('offline_data')) {
         await Hive.openBox('offline_data');
@@ -1180,8 +1324,23 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         );
       }).toList();
 
+      // NUEVO: Obtener ruta del audio cacheado
+      final audioPath = cachedData['audio_path'] as String?;
+
+      // Verificar si el archivo de audio existe
+      String? validAudioPath;
+      if (audioPath != null && await File(audioPath).exists()) {
+        validAudioPath = audioPath;
+        debugPrint('🎵 Audio local disponible: $audioPath');
+      } else if (audioPath != null) {
+        debugPrint('⚠️ Audio cacheado no encontrado: $audioPath');
+      }
+
       debugPrint('✅ Loaded ${notes.length} notes from cache');
-      return notes;
+      return {
+        'notes': notes,
+        'audioPath': validAudioPath,
+      };
     } catch (e) {
       debugPrint('❌ Error loading game data from cache: $e');
       return null;

@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive/hive.dart';
+import 'package:refmp/services/offline_sync_service.dart';
 
 class TipsPage extends StatefulWidget {
   final String sublevelId;
@@ -24,6 +29,9 @@ class _TipsPageState extends State<TipsPage> {
   bool isLoading = true;
   bool showCompletionButton = false;
 
+  // NUEVO: Cache y sincronización offline
+  final OfflineSyncService _syncService = OfflineSyncService();
+
   // Para el control del scroll de la descripción
   late ScrollController _scrollController;
   bool _showTopArrow = false;
@@ -34,7 +42,26 @@ class _TipsPageState extends State<TipsPage> {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
-    loadTips();
+    _initializeAndLoadTips(); // NUEVO: Método combinado
+  }
+
+  // NUEVO: Inicializar servicio y cargar tips
+  Future<void> _initializeAndLoadTips() async {
+    await _syncService.initialize();
+    await loadTips(); // Carga desde caché primero, luego actualiza si hay internet
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
   }
 
   @override
@@ -64,21 +91,51 @@ class _TipsPageState extends State<TipsPage> {
       if (_scrollController.hasClients) {
         setState(() {
           _showBottomArrow = _scrollController.position.maxScrollExtent > 0;
-          _showTopArrow = false;
         });
       }
     });
   }
 
+  // NUEVO: Cargar tips con soporte offline (patrón home.dart)
   Future<void> loadTips() async {
     final supabase = Supabase.instance.client;
+    final box = Hive.box('offline_data');
+    final cacheKey = 'tips_${widget.sublevelId}';
 
     try {
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('💡 CARGANDO TIPS');
-      debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // PRIMERO: Cargar desde caché (inmediato)
+      final cachedTips = box.get(cacheKey);
+      if (cachedTips != null && mounted) {
+        setState(() {
+          tips = (cachedTips as List)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
+          isLoading = false;
+        });
+        debugPrint('💾 Tips cargados desde caché: ${tips.length}');
+      }
 
+      // SEGUNDO: Verificar si hay internet y actualizar
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) {
+        // Sin internet, quedarse con el caché
+        if (!mounted) return;
+        if (tips.isEmpty) {
+          setState(() {
+            isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No hay tips disponibles offline'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // TERCERO: Hay internet, cargar desde Supabase
+      debugPrint('🌐 Actualizando tips desde Supabase...');
       final response = await supabase
           .from('tips')
           .select()
@@ -87,10 +144,16 @@ class _TipsPageState extends State<TipsPage> {
 
       if (!mounted) return;
 
-      setState(() {
-        tips = List<Map<String, dynamic>>.from(response);
-        isLoading = false;
-      });
+      if (response.isNotEmpty) {
+        // Guardar en caché
+        await box.put(cacheKey, response);
+        debugPrint('💾 Tips actualizados en caché: ${response.length}');
+
+        setState(() {
+          tips = List<Map<String, dynamic>>.from(response);
+          isLoading = false;
+        });
+      }
 
       // Verificar si el contenido es scrolleable
       _checkScrollable();
@@ -103,12 +166,24 @@ class _TipsPageState extends State<TipsPage> {
       }
     } catch (e) {
       debugPrint('❌ Error al cargar tips: $e');
+
+      // En caso de error, intentar cargar desde caché
+      final box = Hive.box('offline_data');
+      final cachedTips = box.get(cacheKey, defaultValue: []);
+
       if (mounted) {
         setState(() {
+          tips = (cachedTips as List)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
           isLoading = false;
         });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar los tips: $e')),
+          SnackBar(
+            content: Text('Cargados tips desde caché'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     }
@@ -161,52 +236,92 @@ class _TipsPageState extends State<TipsPage> {
       debugPrint('Usuario ID: ${user.id}');
       debugPrint('Puntos a guardar: $totalExperience');
 
-      // 1. Actualizar puntos en tabla de perfil del usuario
-      bool profileUpdated = false;
-      List<String> tables = [
-        'users',
-        'students',
-        'graduates',
-        'teachers',
-        'advisors',
-        'parents'
-      ];
+      // NUEVO: Verificar si estamos online
+      final isOnline = await _checkConnectivity();
 
-      for (String table in tables) {
-        try {
-          final userRecord = await supabase
-              .from(table)
-              .select('points_xp')
-              .eq('user_id', user.id)
-              .maybeSingle();
+      if (isOnline) {
+        // Guardar directamente en Supabase
+        debugPrint('🌐 Guardando puntos ONLINE');
 
-          if (userRecord != null) {
-            final currentXP = userRecord['points_xp'] ?? 0;
-            final newXP = currentXP + totalExperience;
+        // 1. Actualizar puntos en tabla de perfil del usuario
+        bool profileUpdated = false;
+        List<String> tables = [
+          'users',
+          'students',
+          'graduates',
+          'teachers',
+          'advisors',
+          'parents'
+        ];
 
-            await supabase
+        for (String table in tables) {
+          try {
+            final userRecord = await supabase
                 .from(table)
-                .update({'points_xp': newXP}).eq('user_id', user.id);
+                .select('points_xp')
+                .eq('user_id', user.id)
+                .maybeSingle();
 
-            debugPrint('✅ Perfil actualizado en tabla: $table');
-            debugPrint('   XP anterior: $currentXP → XP nuevo: $newXP');
-            profileUpdated = true;
-            break;
+            if (userRecord != null) {
+              final currentXP = userRecord['points_xp'] ?? 0;
+              final newXP = currentXP + totalExperience;
+
+              await supabase
+                  .from(table)
+                  .update({'points_xp': newXP}).eq('user_id', user.id);
+
+              debugPrint('✅ Perfil actualizado en tabla: $table');
+              debugPrint('   XP anterior: $currentXP → XP nuevo: $newXP');
+              profileUpdated = true;
+              break;
+            }
+          } catch (e) {
+            debugPrint('Error verificando tabla $table: $e');
+            continue;
           }
-        } catch (e) {
-          debugPrint('Error verificando tabla $table: $e');
-          continue;
+        }
+
+        if (!profileUpdated) {
+          debugPrint('⚠️ No se encontró perfil de usuario en ninguna tabla');
+        }
+
+        // 2. Actualizar puntos en users_games (total y semanal)
+        await _updateUserGamePoints();
+
+        debugPrint('✅ Guardado de puntos completado exitosamente');
+      } else {
+        // Guardar offline usando el servicio de sincronización
+        debugPrint('📱 Sin conexión, guardando puntos OFFLINE');
+
+        await _syncService.savePendingXP(
+          userId: user.id,
+          points: totalExperience,
+          source: 'tips_completion',
+          sourceId: widget.sublevelId,
+          sourceName: widget.sublevelTitle,
+          sourceDetails: {
+            'total_tips': tips.length,
+            'coins_earned': totalExperience ~/ 10,
+          },
+        );
+
+        await _syncService.savePendingCoins(
+          userId: user.id,
+          coins: totalExperience ~/ 10,
+          source: 'tips_completion',
+        );
+
+        debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Puntos guardados. Se sincronizarán al conectarse'),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
       }
-
-      if (!profileUpdated) {
-        debugPrint('⚠️ No se encontró perfil de usuario en ninguna tabla');
-      }
-
-      // 2. Actualizar puntos en users_games (total y semanal)
-      await _updateUserGamePoints();
-
-      debugPrint('✅ Guardado de puntos completado exitosamente');
     } catch (e) {
       debugPrint('❌ Error crítico al guardar puntos de experiencia: $e');
     }
@@ -561,47 +676,38 @@ class _TipsPageState extends State<TipsPage> {
               ),
               child: currentTip['img_url'] != null &&
                       currentTip['img_url'].toString().isNotEmpty
-                  ? Image.network(
-                      currentTip['img_url'],
+                  ? CachedNetworkImage(
+                      imageUrl: currentTip['img_url'],
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: Colors.black,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.blue,
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
+                      placeholder: (context, url) => Container(
+                        color: Colors.black,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.blue,
                           ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey[900],
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.image_not_supported,
-                                  size: 80,
-                                  color: Colors.grey[600],
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Imagen no disponible',
-                                  style: TextStyle(color: Colors.grey[400]),
-                                ),
-                              ],
-                            ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: Colors.grey[900],
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.image_not_supported,
+                                size: 80,
+                                color: Colors.grey[600],
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'Imagen no disponible',
+                                style: TextStyle(color: Colors.grey[400]),
+                              ),
+                            ],
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     )
                   : Container(
                       color: Colors.grey[900],
@@ -935,7 +1041,7 @@ class _TipsPageState extends State<TipsPage> {
                           '✅ Has visto todas las viñetas',
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.green[600],
+                            color: Colors.blue,
                             fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,

@@ -4,6 +4,8 @@ import 'package:refmp/games/game/escenas/questions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:refmp/services/offline_sync_service.dart'; // NUEVO
 
 class SubnivelesPage extends StatefulWidget {
   final String levelId;
@@ -24,6 +26,7 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
   double overallProgress = 0.0;
   bool _isOnline = false;
   late Box _hiveBox;
+  final OfflineSyncService _syncService = OfflineSyncService(); // NUEVO
 
   @override
   void initState() {
@@ -32,7 +35,15 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
   }
 
   Future<void> _initializeData() async {
+    await _syncService
+        .initialize(); // NUEVO: Inicializar servicio de sincronización
     _hiveBox = await Hive.openBox('offline_data');
+
+    // NUEVO: Intentar sincronizar datos pendientes al iniciar
+    if (await isOnline()) {
+      await _syncService.syncAllPendingData();
+    }
+
     await fetchSubniveles();
   }
 
@@ -182,7 +193,6 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
 
     final sublevelId = sublevelIdParam.toString();
     final cacheKey = 'completion_status_${userId}_${widget.levelId}';
-    final pendingKey = 'pending_completions';
 
     try {
       if (_isOnline) {
@@ -217,17 +227,14 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
 
         debugPrint('✅ Subnivel $sublevelId marcado como completado');
       } else {
-        // Offline: guardar en pendientes
+        // Offline: usar servicio de sincronización
         debugPrint('📱 Sin conexión, guardando completación pendiente');
-        List<dynamic> pending = _hiveBox.get(pendingKey, defaultValue: []);
-        pending.add({
-          'user_id': userId,
-          'level_id': widget.levelId,
-          'sublevel_id': sublevelId,
-          'completed': true,
-          'completion_date': DateTime.now().toIso8601String(),
-        });
-        await _hiveBox.put(pendingKey, pending);
+        await _syncService.savePendingCompletion(
+          userId: userId,
+          levelId: widget.levelId,
+          sublevelId: sublevelId,
+          completed: true,
+        );
         debugPrint('💾 Completación guardada para sincronizar después');
       }
 
@@ -495,17 +502,43 @@ class _SubnivelesPageState extends State<SubnivelesPage> {
                                                       Colors.transparent,
                                                       BlendMode.multiply,
                                                     ),
-                                              child: Image.network(
-                                                subnivel['image'],
+                                              child: CachedNetworkImage(
+                                                imageUrl: subnivel['image'],
                                                 width: double.infinity,
                                                 height: 180,
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) =>
-                                                    const SizedBox(
+                                                placeholder: (context, url) =>
+                                                    Container(
                                                   height: 180,
+                                                  color: Colors.grey[300],
                                                   child: Center(
-                                                      child: Icon(
-                                                          Icons.broken_image)),
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            color: Colors.blue),
+                                                  ),
+                                                ),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        Container(
+                                                  height: 180,
+                                                  color: Colors.grey[200],
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Icon(Icons.image,
+                                                          size: 50,
+                                                          color:
+                                                              Colors.grey[400]),
+                                                      SizedBox(height: 8),
+                                                      Text(
+                                                          'Imagen no disponible',
+                                                          style: TextStyle(
+                                                              color: Colors
+                                                                  .grey[600])),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ),

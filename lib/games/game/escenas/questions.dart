@@ -1,11 +1,16 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:refmp/theme/theme_provider.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:refmp/games/scens_game/educational_game.dart';
 import 'package:refmp/games/game/escenas/tips_page.dart';
+import 'package:hive/hive.dart';
+import 'package:refmp/services/offline_sync_service.dart';
 
 class QuestionPage extends StatefulWidget {
   final String sublevelId;
@@ -49,10 +54,13 @@ class _QuestionPageState extends State<QuestionPage> {
   String? videoUrl;
   bool hasVideoError = false;
 
+  // NUEVO: Cache y sincronización offline
+  final OfflineSyncService _syncService = OfflineSyncService();
+
   @override
   void initState() {
     super.initState();
-    loadQuestions();
+    _initializeAndLoadData(); // NUEVO: Método combinado
     if (widget.sublevelType == 'Video') {
       loadVideoUrl();
     } else if (widget.sublevelType == 'Game' ||
@@ -69,6 +77,31 @@ class _QuestionPageState extends State<QuestionPage> {
     }
   }
 
+  // NUEVO: Inicializar servicio y cargar datos
+  Future<void> _initializeAndLoadData() async {
+    await _syncService.initialize();
+    await loadQuestions(); // Carga desde caché primero, luego actualiza
+
+    // Intentar sincronizar datos pendientes en segundo plano
+    final isOnline = await _checkConnectivity();
+    if (isOnline) {
+      _syncService.syncAllPendingData();
+    }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     // Limpiar el controlador de YouTube cuando el widget se destruye
@@ -78,21 +111,58 @@ class _QuestionPageState extends State<QuestionPage> {
 
   Future<void> loadQuestions() async {
     final supabase = Supabase.instance.client;
+    final box = Hive.box('offline_data');
+    final cacheKey = 'questions_${widget.sublevelId}_${widget.sublevelType}';
 
     try {
+      // PRIMERO: Cargar desde caché (inmediato)
+      final cachedQuestions = box.get(cacheKey);
+      if (cachedQuestions != null) {
+        questions = (cachedQuestions as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+        debugPrint('💾 Preguntas cargadas desde caché: ${questions.length}');
+      }
+
+      // SEGUNDO: Verificar si hay internet y actualizar
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) {
+        // Sin internet, quedarse con el caché
+        if (questions.isEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('Sin conexión. No hay preguntas disponibles offline.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else if (mounted) {
+          debugPrint(
+              '✅ Usando ${questions.length} preguntas desde caché offline');
+        }
+        return;
+      }
+
+      // TERCERO: Hay internet, cargar desde Supabase
+      debugPrint('🌐 Actualizando preguntas desde Supabase...');
+      List<dynamic> response = [];
       if (widget.sublevelType == 'Quiz') {
-        final response = await supabase
+        response = await supabase
             .from('quiz')
             .select()
             .eq('sublevel_id', widget.sublevelId);
-
-        questions = List<Map<String, dynamic>>.from(response);
       } else if (widget.sublevelType == 'Evaluation') {
-        final response = await supabase
+        response = await supabase
             .from('evaluation')
             .select()
             .eq('sublevel_id', widget.sublevelId);
+      }
 
+      if (response.isNotEmpty) {
+        // Guardar en caché
+        await box.put(cacheKey, response);
+        debugPrint('💾 Preguntas actualizadas en caché: ${response.length}');
         questions = List<Map<String, dynamic>>.from(response);
       }
 
@@ -105,10 +175,18 @@ class _QuestionPageState extends State<QuestionPage> {
       });
     } catch (e) {
       print('Error al cargar preguntas: $e');
+
+      // En caso de error, intentar cargar desde caché
+      final box = Hive.box('offline_data');
+      final cachedQuestions = box.get(cacheKey, defaultValue: []);
+      questions = (cachedQuestions as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
       // También puedes mostrar un snackbar si lo deseas
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar preguntas')),
+          SnackBar(content: Text('Cargadas preguntas desde caché')),
         );
       }
     }
@@ -116,11 +194,45 @@ class _QuestionPageState extends State<QuestionPage> {
 
   Future<void> loadVideoUrl() async {
     final supabase = Supabase.instance.client;
+    final box = Hive.box('offline_data');
+    final cacheKey = 'video_${widget.sublevelId}';
 
     try {
       debugPrint('🎥 Cargando video para sublevel_id: ${widget.sublevelId}');
 
-      // Primero intentar con experience_points, si falla, solo video_url
+      // PRIMERO: Intentar cargar desde caché
+      final cachedVideo = box.get(cacheKey);
+      if (cachedVideo != null) {
+        videoUrl = cachedVideo['video_url'];
+        videoExperiencePoints = cachedVideo['experience_points'] ?? 0;
+        debugPrint('💾 Video cargado desde caché: $videoUrl');
+
+        // Intentar crear controlador con datos del caché
+        String? videoId = _extractYoutubeVideoId(videoUrl!);
+        if (videoId != null && videoId.isNotEmpty) {
+          _createYoutubeController(videoId);
+        }
+
+        if (mounted) setState(() {});
+      }
+
+      // SEGUNDO: Verificar conectividad y actualizar si hay internet
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) {
+        debugPrint('📱 Sin conexión para actualizar video');
+        if (cachedVideo == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Sin conexión. No se puede cargar el video.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // TERCERO: Actualizar desde Supabase si hay conexión
+      debugPrint('🌐 Actualizando video desde Supabase...');
       dynamic response;
       try {
         response = await supabase
@@ -142,8 +254,14 @@ class _QuestionPageState extends State<QuestionPage> {
 
       if (response != null && response['video_url'] != null) {
         videoUrl = response['video_url'];
-        // Solo asignar puntos si la columna existe en la respuesta
         videoExperiencePoints = response['experience_points'] ?? 0;
+
+        // Guardar en caché
+        await box.put(cacheKey, {
+          'video_url': videoUrl,
+          'experience_points': videoExperiencePoints,
+        });
+        debugPrint('💾 Video guardado en caché');
 
         debugPrint('🎬 Video URL encontrada: $videoUrl');
         debugPrint('⭐ Puntos de experiencia: $videoExperiencePoints');
@@ -153,59 +271,34 @@ class _QuestionPageState extends State<QuestionPage> {
         debugPrint('🆔 Video ID extraído: $videoId');
 
         if (videoId != null && videoId.isNotEmpty) {
-          try {
-            _youtubeController = YoutubePlayerController(
-              initialVideoId: videoId,
-              flags: YoutubePlayerFlags(
-                autoPlay: false,
-                mute: false,
-                enableCaption: false,
-                hideControls: false,
-                controlsVisibleAtStart: true,
-                loop: false,
-                isLive: false,
-                forceHD: false,
-                useHybridComposition:
-                    false, // Cambiar a false para mejor compatibilidad
-              ),
-            );
+          _createYoutubeController(videoId);
 
-            // Listener para detectar errores
-            _youtubeController!.addListener(() {
-              if (_youtubeController!.value.hasError) {
-                debugPrint(
-                    '❌ Error en video: ${_youtubeController!.value.errorCode}');
-                // Dar un tiempo antes de marcar como error para que intente cargar
-                Future.delayed(Duration(seconds: 3), () {
-                  if (mounted &&
-                      _youtubeController!.value.hasError &&
-                      !hasVideoError) {
-                    setState(() {
-                      hasVideoError = true;
-                    });
-                  }
-                });
-              } else if (_youtubeController!.value.isReady &&
-                  !_youtubeController!.value.hasError) {
-                debugPrint('✅ Video listo para reproducir');
-                if (hasVideoError && mounted) {
-                  // Si estaba marcado como error pero ahora funciona, quitamos el error
+          // Listener para detectar errores
+          _youtubeController!.addListener(() {
+            if (_youtubeController!.value.hasError) {
+              debugPrint(
+                  '❌ Error en video: ${_youtubeController!.value.errorCode}');
+              // Dar un tiempo antes de marcar como error para que intente cargar
+              Future.delayed(Duration(seconds: 3), () {
+                if (mounted &&
+                    _youtubeController!.value.hasError &&
+                    !hasVideoError) {
                   setState(() {
-                    hasVideoError = false;
+                    hasVideoError = true;
                   });
                 }
+              });
+            } else if (_youtubeController!.value.isReady &&
+                !_youtubeController!.value.hasError) {
+              debugPrint('✅ Video listo para reproducir');
+              if (hasVideoError && mounted) {
+                // Si estaba marcado como error pero ahora funciona, quitamos el error
+                setState(() {
+                  hasVideoError = false;
+                });
               }
-            });
-
-            debugPrint('✅ Controlador creado con ID: $videoId');
-          } catch (e) {
-            debugPrint('❌ Error al crear controlador: $e');
-            hasVideoError = true;
-          }
-        } else {
-          debugPrint(
-              '❌ No se pudo extraer el ID del video de la URL: $videoUrl');
-          hasVideoError = true;
+            }
+          });
         }
       } else {
         debugPrint('⚠️ No se encontró video para este subnivel');
@@ -215,6 +308,55 @@ class _QuestionPageState extends State<QuestionPage> {
     } catch (e) {
       debugPrint('❌ Error al cargar el video: $e');
       debugPrint('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  void _createYoutubeController(String videoId) {
+    try {
+      _youtubeController = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: YoutubePlayerFlags(
+          autoPlay: false,
+          mute: false,
+          enableCaption: false,
+          hideControls: false,
+          controlsVisibleAtStart: true,
+          loop: false,
+          isLive: false,
+          forceHD: false,
+          useHybridComposition: false,
+        ),
+      );
+
+      // Listener para detectar errores
+      _youtubeController!.addListener(() {
+        if (_youtubeController!.value.hasError) {
+          debugPrint(
+              '❌ Error en video: ${_youtubeController!.value.errorCode}');
+          Future.delayed(Duration(seconds: 3), () {
+            if (mounted &&
+                _youtubeController!.value.hasError &&
+                !hasVideoError) {
+              setState(() {
+                hasVideoError = true;
+              });
+            }
+          });
+        } else if (_youtubeController!.value.isReady &&
+            !_youtubeController!.value.hasError) {
+          debugPrint('✅ Video listo para reproducir');
+          if (hasVideoError && mounted) {
+            setState(() {
+              hasVideoError = false;
+            });
+          }
+        }
+      });
+
+      debugPrint('✅ Controlador de YouTube creado con ID: $videoId');
+    } catch (e) {
+      debugPrint('❌ Error al crear controlador: $e');
+      hasVideoError = true;
     }
   }
 
@@ -261,6 +403,8 @@ class _QuestionPageState extends State<QuestionPage> {
 
   Future<void> loadGameDataAndNavigate() async {
     final supabase = Supabase.instance.client;
+    final box = Hive.box('offline_data');
+    final cacheKey = 'game_${widget.sublevelId}';
 
     try {
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -268,111 +412,151 @@ class _QuestionPageState extends State<QuestionPage> {
       debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // Cargar datos completos del juego desde la tabla 'game'
-      dynamic response;
-      try {
-        debugPrint('🔍 Consultando tabla "game"...');
-        response = await supabase
-            .from('game')
-            .select(
-                'experience_points, coins, title, sheet_music_image_url, background_audio_url')
-            .eq('sublevel_id', widget.sublevelId)
-            .maybeSingle();
+      // PRIMERO: Intentar cargar desde caché
+      final cachedGame = box.get(cacheKey);
+      bool hasCache = cachedGame != null;
 
-        debugPrint('📦 Respuesta recibida: $response');
-      } catch (e, stackTrace) {
-        debugPrint('❌ ERROR AL CONSULTAR BASE DE DATOS');
-        debugPrint('🔴 Error: $e');
-        debugPrint('📍 Stack trace: $stackTrace');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error al conectar con la base de datos: $e'),
-              duration: Duration(seconds: 5),
-            ),
-          );
-          Navigator.pop(context, false);
-        }
-        return;
+      if (hasCache) {
+        debugPrint('💾 Juego encontrado en caché');
+        gameExperiencePoints = cachedGame['experience_points'] ?? 0;
+        gameCoins = cachedGame['coins'] ?? 0;
+        gameTitle = cachedGame['title'];
+        gameSheetMusicImageUrl = cachedGame['sheet_music_image_url'];
+        gameBackgroundAudioUrl = cachedGame['background_audio_url'];
+
+        debugPrint('📊 Datos del caché:');
+        debugPrint('   ⭐ XP: $gameExperiencePoints');
+        debugPrint('   💰 Monedas: $gameCoins');
+        debugPrint('   📜 Título: $gameTitle');
       }
 
-      if (response != null) {
-        debugPrint('✅ Datos encontrados en la tabla game');
-        gameExperiencePoints = response['experience_points'] ?? 0;
-        gameCoins = response['coins'] ?? 0;
-        gameTitle = response['title'];
-        gameSheetMusicImageUrl = response['sheet_music_image_url'];
-        gameBackgroundAudioUrl = response['background_audio_url'];
+      // SEGUNDO: Verificar conectividad
+      final isOnline = await _checkConnectivity();
 
-        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        debugPrint('📊 DATOS DEL JUEGO:');
-        debugPrint('⭐ Puntos XP: $gameExperiencePoints');
-        debugPrint('💰 Monedas: $gameCoins');
-        debugPrint('📜 Título: $gameTitle');
-        debugPrint('🎼 Partitura URL: $gameSheetMusicImageUrl');
-        debugPrint('🔊 Audio URL: $gameBackgroundAudioUrl');
-        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-        // Decidir qué tipo de juego mostrar
-        // Si tiene partitura y audio, es un juego educativo
-        if (gameSheetMusicImageUrl != null &&
-            gameSheetMusicImageUrl!.isNotEmpty) {
-          // Juego educativo con partitura
-          debugPrint('🎓 TIPO DE JUEGO: Educativo (con partitura)');
-          debugPrint('🚀 Navegando a EducationalGamePage...');
-
-          if (mounted) {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => EducationalGamePage(
-                  sublevelId: widget.sublevelId,
-                  title: gameTitle ?? widget.sublevelTitle,
-                  sheetMusicImageUrl: gameSheetMusicImageUrl,
-                  backgroundAudioUrl: gameBackgroundAudioUrl,
-                  experiencePoints: gameExperiencePoints,
-                  coins: gameCoins,
-                ),
-              ),
-            );
-
-            debugPrint(
-                '🔙 Regresó de EducationalGamePage con resultado: $result');
-            if (mounted) {
-              Navigator.pop(context, result ?? false);
-            }
-          }
-        } else {
-          debugPrint('❌ CONFIGURACIÓN INVÁLIDA');
-          debugPrint(
-              '🔴 No se encontró partitura ni audio para el juego educativo');
-          debugPrint('📊 Datos recibidos:');
-          debugPrint('   - sheet_music_image_url: $gameSheetMusicImageUrl');
-          debugPrint('   - background_audio_url: $gameBackgroundAudioUrl');
+      if (!isOnline) {
+        debugPrint('📱 Sin conexión a internet');
+        if (!hasCache) {
+          // No hay caché NI conexión
+          debugPrint('❌ No hay datos en caché ni conexión');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                    'Configuración del juego incompleta. Verifica los datos en la base de datos.'),
-                duration: Duration(seconds: 5),
+                content: Text('Sin conexión. No se puede cargar el juego.'),
+                backgroundColor: Colors.orange,
               ),
             );
             Navigator.pop(context, false);
           }
+          return;
+        }
+        // Si hay caché, continuar con esos datos
+        debugPrint('✅ Usando datos del caché offline');
+      } else {
+        // TERCERO: Actualizar desde Supabase si hay conexión
+        debugPrint('🌐 Actualizando desde Supabase...');
+        dynamic response;
+        try {
+          debugPrint('🔍 Consultando tabla "game"...');
+          response = await supabase
+              .from('game')
+              .select(
+                  'experience_points, coins, title, sheet_music_image_url, background_audio_url')
+              .eq('sublevel_id', widget.sublevelId)
+              .maybeSingle();
+
+          debugPrint('📦 Respuesta recibida: $response');
+        } catch (e, stackTrace) {
+          debugPrint('❌ ERROR AL CONSULTAR BASE DE DATOS');
+          debugPrint('🔴 Error: $e');
+          debugPrint('📍 Stack trace: $stackTrace');
+
+          // Si hay caché, usar esos datos
+          if (hasCache) {
+            debugPrint('⚠️ Usando datos del caché por error en Supabase');
+          } else {
+            // No hay caché ni se pudo obtener de Supabase
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error al cargar el juego: $e'),
+                  duration: Duration(seconds: 5),
+                ),
+              );
+              Navigator.pop(context, false);
+            }
+            return;
+          }
+        }
+
+        if (response != null) {
+          debugPrint('✅ Datos actualizados desde Supabase');
+          gameExperiencePoints = response['experience_points'] ?? 0;
+          gameCoins = response['coins'] ?? 0;
+          gameTitle = response['title'];
+          gameSheetMusicImageUrl = response['sheet_music_image_url'];
+          gameBackgroundAudioUrl = response['background_audio_url'];
+
+          // Guardar en caché
+          await box.put(cacheKey, {
+            'experience_points': gameExperiencePoints,
+            'coins': gameCoins,
+            'title': gameTitle,
+            'sheet_music_image_url': gameSheetMusicImageUrl,
+            'background_audio_url': gameBackgroundAudioUrl,
+          });
+          debugPrint('💾 Juego guardado en caché');
+        }
+      }
+
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('📊 DATOS FINALES DEL JUEGO:');
+      debugPrint('⭐ Puntos XP: $gameExperiencePoints');
+      debugPrint('💰 Monedas: $gameCoins');
+      debugPrint('📜 Título: $gameTitle');
+      debugPrint('🎼 Partitura URL: $gameSheetMusicImageUrl');
+      debugPrint('🔊 Audio URL: $gameBackgroundAudioUrl');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // Decidir qué tipo de juego mostrar
+      // Si tiene partitura y audio, es un juego educativo
+      if (gameSheetMusicImageUrl != null &&
+          gameSheetMusicImageUrl!.isNotEmpty) {
+        // Juego educativo con partitura
+        debugPrint('🎓 TIPO DE JUEGO: Educativo (con partitura)');
+        debugPrint('🚀 Navegando a EducationalGamePage...');
+
+        if (mounted) {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EducationalGamePage(
+                sublevelId: widget.sublevelId,
+                title: gameTitle ?? widget.sublevelTitle,
+                sheetMusicImageUrl: gameSheetMusicImageUrl,
+                backgroundAudioUrl: gameBackgroundAudioUrl,
+                experiencePoints: gameExperiencePoints,
+                coins: gameCoins,
+              ),
+            ),
+          );
+
+          debugPrint(
+              '🔙 Regresó de EducationalGamePage con resultado: $result');
+          if (mounted) {
+            Navigator.pop(context, result ?? false);
+          }
         }
       } else {
-        debugPrint('❌ NO SE ENCONTRÓ REGISTRO EN LA TABLA "game"');
-        debugPrint('🔴 sublevel_id: ${widget.sublevelId}');
-        debugPrint(
-            '💡 Verifica que exista un registro en la tabla "game" con este sublevel_id');
-        debugPrint('💡 SQL sugerido:');
-        debugPrint(
-            '   SELECT * FROM game WHERE sublevel_id = \'${widget.sublevelId}\';');
+        debugPrint('❌ CONFIGURACIÓN INVÁLIDA');
+        debugPrint('🔴 No se encontró partitura para el juego educativo');
+        debugPrint('📊 Datos recibidos:');
+        debugPrint('   - sheet_music_image_url: $gameSheetMusicImageUrl');
+        debugPrint('   - background_audio_url: $gameBackgroundAudioUrl');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'No se encontró el juego en la base de datos. Sublevel: ${widget.sublevelId}'),
+                  'Configuración del juego incompleta. Verifica los datos.'),
               duration: Duration(seconds: 5),
             ),
           );
@@ -510,6 +694,58 @@ class _QuestionPageState extends State<QuestionPage> {
       debugPrint('Iniciando guardado de puntos de experiencia...');
       debugPrint('Usuario ID: ${user.id}');
       debugPrint('Puntos a guardar: $totalExperience');
+
+      // Verificar si hay conexión a internet
+      final isOnline = await _checkConnectivity();
+
+      if (!isOnline) {
+        // Modo OFFLINE: Guardar en cola de pendientes
+        debugPrint(
+            '📱 Sin conexión, guardando puntos para sincronizar después...');
+
+        final coinsEarned = totalExperience ~/ 10; // 1 moneda cada 10 XP
+
+        // Guardar XP pendiente
+        await _syncService.savePendingXP(
+          userId: user.id,
+          points: totalExperience,
+          source: 'questions_${widget.sublevelType}',
+          sourceId: widget.sublevelId,
+          sourceName:
+              'Preguntas ${widget.sublevelType == 'quiz' ? 'Quiz' : 'Evaluación'}',
+          sourceDetails: {
+            'total_questions': questions.length,
+            'correct_answers': correctAnswers,
+            'total_experience': totalExperience,
+            'coins_earned': coinsEarned,
+          },
+        );
+
+        // Guardar monedas pendientes
+        await _syncService.savePendingCoins(
+          userId: user.id,
+          coins: coinsEarned,
+          source: 'questions_${widget.sublevelType}',
+        );
+
+        debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
+        debugPrint('   XP pendientes: +$totalExperience');
+        debugPrint('   Monedas pendientes: +$coinsEarned');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Puntos guardados. Se sincronizarán al conectarse'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Modo ONLINE: Guardar directamente en Supabase
+      debugPrint('🌐 Conexión disponible, guardando puntos online...');
 
       // 1. Actualizar puntos en tabla de perfil del usuario
       bool profileUpdated = false;
@@ -1647,13 +1883,36 @@ class _QuestionPageState extends State<QuestionPage> {
                         question['image_url'].toString().isNotEmpty)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          question['image_url'],
+                        child: CachedNetworkImage(
+                          imageUrl: question['image_url'],
                           width: double.infinity,
                           height: 200,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Text('Error al cargar la imagen'),
+                          placeholder: (context, url) => Container(
+                            width: double.infinity,
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            width: double.infinity,
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.image_not_supported,
+                                    size: 50, color: Colors.grey[600]),
+                                SizedBox(height: 8),
+                                Text('Imagen no disponible',
+                                    style: TextStyle(color: Colors.grey[600])),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     Padding(
