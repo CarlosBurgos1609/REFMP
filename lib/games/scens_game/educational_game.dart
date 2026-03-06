@@ -83,14 +83,14 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isAudioPlaying = false;
   int audioDurationMs = 0;
-  String? _localAudioPath; // NUEVO: Ruta local del audio cacheado
+  String? _localAudioPath; // Ruta local del audio cacheado
   bool _audioLoaded =
-      false; // NUEVO: Flag para indicar si el audio se cargó correctamente
+      false; // Flag para indicar si el audio se cargó correctamente
 
   // Control de fin de juego
   bool _isCheckingGameEnd = false;
 
-  // NUEVO: Sincronización offline
+  // Servicio de sincronización offline
   final OfflineSyncService _syncService = OfflineSyncService();
 
   // Animación
@@ -108,11 +108,11 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     _setupScreen();
     _initializeAnimations();
     _setupAudioListeners(); // Configurar listeners UNA SOLA VEZ
-    _initializeServices(); // NUEVO: Inicializar servicios
+    _initializeServices(); // Inicializar servicios de caché
     _loadGameData();
   }
 
-  // NUEVO: Inicializar servicios de caché y sincronización
+  // Inicializar servicios de caché y sincronización offline
   Future<void> _initializeServices() async {
     try {
       // Inicializar Hive
@@ -207,62 +207,73 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     debugPrint('🔄 Loading game data...');
     debugPrint('📋 Sublevel ID: ${widget.sublevelId}');
 
-    // PRIMERO: Intentar cargar desde caché offline
-    final cachedData = await _loadGameDataFromCache();
-    if (cachedData != null) {
-      gameNotes = cachedData['notes'];
-      _localAudioPath =
-          cachedData['audioPath']; // Cargar ruta de audio cacheado
-      totalNotes = gameNotes.length;
-      debugPrint('✅ Loaded ${gameNotes.length} notes from cache');
-
-      if (_localAudioPath != null) {
-        debugPrint('🎵 Audio local encontrado: $_localAudioPath');
-      } else if (widget.backgroundAudioUrl != null) {
-        debugPrint('⚠️ No hay audio en caché, verificando conectividad...');
-
-        // Intentar descargar audio si hay conexión
-        final isOnline = await _checkConnectivity();
-        if (isOnline) {
-          debugPrint('🌐 Conexión disponible, descargando audio...');
-          _localAudioPath =
-              await _downloadAndCacheAudio(widget.backgroundAudioUrl!);
-
-          if (_localAudioPath != null) {
-            debugPrint('✅ Audio descargado y guardado: $_localAudioPath');
-            // Actualizar caché con la nueva ruta de audio
-            await _saveGameDataToCache(gameNotes, _localAudioPath);
-          } else {
-            debugPrint('⚠️ No se pudo descargar el audio');
-          }
-        } else {
-          debugPrint('📱 Sin conexión, jugando sin audio');
-        }
-      }
-
-      setState(() {
-        isLoadingData = false;
-      });
-      _startLogoTimer();
-      return;
-    }
-
-    // SEGUNDO: Verificar conectividad antes de intentar cargar desde Supabase
+    // PASO 1: Verificar conectividad
     final isOnline = await _checkConnectivity();
+    debugPrint(isOnline ? '🌐 Modo ONLINE' : '📱 Modo OFFLINE');
+
+    // PASO 2: Intentar cargar desde caché
+    final cachedData = await _loadGameDataFromCache();
+
     if (!isOnline) {
-      debugPrint('📱 Sin conexión y sin caché disponible');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Sin conexión. No hay datos guardados para este juego.')),
-        );
-        Navigator.pop(context, false);
+      // MODO OFFLINE: Solo usar caché, sin intentar conectarse
+      debugPrint('📱 Modo OFFLINE - usando solo caché local');
+
+      if (cachedData != null) {
+        gameNotes = cachedData['notes'];
+        _localAudioPath = cachedData['audioPath'];
+        totalNotes = gameNotes.length;
+        debugPrint('✅ Cargadas ${gameNotes.length} notas desde caché OFFLINE');
+
+        setState(() {
+          isLoadingData = false;
+        });
+        _startLogoTimer();
+        return;
+      } else {
+        // Sin caché y sin conexión
+        debugPrint('❌ Sin conexión y sin caché disponible');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('No hay datos guardados y no hay conexión a internet'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.pop(context, false);
+        }
+        return;
       }
-      return;
     }
 
-    // TERCERO: Hay internet, cargar desde la base de datos
+    // MODO ONLINE: Verificar si hay cambios en la BD
+    debugPrint('🌐 Modo ONLINE - verificando cambios en la base de datos...');
+
+    if (cachedData != null) {
+      // Hay caché, verificar si está actualizado
+      final hasChanges = await _checkForUpdatesInDatabase(cachedData);
+
+      if (!hasChanges) {
+        // No hay cambios, usar caché
+        debugPrint('✅ Caché actualizado - usando datos locales');
+        gameNotes = cachedData['notes'];
+        _localAudioPath = cachedData['audioPath'];
+        totalNotes = gameNotes.length;
+
+        setState(() {
+          isLoadingData = false;
+        });
+        _startLogoTimer();
+        return;
+      } else {
+        // Hay cambios, recargar desde BD
+        debugPrint('🔄 Cambios detectados - recargando desde base de datos...');
+      }
+    } else {
+      debugPrint('📥 No hay caché - cargando desde base de datos...');
+    }
+
+    // CARGAR DESDE BASE DE DATOS (hay internet y hay cambios o no hay caché)
     final supabase = Supabase.instance.client;
 
     try {
@@ -308,7 +319,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         debugPrint(
             '⏱️ Primera nota: ${gameNotes.first.startTimeMs}ms, Última nota: ${gameNotes.last.startTimeMs}ms');
 
-        // NUEVO: Descargar y cachear audio si existe
+        // Descargar y cachear audio si existe
         if (widget.backgroundAudioUrl != null) {
           debugPrint('🎵 Descargando audio antes de guardar en caché...');
           _localAudioPath =
@@ -322,8 +333,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           }
         }
 
-        // NUEVO: Guardar en caché para uso offline (incluyendo audio)
-        debugPrint('💾 Guardando datos en caché...');
+        // Guardar en caché para uso offline (incluyendo audio)
+        debugPrint('💾 Guardando datos actualizados en caché...');
         await _saveGameDataToCache(gameNotes, _localAudioPath);
         debugPrint('✅ Datos guardados en caché exitosamente');
 
@@ -1126,7 +1137,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
                   ? 1
                   : 0;
 
-      // NUEVO: Verificar si estamos online
+      // Verificar si estamos online
       final isOnline = await _checkConnectivity();
 
       if (isOnline) {
@@ -1325,7 +1336,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     });
   }
 
-  // NUEVO: Descargar y cachear audio localmente
+  // Descargar y cachear audio localmente
   Future<String?> _downloadAndCacheAudio(String audioUrl) async {
     try {
       debugPrint('⬇️ Descargando audio: $audioUrl');
@@ -1360,7 +1371,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     }
   }
 
-  // NUEVO: Guardar datos del juego en caché para uso offline (incluyendo audio)
+  // Guardar datos del juego en caché para uso offline (incluyendo audio)
   Future<void> _saveGameDataToCache(
       List<GameNote> notes, String? audioPath) async {
     try {
@@ -1371,12 +1382,16 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       final box = Hive.box('offline_data');
       final cacheKey = 'educational_sublevel_${widget.sublevelId}_notes';
 
+      // Crear un hash simple basado en las notas para detectar cambios
+      final notesHash = _generateNotesHash(notes);
+
       final cacheData = {
         'sublevel_id': widget.sublevelId,
         'title': widget.title,
         'cached_timestamp': DateTime.now().millisecondsSinceEpoch,
         'notes_count': notes.length,
-        'audio_path': audioPath, // NUEVO: Guardar ruta del audio local
+        'notes_hash': notesHash, // Hash para detectar cambios
+        'audio_path': audioPath,
         'notes_data': notes
             .map((note) => {
                   'id': note.id,
@@ -1396,6 +1411,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       debugPrint(
           '💾 Cached ${notes.length} notes for sublevel ${widget.sublevelId}');
+      debugPrint('   🔐 Notes hash: $notesHash');
       if (audioPath != null) {
         debugPrint('🎵 Cached audio path: $audioPath');
       }
@@ -1405,7 +1421,75 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     }
   }
 
-  // NUEVO: Cargar datos del juego desde caché (incluyendo audio)
+  // Generar un hash simple de las notas para detectar cambios
+  String _generateNotesHash(List<GameNote> notes) {
+    if (notes.isEmpty) return '0';
+
+    // Crear un string con información clave de todas las notas
+    final notesInfo = notes
+        .map((note) =>
+            '${note.id}_${note.startTimeMs}_${note.durationMs}_${note.orderIndex}')
+        .join('|');
+
+    // Retornar un hash simple (suma de códigos hash)
+    return notesInfo.hashCode.toString();
+  }
+
+  // Verificar si hay cambios en la base de datos comparado con el caché
+  Future<bool> _checkForUpdatesInDatabase(
+      Map<String, dynamic> cachedData) async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // Obtener solo las columnas necesarias para comparar
+      final response = await supabase
+          .from('game_song_sublevel')
+          .select('id, start_time_ms, duration_ms, order_index')
+          .eq('sublevel_id', widget.sublevelId)
+          .order('order_index');
+
+      // ignore: unnecessary_null_comparison, unnecessary_type_check
+      if (response == null || response is! List || response.isEmpty) {
+        debugPrint('⚠️ No se encontraron notas en la BD');
+        return false; // Sin datos en BD, mantener caché
+      }
+
+      // Crear notas temporales para generar hash
+      final dbNotes = response.map((item) {
+        return GameNote(
+          id: item['id'] is int ? item['id'] : int.parse(item['id'].toString()),
+          startTimeMs: item['start_time_ms'] as int,
+          durationMs: item['duration_ms'] as int,
+          orderIndex: item['order_index'] as int,
+          noteName: '',
+          requiredPistons: [],
+        );
+      }).toList();
+
+      // Generar hash de las notas en BD
+      final dbHash = _generateNotesHash(dbNotes);
+      final cachedHash = cachedData['notes_hash'] as String?;
+
+      debugPrint('🔍 Comparando hashes:');
+      debugPrint('   📦 Cache: $cachedHash');
+      debugPrint('   🌐 BD: $dbHash');
+
+      final hasChanges = dbHash != cachedHash;
+      if (hasChanges) {
+        debugPrint('🔄 ¡Cambios detectados! (hashes diferentes)');
+      } else {
+        debugPrint('✅ Sin cambios (hashes idénticos)');
+      }
+
+      return hasChanges;
+    } catch (e) {
+      debugPrint('❌ Error verificando cambios: $e');
+      // En caso de error, asumir que no hay cambios y usar caché
+      return false;
+    }
+  }
+
+  // Cargar datos del juego desde caché (incluyendo audio)
   Future<Map<String, dynamic>?> _loadGameDataFromCache() async {
     try {
       if (!Hive.isBoxOpen('offline_data')) {
@@ -1438,7 +1522,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         );
       }).toList();
 
-      // NUEVO: Obtener ruta del audio cacheado
+      // Obtener ruta del audio cacheado
       final audioPath = cachedData['audio_path'] as String?;
 
       // Verificar si el archivo de audio existe
