@@ -383,6 +383,9 @@ class _LearningPageState extends State<LearningPage> {
 
     await _checkAndCreateUserLevel();
 
+    // Sincronizar logros pendientes (completados offline)
+    await _syncPendingAchievements();
+
     // Actualizar con datos frescos del servidor
     final freshLevels = await fetchLevels();
     if (mounted && freshLevels.isNotEmpty) {
@@ -390,6 +393,33 @@ class _LearningPageState extends State<LearningPage> {
         _levelsFuture = Future.value(freshLevels);
         _isLoadingFromCache = false;
       });
+    }
+  }
+
+  // 🔄 Sincronizar logros pendientes (que se completaron offline)
+  Future<void> _syncPendingAchievements() async {
+    try {
+      final box = Hive.box('offline_data');
+      List<String> pendingAchievements =
+          List<String>.from(box.get('pending_achievements', defaultValue: []));
+
+      if (pendingAchievements.isEmpty) {
+        return;
+      }
+
+      debugPrint(
+          '🔄 Sincronizando ${pendingAchievements.length} logros pendientes...');
+
+      // Procesar cada logro pendiente
+      for (String levelId in pendingAchievements) {
+        await _checkAndAwardAchievement(levelId);
+      }
+
+      // Limpiar lista de pendientes
+      await box.delete('pending_achievements');
+      debugPrint('✅ Logros pendientes sincronizados');
+    } catch (e) {
+      debugPrint('❌ Error sincronizando logros pendientes: $e');
     }
   }
 
@@ -583,6 +613,9 @@ class _LearningPageState extends State<LearningPage> {
           .eq('user_id', user.id)
           .eq('level_id', levelId);
 
+      // 🏆 VERIFICAR Y OTORGAR LOGRO POR COMPLETAR EL NIVEL
+      await _checkAndAwardAchievement(levelId);
+
       // Obtener el siguiente nivel
       final currentLevel = await supabase
           .from('levels')
@@ -629,6 +662,230 @@ class _LearningPageState extends State<LearningPage> {
     } catch (e) {
       debugPrint('Error al marcar nivel completado: $e');
     }
+  }
+
+  // 🏆 Verificar y otorgar logro (achievement) por completar un nivel
+  Future<void> _checkAndAwardAchievement(String levelId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) {
+        debugPrint('📱 Sin conexión - logro se otorgará cuando haya internet');
+        // Guardar en caché para otorgar después
+        final box = Hive.box('offline_data');
+        List<String> pendingAchievements = List<String>.from(
+            box.get('pending_achievements', defaultValue: []));
+        if (!pendingAchievements.contains(levelId)) {
+          pendingAchievements.add(levelId);
+          await box.put('pending_achievements', pendingAchievements);
+        }
+        return;
+      }
+
+      // Buscar si existe un achievement asociado a este nivel
+      final achievement = await supabase
+          .from('achievements')
+          .select('id, name, description, image')
+          .eq('level_id', levelId)
+          .maybeSingle();
+
+      if (achievement == null) {
+        debugPrint('⚠️ No hay logro configurado para este nivel');
+        return;
+      }
+
+      // Verificar si el usuario ya tiene este logro
+      final existingAchievement = await supabase
+          .from('users_achievements')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('achievement_id', achievement['id'])
+          .maybeSingle();
+
+      if (existingAchievement != null) {
+        debugPrint('✅ Usuario ya tiene este logro');
+        return;
+      }
+
+      // Otorgar el logro al usuario
+      await supabase.from('users_achievements').insert({
+        'user_id': user.id,
+        'achievement_id': achievement['id'],
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('🏆 ¡Logro otorgado! ${achievement['name']}');
+
+      // Mostrar diálogo de logro obtenido
+      if (mounted) {
+        _showAchievementDialog(
+          name: achievement['name'],
+          description: achievement['description'],
+          imageUrl: achievement['image'],
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error al verificar/otorgar logro: $e');
+    }
+  }
+
+  // 🎉 Mostrar diálogo de logro obtenido
+  void _showAchievementDialog({
+    required String name,
+    required String description,
+    String? imageUrl,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.amber.shade50,
+                  Colors.orange.shade50,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icono de estrella animado
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.5),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.emoji_events,
+                          size: 50,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Título
+                const Text(
+                  '¡LOGRO DESBLOQUEADO!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+
+                // Imagen del logro
+                if (imageUrl != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.emoji_events, size: 60),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+
+                // Nombre del logro
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // Descripción
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // Botón de continuar
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 5,
+                  ),
+                  child: const Text(
+                    '¡Continuar!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // Verificar si el usuario puede acceder a un nivel
