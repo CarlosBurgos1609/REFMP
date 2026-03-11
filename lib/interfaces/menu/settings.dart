@@ -10,10 +10,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:io' show Platform, File, Directory;
+import 'dart:io' show Platform, File;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:install_plugin/install_plugin.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -513,20 +512,36 @@ class _SettingsPage extends State<SettingsPage> {
         throw 'El archivo APK no existe';
       }
 
-      // Intentar instalar usando install_plugin
-      final result = await InstallPlugin.install(filePath);
+      // Abrir el APK con url_launcher usando el esquema file://
+      final Uri apkUri = Uri.parse('file://$filePath');
 
-      debugPrint('✅ Instalación iniciada: $result');
+      final bool launched = await launchUrl(
+        apkUri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      debugPrint('✅ APK abierto: $launched');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Instalación iniciada. Sigue las instrucciones en pantalla.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        if (launched) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Instalación iniciada. Sigue las instrucciones en pantalla.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'No se pudo abrir el instalador. Instala manualmente desde Descargas.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('❌ Error al instalar APK: $e');
