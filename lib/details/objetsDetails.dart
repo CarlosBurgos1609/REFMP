@@ -218,29 +218,19 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
     final profileImageProvider =
         Provider.of<ProfileImageProvider>(context, listen: false);
 
+    // 🚀 OPTIMIZACIÓN: Cargar caché INMEDIATAMENTE antes de red
+    final cachedItems = box.get(cacheKey, defaultValue: []);
+    if (cachedItems.isNotEmpty) {
+      setState(() {
+        allItems = List<Map<String, dynamic>>.from(
+            cachedItems.map((item) => Map<String, dynamic>.from(item)));
+        filteredItems = List.from(allItems);
+      });
+      debugPrint('✅ Loaded ${cachedItems.length} items INSTANTLY from cache');
+    }
+
     try {
       if (!_isOnline) {
-        final cachedItems = box.get(cacheKey, defaultValue: []);
-        if (cachedItems.isNotEmpty) {
-          setState(() {
-            allItems = List<Map<String, dynamic>>.from(
-                cachedItems.map((item) => Map<String, dynamic>.from(item)));
-            filteredItems = List.from(allItems);
-          });
-          final profileImageCacheKey = 'user_profile_image_$userId';
-          final cachedProfileImage = box.get(profileImageCacheKey,
-              defaultValue: profileImageProvider.profileImageUrl);
-          if (cachedProfileImage != null &&
-              cachedProfileImage.isNotEmpty &&
-              !cachedProfileImage.startsWith('http') &&
-              File(cachedProfileImage).existsSync()) {
-            profileImageProvider.updateProfileImage(cachedProfileImage,
-                notify: true, isOnline: false);
-            setState(() {
-              profileImageUrl = cachedProfileImage;
-            });
-          }
-        }
         return;
       }
 
@@ -251,37 +241,33 @@ class _ObjetsDetailsPageState extends State<ObjetsDetailsPage> {
           .order('created_at', ascending: false);
       final data = List<Map<String, dynamic>>.from(response);
 
-      for (var item in data) {
-        final imageUrl = item['image_url'] ?? '';
-        if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
-          try {
-            final localPath =
-                await _downloadAndCacheImage(imageUrl, 'objet_${item['id']}');
-            item['local_image_path'] = localPath;
-            if (widget.title.toLowerCase() == 'avatares') {
-              _gifVisibility['${item['id']}'] = true;
-            }
-          } catch (e) {
-            debugPrint('Error caching object image for ${item['id']}: $e');
-          }
-        }
-      }
-
+      // 🚀 OPTIMIZACIÓN: Actualizar UI INMEDIATAMENTE sin esperar imágenes
       setState(() {
         allItems = data;
         filteredItems = List.from(allItems);
       });
       await box.put(cacheKey, data);
+      debugPrint('✅ Updated ${data.length} items from server');
+
+      // 🚀 Precargar SOLO las primeras 20 imágenes (resto bajo demanda)
+      final itemsToPreload = data.take(20).toList();
+      for (var item in itemsToPreload) {
+        final imageUrl = item['image_url'] ?? '';
+        if (imageUrl.isNotEmpty && imageUrl != 'assets/images/refmmp.png') {
+          final cacheKey = 'objet_${item['id']}';
+          _downloadAndCacheImage(imageUrl, cacheKey).then((localPath) {
+            item['local_image_path'] = localPath;
+            if (widget.title.toLowerCase() == 'avatares') {
+              _gifVisibility['${item['id']}'] = true;
+            }
+          }).catchError((e) {
+            debugPrint('Cache error for ${item['id']}: $e');
+          });
+        }
+      }
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
-      final cachedItems = box.get(cacheKey, defaultValue: []);
-      if (cachedItems.isNotEmpty) {
-        setState(() {
-          allItems = List<Map<String, dynamic>>.from(
-              cachedItems.map((item) => Map<String, dynamic>.from(item)));
-          filteredItems = List.from(allItems);
-        });
-      }
+      // Ya tenemos caché cargado al inicio
     }
   }
 

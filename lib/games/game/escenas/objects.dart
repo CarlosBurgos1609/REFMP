@@ -625,6 +625,7 @@ class _ObjetsPageState extends State<ObjetsPage> {
     }
 
     try {
+      // 🚀 OPTIMIZACIÓN: Consultar categorías
       final allObjetsResponse =
           await supabase.from('objets').select('category');
       final categories = allObjetsResponse
@@ -634,29 +635,57 @@ class _ObjetsPageState extends State<ObjetsPage> {
       Map<String, List<Map<String, dynamic>>> grouped = {};
       Map<String, int> counts = {};
 
-      for (var category in categories) {
-        final countResponse =
-            await supabase.from('objets').select().eq('category', category);
-        counts[category] = countResponse.length;
+      // 🚀 OPTIMIZACIÓN: Consultar items Y conteos EN PARALELO
+      final futures = categories.map((category) async {
+        // Consultar items (solo primeros 6) y conteo total en paralelo
+        final results = await Future.wait([
+          supabase
+              .from('objets')
+              .select()
+              .eq('category', category)
+              .order('created_at', ascending: false)
+              .limit(6),
+          supabase.from('objets').select('id').eq('category', category),
+        ]);
 
-        final response = await supabase
-            .from('objets')
-            .select()
-            .eq('category', category)
-            .order('created_at', ascending: false)
-            .limit(6);
-        final data = List<Map<String, dynamic>>.from(response);
+        final items = List<Map<String, dynamic>>.from(results[0] as List);
+        final allItems = List<Map<String, dynamic>>.from(results[1] as List);
+        final totalCount = allItems.length;
 
-        for (var item in data) {
+        return {
+          'category': category,
+          'items': items,
+          'count': totalCount,
+        };
+      }).toList();
+
+      final results = await Future.wait(futures);
+
+      // Procesar resultados y actualizar UI INMEDIATAMENTE
+      for (var result in results) {
+        final category = result['category'] as String;
+        final items = result['items'] as List<Map<String, dynamic>>;
+        final totalCount = result['count'] as int;
+
+        grouped[category] = items;
+        counts[category] = totalCount; // Conteo TOTAL, no solo los 6 items
+
+        // 🚀 Precargar imágenes en SEGUNDO PLANO (no bloqueante)
+        for (var item in items) {
           final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
-          final objectCacheKey = 'object_image_${item['id']}';
-          item['local_image_path'] =
-              await _downloadAndCacheImage(imageUrl, objectCacheKey);
-          _gifVisibility['${item['id']}'] = true; // Preload avatars
+          if (imageUrl != 'assets/images/refmmp.png') {
+            final objectCacheKey = 'object_image_${item['id']}';
+            _downloadAndCacheImage(imageUrl, objectCacheKey).then((path) {
+              item['local_image_path'] = path;
+            }).catchError((e) {
+              debugPrint('Cache error: $e');
+            });
+          }
+          _gifVisibility['${item['id']}'] = true;
         }
-        grouped[category] = data;
       }
 
+      // Actualizar UI INMEDIATAMENTE sin esperar imágenes
       if (mounted) {
         setState(() {
           groupedObjets = grouped;
@@ -665,7 +694,8 @@ class _ObjetsPageState extends State<ObjetsPage> {
       }
       await box.put(cacheKey, grouped);
       await box.put(countCacheKey, counts);
-      debugPrint('Fetched objects online for ${widget.instrumentName}');
+      debugPrint(
+          '✅ Fetched ${categories.length} categories FAST for ${widget.instrumentName}');
     } catch (e) {
       debugPrint('Error al obtener objetos: $e');
       if (cachedObjets.isEmpty && mounted) {

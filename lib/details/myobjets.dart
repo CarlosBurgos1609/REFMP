@@ -1018,190 +1018,16 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       debugPrint('Cleared corrupted user_trompetas cache');
     }
 
-    try {
-      if (!_isOnline) {
-        final cachedObjects =
-            box.get(cacheKey, defaultValue: []) as List<dynamic>;
-        final cachedAvatars =
-            box.get(avatarCacheKey, defaultValue: []) as List<dynamic>;
-        final cachedWallpapers =
-            box.get(wallpaperCacheKey, defaultValue: []) as List<dynamic>;
-        final cachedTrumpets =
-            box.get(trumpetCacheKey, defaultValue: []) as List<dynamic>;
+    // 🚀 OPTIMIZACIÓN: Cargar caché INMEDIATAMENTE
+    final cachedObjects = box.get(cacheKey, defaultValue: []) as List<dynamic>;
+    final cachedAvatars =
+        box.get(avatarCacheKey, defaultValue: []) as List<dynamic>;
+    final cachedWallpapers =
+        box.get(wallpaperCacheKey, defaultValue: []) as List<dynamic>;
+    final cachedTrumpets =
+        box.get(trumpetCacheKey, defaultValue: []) as List<dynamic>;
 
-        // Convertir los datos cacheados a List<Map<String, dynamic>>
-        List<Map<String, dynamic>> objects = cachedObjects
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-        List<Map<String, dynamic>> avatars = cachedAvatars
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-        List<Map<String, dynamic>> wallpapers = cachedWallpapers
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-        List<Map<String, dynamic>> trumpets = cachedTrumpets
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-
-        // Verificar y cargar imágenes locales para cada objeto
-        for (var item in objects) {
-          final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
-          final objectCacheKey = 'object_image_${item['id']}';
-          final localImagePath =
-              box.get(objectCacheKey, defaultValue: null)?['path'] ??
-                  'assets/images/refmmp.png';
-          if (File(localImagePath).existsSync()) {
-            item['local_image_path'] = localImagePath;
-            debugPrint(
-                'Using cached image for object ${item['id']}: $localImagePath');
-          } else {
-            item['local_image_path'] = 'assets/images/refmmp.png';
-            debugPrint(
-                'No valid cached image for object ${item['id']}, using default');
-          }
-          _gifVisibility['${item['id']}'] = true;
-        }
-
-        setState(() {
-          userObjects = objects;
-          userAvatars = avatars;
-          userWallpapers = wallpapers;
-          userTrumpets = trumpets;
-          totalObjects = box.get(countCacheKey, defaultValue: objects.length);
-          totalAvatars =
-              box.get(totalAvatarsCacheKey, defaultValue: avatars.length);
-          totalWallpapers =
-              box.get(totalWallpapersCacheKey, defaultValue: wallpapers.length);
-          totalTrumpets =
-              box.get(totalTrumpetsCacheKey, defaultValue: trumpets.length);
-          totalAvailableObjects =
-              box.get(totalAvailableObjectsKey, defaultValue: 0);
-          totalAvailableAvatars =
-              box.get(totalAvailableAvatarsKey, defaultValue: 0);
-          totalAvailableWallpapers =
-              box.get(totalAvailableWallpapersKey, defaultValue: 0);
-          totalAvailableTrumpets =
-              box.get(totalAvailableTrumpetsKey, defaultValue: 0);
-          debugPrint(
-              'Offline mode: Loaded ${objects.length} objects, ${avatars.length} avatars, '
-              '${wallpapers.length} wallpapers, ${trumpets.length} trumpets');
-          debugPrint(
-              'Offline mode - Total available: Objects=$totalAvailableObjects, '
-              'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
-              'Trumpets=$totalAvailableTrumpets');
-        });
-        updateFilteredItems();
-        return;
-      }
-
-      // Modo online: Obtener datos de Supabase
-      final response = await supabase
-          .from('users_objets')
-          .select(
-              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false, referencedTable: 'objets');
-
-      final List<Map<String, dynamic>> fetchedObjects = [];
-      for (var item in response) {
-        final objet = item['objets'] as Map<String, dynamic>;
-        final imageUrl = objet['image_url'] ?? 'assets/images/refmmp.png';
-        final objectCacheKey = 'object_image_${objet['id']}';
-        final localImagePath =
-            await _downloadAndCacheImage(imageUrl, objectCacheKey);
-        fetchedObjects.add({
-          'id': objet['id'],
-          'image_url': imageUrl,
-          'local_image_path': localImagePath,
-          'name': objet['name'] ?? 'Objeto',
-          'category': objet['category']?.toLowerCase() ?? 'otros',
-          'description': objet['description'] ?? 'Sin descripción',
-          'price': objet['price'] ?? 0,
-          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
-        });
-        _gifVisibility['${objet['id']}'] = true;
-      }
-
-      // Obtener conteos totales
-      final totalAvailableObjectsResponse =
-          await supabase.from('objets').select('id');
-      final totalAvailableAvatarsResponse = await supabase
-          .from('objets')
-          .select('id')
-          .ilike('category', 'avatares');
-      final totalAvailableWallpapersResponse = await supabase
-          .from('objets')
-          .select('id')
-          .ilike('category', 'fondos');
-      final totalAvailableTrumpetsResponse = await supabase
-          .from('objets')
-          .select('id')
-          .ilike('category', 'trompetas');
-
-      // Filtrar objetos por categoría
-      final avatars = fetchedObjects
-          .where((obj) => obj['category'].toLowerCase() == 'avatares')
-          .toList();
-      final wallpapers = fetchedObjects
-          .where((obj) => obj['category'].toLowerCase() == 'fondos')
-          .toList();
-      final trumpets = fetchedObjects
-          .where((obj) => obj['category'].toLowerCase() == 'trompetas')
-          .toList();
-
-      // Actualizar estado
-      setState(() {
-        userObjects = fetchedObjects;
-        userAvatars = avatars;
-        userWallpapers = wallpapers;
-        userTrumpets = trumpets;
-        totalObjects = fetchedObjects.length;
-        totalAvatars = avatars.length;
-        totalWallpapers = wallpapers.length;
-        totalTrumpets = trumpets.length;
-        totalAvailableObjects = totalAvailableObjectsResponse.length;
-        totalAvailableAvatars = totalAvailableAvatarsResponse.length;
-        totalAvailableWallpapers = totalAvailableWallpapersResponse.length;
-        totalAvailableTrumpets = totalAvailableTrumpetsResponse.length;
-        debugPrint('Online mode: Loaded ${fetchedObjects.length} objects, '
-            '${avatars.length} avatars, ${wallpapers.length} wallpapers, '
-            '${trumpets.length} trumpets');
-        debugPrint('Total available: Objects=$totalAvailableObjects, '
-            'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
-            'Trumpets=$totalAvailableTrumpets');
-      });
-
-      // Guardar en Hive
-      await box.put(cacheKey, fetchedObjects);
-      await box.put(avatarCacheKey, avatars);
-      await box.put(wallpaperCacheKey, wallpapers);
-      await box.put(trumpetCacheKey, trumpets);
-      await box.put(countCacheKey, fetchedObjects.length);
-      await box.put(totalAvatarsCacheKey, avatars.length);
-      await box.put(totalWallpapersCacheKey, wallpapers.length);
-      await box.put(totalTrumpetsCacheKey, trumpets.length);
-      await box.put(
-          totalAvailableObjectsKey, totalAvailableObjectsResponse.length);
-      await box.put(
-          totalAvailableAvatarsKey, totalAvailableAvatarsResponse.length);
-      await box.put(
-          totalAvailableWallpapersKey, totalAvailableWallpapersResponse.length);
-      await box.put(
-          totalAvailableTrumpetsKey, totalAvailableTrumpetsResponse.length);
-
-      updateFilteredItems();
-    } catch (e, stackTrace) {
-      debugPrint('Error fetching objects: $e\nStack trace: $stackTrace');
-      final cachedObjects =
-          box.get(cacheKey, defaultValue: []) as List<dynamic>;
-      final cachedAvatars =
-          box.get(avatarCacheKey, defaultValue: []) as List<dynamic>;
-      final cachedWallpapers =
-          box.get(wallpaperCacheKey, defaultValue: []) as List<dynamic>;
-      final cachedTrumpets =
-          box.get(trumpetCacheKey, defaultValue: []) as List<dynamic>;
-
-      // Convertir los datos cacheados
+    if (cachedObjects.isNotEmpty) {
       List<Map<String, dynamic>> objects = cachedObjects
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
@@ -1214,25 +1040,6 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
       List<Map<String, dynamic>> trumpets = cachedTrumpets
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
-
-      // Verificar imágenes locales
-      for (var item in objects) {
-        final imageUrl = item['image_url'] ?? 'assets/images/refmmp.png';
-        final objectCacheKey = 'object_image_${item['id']}';
-        final localImagePath =
-            box.get(objectCacheKey, defaultValue: null)?['path'] ??
-                'assets/images/refmmp.png';
-        if (File(localImagePath).existsSync()) {
-          item['local_image_path'] = localImagePath;
-          debugPrint(
-              'Using cached image for object ${item['id']}: $localImagePath');
-        } else {
-          item['local_image_path'] = 'assets/images/refmmp.png';
-          debugPrint(
-              'No valid cached image for object ${item['id']}, using default');
-        }
-        _gifVisibility['${item['id']}'] = true;
-      }
 
       setState(() {
         userObjects = objects;
@@ -1254,15 +1061,116 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
             box.get(totalAvailableWallpapersKey, defaultValue: 0);
         totalAvailableTrumpets =
             box.get(totalAvailableTrumpetsKey, defaultValue: 0);
-        debugPrint(
-            'Catch block: Loaded ${objects.length} objects, ${avatars.length} avatars, '
-            '${wallpapers.length} wallpapers, ${trumpets.length} trumpets');
-        debugPrint(
-            'Catch block - Total available: Objects=$totalAvailableObjects, '
-            'Avatars=$totalAvailableAvatars, Wallpapers=$totalAvailableWallpapers, '
-            'Trumpets=$totalAvailableTrumpets');
       });
       updateFilteredItems();
+      debugPrint('✅ Loaded ${objects.length} objects INSTANTLY from cache');
+    }
+
+    try {
+      if (!_isOnline) {
+        // Ya cargamos el caché al inicio
+        return;
+      }
+
+      // Modo online: Obtener datos de Supabase
+      final response = await supabase
+          .from('users_objets')
+          .select(
+              'objet_id, objets!inner(id, image_url, name, category, description, price, created_at)')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false, referencedTable: 'objets');
+
+      final List<Map<String, dynamic>> fetchedObjects = [];
+      // 🚀 OPTIMIZACIÓN: Procesar datos sin esperar imágenes
+      for (var item in response) {
+        final objet = item['objets'] as Map<String, dynamic>;
+        final imageUrl = objet['image_url'] ?? 'assets/images/refmmp.png';
+        fetchedObjects.add({
+          'id': objet['id'],
+          'image_url': imageUrl,
+          'local_image_path': 'assets/images/refmmp.png', // Temporal
+          'name': objet['name'] ?? 'Objeto',
+          'category': objet['category']?.toLowerCase() ?? 'otros',
+          'description': objet['description'] ?? 'Sin descripción',
+          'price': objet['price'] ?? 0,
+          'created_at': objet['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+        _gifVisibility['${objet['id']}'] = true;
+      }
+
+      // Filtrar objetos por categoría
+      final avatars = fetchedObjects
+          .where((obj) => obj['category'].toLowerCase() == 'avatares')
+          .toList();
+      final wallpapers = fetchedObjects
+          .where((obj) => obj['category'].toLowerCase() == 'fondos')
+          .toList();
+      final trumpets = fetchedObjects
+          .where((obj) => obj['category'].toLowerCase() == 'trompetas')
+          .toList();
+
+      // 🚀 OPTIMIZACIÓN: Actualizar UI INMEDIATAMENTE
+      setState(() {
+        userObjects = fetchedObjects;
+        userAvatars = avatars;
+        userWallpapers = wallpapers;
+        userTrumpets = trumpets;
+        totalObjects = fetchedObjects.length;
+        totalAvatars = avatars.length;
+        totalWallpapers = wallpapers.length;
+        totalTrumpets = trumpets.length;
+      });
+      debugPrint('✅ Updated ${fetchedObjects.length} objects from server');
+
+      // 🚀 Obtener conteos EN PARALELO (en segundo plano)
+      Future.wait([
+        supabase.from('objets').select('id'),
+        supabase.from('objets').select('id').ilike('category', 'avatares'),
+        supabase.from('objets').select('id').ilike('category', 'fondos'),
+        supabase.from('objets').select('id').ilike('category', 'trompetas'),
+      ]).then((results) {
+        if (mounted) {
+          setState(() {
+            totalAvailableObjects = results[0].length;
+            totalAvailableAvatars = results[1].length;
+            totalAvailableWallpapers = results[2].length;
+            totalAvailableTrumpets = results[3].length;
+          });
+        }
+        box.put(totalAvailableObjectsKey, results[0].length);
+        box.put(totalAvailableAvatarsKey, results[1].length);
+        box.put(totalAvailableWallpapersKey, results[2].length);
+        box.put(totalAvailableTrumpetsKey, results[3].length);
+      });
+
+      // Guardar en caché
+      await box.put(cacheKey, fetchedObjects);
+      await box.put(avatarCacheKey, avatars);
+      await box.put(wallpaperCacheKey, wallpapers);
+      await box.put(trumpetCacheKey, trumpets);
+      await box.put(countCacheKey, fetchedObjects.length);
+      await box.put(totalAvatarsCacheKey, avatars.length);
+      await box.put(totalWallpapersCacheKey, wallpapers.length);
+      await box.put(totalTrumpetsCacheKey, trumpets.length);
+
+      updateFilteredItems();
+
+      // 🚀 Precargar SOLO las primeras 20 imágenes (resto bajo demanda)
+      final itemsToPreload = fetchedObjects.take(20).toList();
+      for (var item in itemsToPreload) {
+        final imageUrl = item['image_url'] ?? '';
+        if (imageUrl != 'assets/images/refmmp.png' && imageUrl.isNotEmpty) {
+          final cacheKey = 'object_image_${item['id']}';
+          _downloadAndCacheImage(imageUrl, cacheKey).then((path) {
+            item['local_image_path'] = path;
+          }).catchError((e) {
+            debugPrint('Cache error: $e');
+          });
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error fetching objects: $e\nStack trace: $stackTrace');
+      // Ya cargamos el caché al inicio, no hacer nada más
     }
   }
 
