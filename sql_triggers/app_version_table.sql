@@ -1,21 +1,32 @@
--- Tabla para controlar versiones de la aplicación
--- Esta tabla permite verificar si hay actualizaciones disponibles
+-- ========================================
+-- SCRIPT PARA CREAR TABLA DE VERSIONES
+-- Copia y pega todo esto en el SQL Editor de Supabase
+-- ========================================
 
-CREATE TABLE IF NOT EXISTS app_version (
+-- Crear tabla app_version
+CREATE TABLE app_version (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    version VARCHAR(20) NOT NULL, -- Ejemplo: "1.0.1"
-    build_number INTEGER NOT NULL UNIQUE, -- Build number incremental (debe ser único)
-    required BOOLEAN DEFAULT false, -- Si la actualización es obligatoria
-    release_notes TEXT, -- Notas de la versión / changelog
-    android_url TEXT, -- URL de Google Play Store
-    ios_url TEXT, -- URL de App Store
+    version VARCHAR(20) NOT NULL,
+    build_number INTEGER NOT NULL UNIQUE,
+    required BOOLEAN DEFAULT false,
+    release_notes TEXT,
+    android_url TEXT,
+    ios_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Índice para búsquedas rápidas por build_number
-CREATE INDEX IF NOT EXISTS idx_app_version_build_number 
-ON app_version(build_number DESC);
+-- Crear índice para búsquedas rápidas
+CREATE INDEX idx_app_version_build_number ON app_version(build_number DESC);
+
+-- Habilitar RLS (Row Level Security)
+ALTER TABLE app_version ENABLE ROW LEVEL SECURITY;
+
+-- Política para permitir lectura pública (la app necesita leer versiones)
+CREATE POLICY "Permitir lectura pública de versiones"
+ON app_version FOR SELECT
+TO public
+USING (true);
 
 -- Trigger para actualizar updated_at automáticamente
 CREATE OR REPLACE FUNCTION update_app_version_updated_at()
@@ -31,33 +42,17 @@ CREATE TRIGGER trigger_app_version_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_app_version_updated_at();
 
--- Insertar versión inicial (ejemplo)
-INSERT INTO app_version (version, build_number, required, release_notes, android_url, ios_url)
-VALUES (
-    '1.0.0',
-    1,
-    false,
-    'Versión inicial de la aplicación',
-    'https://play.google.com/store/apps/details?id=tu.paquete.app',
-    'https://apps.apple.com/app/idTU_APP_ID'
-);
+-- ========================================
+-- LISTO! Ahora inserta tu primera versión:
+-- ========================================
+-- Después de crear el APK y subirlo a GitHub, ejecuta este INSERT
+-- reemplazando la URL con la real de tu GitHub Release:
 
--- Comentarios explicativos
-COMMENT ON TABLE app_version IS 'Tabla para gestionar versiones de la aplicación y control de actualizaciones';
-COMMENT ON COLUMN app_version.version IS 'Versión semántica (ej: 1.0.0)';
-COMMENT ON COLUMN app_version.build_number IS 'Número de build incremental único';
-COMMENT ON COLUMN app_version.required IS 'Si es true, la actualización es obligatoria';
-COMMENT ON COLUMN app_version.release_notes IS 'Descripción de cambios en esta versión';
-COMMENT ON COLUMN app_version.android_url IS 'URL de Google Play Store para Android';
-COMMENT ON COLUMN app_version.ios_url IS 'URL de App Store para iOS';
-
--- Ejemplo de cómo insertar una nueva versión:
--- INSERT INTO app_version (version, build_number, required, release_notes, android_url, ios_url)
+-- INSERT INTO app_version (version, build_number, required, release_notes, android_url)
 -- VALUES (
---     '1.0.1',
---     2,
+--     '1.0.0',
+--     1,
 --     false,
---     '- Corrección de errores\n- Mejoras de rendimiento\n- Nueva funcionalidad X',
---     'https://play.google.com/store/apps/details?id=tu.paquete.app',
---     'https://apps.apple.com/app/idTU_APP_ID'
+--     'Versión inicial de la aplicación',
+--     'https://github.com/TU_USUARIO/TU_REPO/releases/download/v1.0.0/app-release.apk'
 -- );

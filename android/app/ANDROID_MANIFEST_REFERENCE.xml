@@ -1,0 +1,52 @@
+<!-- 
+  CONFIGURACIÓN PARA ACTUALIZACIONES AUTOMÁTICAS DE APK
+  
+  Agregar estos permisos y configuraciones en:
+  android/app/src/main/AndroidManifest.xml
+-->
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- ============================================ -->
+    <!-- PERMISOS PARA DESCARGA E INSTALACIÓN DE APK -->
+    <!-- ============================================ -->
+    
+    <!-- Internet para descargar APK -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Almacenamiento externo (Android <= 9) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    
+    <!-- Permiso para instalar paquetes (Android 8.0+) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:label="refmp"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        
+        <!-- ============================================ -->
+        <!-- FILE PROVIDER PARA COMPARTIR ARCHIVOS APK   -->
+        <!-- ============================================ -->
+        
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        
+        <!-- Resto de la configuración de tu app -->
+        <activity
+            android:name=".MainActivity"
+            ...>
+        </activity>
+        
+    </application>
+</manifest>

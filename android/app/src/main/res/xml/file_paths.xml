@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FILE PATHS CONFIGURATION
+  
+  Este archivo debe estar en:
+  android/app/src/main/res/xml/file_paths.xml
+  
+  Si la carpeta xml no existe, créala.
+  
+  Este archivo define las rutas donde la app puede compartir archivos
+  con otras aplicaciones (necesario para instalar APK).
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permite acceso a archivos en almacenamiento externo -->
+    <external-path name="external_files" path="." />
+    
+    <!-- Permite acceso a archivos en cache -->
+    <cache-path name="cache" path="." />
+    
+    <!-- Permite acceso a archivos en cache externo -->
+    <external-cache-path name="external_cache" path="." />
+    
+    <!-- (Opcional) Permite acceso a archivos internos de la app -->
+    <files-path name="files" path="." />
+</paths>

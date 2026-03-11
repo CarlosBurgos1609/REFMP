@@ -10,7 +10,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File, Directory;
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:install_plugin/install_plugin.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.title});
@@ -24,6 +28,9 @@ class _SettingsPage extends State<SettingsPage> {
   bool _notificationsEnabled = false;
   bool _checkingUpdate = false;
   String _currentVersion = '';
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  final Dio _dio = Dio();
 
   @override
   void initState() {
@@ -260,7 +267,12 @@ class _SettingsPage extends State<SettingsPage> {
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  _openStore(storeUrl);
+                  // Detectar si es un APK directo o enlace a tienda
+                  if (Platform.isAndroid && storeUrl.endsWith('.apk')) {
+                    _downloadAndInstallApk(storeUrl, version);
+                  } else {
+                    _openStore(storeUrl);
+                  }
                 },
                 icon: Icon(Icons.download),
                 label: Text('Actualizar'),
@@ -331,6 +343,264 @@ class _SettingsPage extends State<SettingsPage> {
           ),
         );
       }
+    }
+  }
+
+  // Descargar e instalar APK automáticamente desde GitHub
+  Future<void> _downloadAndInstallApk(String apkUrl, String version) async {
+    if (!Platform.isAndroid) {
+      debugPrint('⚠️ Instalación de APK solo disponible en Android');
+      return;
+    }
+
+    try {
+      setState(() {
+        _isDownloading = true;
+        _downloadProgress = 0.0;
+      });
+
+      // Mostrar diálogo de progreso
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => _buildDownloadDialog(version),
+        );
+      }
+
+      // Verificar permisos de instalación (Android 8.0+)
+      if (await _needsInstallPermission()) {
+        final hasPermission = await _requestInstallPermission();
+        if (!hasPermission) {
+          throw 'Se requiere permiso para instalar aplicaciones';
+        }
+      }
+
+      // Obtener directorio de descargas
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        throw 'No se pudo acceder al almacenamiento';
+      }
+
+      final filePath = '${directory.path}/refmp_v$version.apk';
+
+      debugPrint('📥 Descargando APK desde: $apkUrl');
+      debugPrint('💾 Guardando en: $filePath');
+
+      // Eliminar archivo anterior si existe
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+
+      // Descargar el APK con progreso
+      await _dio.download(
+        apkUrl,
+        filePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            final progress = received / total;
+            setState(() {
+              _downloadProgress = progress;
+            });
+            debugPrint('📊 Progreso: ${(progress * 100).toStringAsFixed(0)}%');
+          }
+        },
+        options: Options(
+          followRedirects: true,
+          receiveTimeout: Duration(minutes: 5),
+        ),
+      );
+
+      debugPrint('✅ Descarga completada: $filePath');
+
+      // Verificar que el archivo se descargó correctamente
+      if (!await file.exists()) {
+        throw 'El archivo no se descargó correctamente';
+      }
+
+      final fileSize = await file.length();
+      debugPrint(
+          '📦 Tamaño del archivo: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+
+      // Cerrar diálogo de progreso
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Instalar el APK
+      await _installApk(filePath);
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error al descargar/instalar APK: $e');
+      debugPrint('   Stack trace: $stackTrace');
+
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => _downloadAndInstallApk(apkUrl, version),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = 0.0;
+        });
+      }
+    }
+  }
+
+  // Construir diálogo de descarga con progreso
+  Widget _buildDownloadDialog(String version) {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.download, color: Colors.blue),
+              SizedBox(width: 10),
+              Text('Descargando actualización'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Versión: $version', style: TextStyle(fontSize: 14)),
+              SizedBox(height: 20),
+              LinearProgressIndicator(
+                value: _downloadProgress,
+                backgroundColor: Colors.grey.shade300,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.blue,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Por favor espera...',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Instalar el APK descargado
+  Future<void> _installApk(String filePath) async {
+    try {
+      debugPrint('📲 Instalando APK: $filePath');
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw 'El archivo APK no existe';
+      }
+
+      // Intentar instalar usando install_plugin
+      final result = await InstallPlugin.install(filePath);
+
+      debugPrint('✅ Instalación iniciada: $result');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Instalación iniciada. Sigue las instrucciones en pantalla.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error al instalar APK: $e');
+      rethrow;
+    }
+  }
+
+  // Verificar si se necesita permiso de instalación (Android 8.0+)
+  Future<bool> _needsInstallPermission() async {
+    if (!Platform.isAndroid) return false;
+
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      // Android 8.0 (API 26) o superior requiere permiso
+      return sdkInt >= 26;
+    } catch (e) {
+      debugPrint('⚠️ Error al verificar versión de Android: $e');
+      return true; // Por seguridad, asumir que sí se necesita
+    }
+  }
+
+  // Solicitar permiso de instalación
+  Future<bool> _requestInstallPermission() async {
+    try {
+      // Verificar si ya tiene el permiso
+      final status = await Permission.requestInstallPackages.status;
+
+      if (status.isGranted) {
+        return true;
+      }
+
+      // Solicitar el permiso
+      final result = await Permission.requestInstallPackages.request();
+
+      if (result.isGranted) {
+        return true;
+      } else if (result.isPermanentlyDenied) {
+        // Si está permanentemente denegado, abrir configuración
+        if (mounted) {
+          final shouldOpenSettings = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text('Permiso requerido'),
+              content: Text(
+                'Para instalar actualizaciones, necesitamos tu permiso. '
+                '¿Deseas abrir la configuración para habilitarlo?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text('Abrir configuración'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldOpenSettings == true) {
+            await openAppSettings();
+          }
+        }
+        return false;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error al solicitar permiso de instalación: $e');
+      return false;
     }
   }
 
@@ -652,9 +922,8 @@ class _SettingsPage extends State<SettingsPage> {
               ),
               const SizedBox(height: 10),
 
-              // Sección de actualizaciones - Comentar/descomentar según necesites
-              // NOTA: Habilitar solo cuando la app esté en Google Play/App Store
-              /*
+              // Sección de actualizaciones
+              // Habilitar cuando tengas versiones en la tabla app_version de Supabase
               ListTile(
                 leading: _checkingUpdate
                     ? SizedBox(
@@ -662,16 +931,16 @@ class _SettingsPage extends State<SettingsPage> {
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.blue),
                         ),
                       )
                     : Icon(Icons.system_update, color: Colors.blue, size: 28),
                 title: Text(
                   "Buscar actualizaciones",
                   style: TextStyle(
-                    color: themeProvider.isDarkMode
-                        ? Colors.white
-                        : Colors.blue,
+                    color:
+                        themeProvider.isDarkMode ? Colors.white : Colors.blue,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -689,9 +958,12 @@ class _SettingsPage extends State<SettingsPage> {
                 ),
                 trailing: Icon(
                   Icons.chevron_right,
-                  color: themeProvider.isDarkMode ? Colors.white70 : Colors.grey,
+                  color:
+                      themeProvider.isDarkMode ? Colors.white70 : Colors.grey,
                 ),
-                onTap: _checkingUpdate ? null : _checkForUpdates,
+                onTap: _checkingUpdate
+                    ? null
+                    : () => _checkForUpdates(showNoUpdateDialog: true),
               ),
               const SizedBox(height: 10),
               Divider(
@@ -701,7 +973,6 @@ class _SettingsPage extends State<SettingsPage> {
                     ? const Color.fromARGB(255, 34, 34, 34)
                     : const Color.fromARGB(255, 236, 234, 234),
               ),
-              */
               const SizedBox(height: 10),
               ListTile(
                 leading: const Icon(Icons.exit_to_app, color: Colors.red),
