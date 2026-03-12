@@ -14,6 +14,7 @@ import 'dart:io' show Platform, File;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:open_file/open_file.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.title});
@@ -266,8 +267,8 @@ class _SettingsPage extends State<SettingsPage> {
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  // Detectar si es un APK directo o enlace a tienda
-                  if (Platform.isAndroid && storeUrl.endsWith('.apk')) {
+                  // En Android siempre intentar descargar e instalar el APK
+                  if (Platform.isAndroid && storeUrl.isNotEmpty) {
                     _downloadAndInstallApk(storeUrl, version);
                   } else {
                     _openStore(storeUrl);
@@ -353,6 +354,23 @@ class _SettingsPage extends State<SettingsPage> {
     }
 
     try {
+      // 🔒 Solicitar permisos de almacenamiento primero
+      final storageStatus = await Permission.storage.status;
+      if (!storageStatus.isGranted) {
+        final storageResult = await Permission.storage.request();
+        if (!storageResult.isGranted) {
+          throw 'Se requiere permiso de almacenamiento para descargar la actualización';
+        }
+      }
+
+      // 🔒 Verificar y solicitar permisos de instalación
+      if (await _needsInstallPermission()) {
+        final hasPermission = await _requestInstallPermission();
+        if (!hasPermission) {
+          throw 'Se requiere permiso para instalar aplicaciones. Por favor, activa "Fuentes desconocidas" en la configuración';
+        }
+      }
+
       setState(() {
         _isDownloading = true;
         _downloadProgress = 0.0;
@@ -365,14 +383,6 @@ class _SettingsPage extends State<SettingsPage> {
           barrierDismissible: false,
           builder: (context) => _buildDownloadDialog(version),
         );
-      }
-
-      // Verificar permisos de instalación (Android 8.0+)
-      if (await _needsInstallPermission()) {
-        final hasPermission = await _requestInstallPermission();
-        if (!hasPermission) {
-          throw 'Se requiere permiso para instalar aplicaciones';
-        }
       }
 
       // Obtener directorio de descargas
@@ -512,18 +522,16 @@ class _SettingsPage extends State<SettingsPage> {
         throw 'El archivo APK no existe';
       }
 
-      // Abrir el APK con url_launcher usando el esquema file://
-      final Uri apkUri = Uri.parse('file://$filePath');
-
-      final bool launched = await launchUrl(
-        apkUri,
-        mode: LaunchMode.externalApplication,
+      // Usar open_file que maneja automáticamente FileProvider
+      final result = await OpenFile.open(
+        filePath,
+        type: 'application/vnd.android.package-archive',
       );
 
-      debugPrint('✅ APK abierto: $launched');
+      debugPrint('📦 Resultado de instalación: ${result.type} - ${result.message}');
 
       if (mounted) {
-        if (launched) {
+        if (result.type == ResultType.done) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -532,11 +540,26 @@ class _SettingsPage extends State<SettingsPage> {
               duration: Duration(seconds: 3),
             ),
           );
-        } else {
+        } else if (result.type == ResultType.noAppToOpen) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'No se pudo abrir el instalador. Instala manualmente desde Descargas.'),
+              content: Text('No se encontró una aplicación para instalar el APK'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else if (result.type == ResultType.permissionDenied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Permiso denegado para instalar'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al abrir el instalador: ${result.message}'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
             ),
@@ -573,41 +596,66 @@ class _SettingsPage extends State<SettingsPage> {
       final status = await Permission.requestInstallPackages.status;
 
       if (status.isGranted) {
+        debugPrint('✅ Permiso de instalación ya otorgado');
         return true;
       }
 
+      // Mostrar diálogo explicativo antes de solicitar
+      if (mounted) {
+        final shouldRequest = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.security, color: Colors.blue),
+                SizedBox(width: 10),
+                Expanded(child: Text('Permiso necesario')),
+              ],
+            ),
+            content: Text(
+              'Para instalar actualizaciones, la aplicación necesita permiso para '
+              'instalar aplicaciones de fuentes desconocidas.\n\n'
+              '¿Deseas otorgar este permiso?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('Cancelar'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text('Permitir'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldRequest != true) {
+          return false;
+        }
+      }
+
       // Solicitar el permiso
+      debugPrint('🔒 Solicitando permiso de instalación...');
       final result = await Permission.requestInstallPackages.request();
 
       if (result.isGranted) {
+        debugPrint('✅ Permiso de instalación otorgado');
         return true;
-      } else if (result.isPermanentlyDenied) {
-        // Si está permanentemente denegado, abrir configuración
+      } else if (result.isDenied) {
+        debugPrint('❌ Permiso de instalación denegado');
         if (mounted) {
-          final shouldOpenSettings = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text('Permiso requerido'),
-              content: Text(
-                'Para instalar actualizaciones, necesitamos tu permiso. '
-                '¿Deseas abrir la configuración para habilitarlo?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text('Abrir configuración'),
-                ),
-              ],
-            ),
-          );
-
-          if (shouldOpenSettings == true) {
-            await openAppSettings();
-          }
+          _showPermissionDeniedDialog();
+        }
+        return false;
+      } else if (result.isPermanentlyDenied) {
+        debugPrint('🚫 Permiso de instalación permanentemente denegado');
+        if (mounted) {
+          _showOpenSettingsDialog();
         }
         return false;
       } else {
@@ -615,8 +663,85 @@ class _SettingsPage extends State<SettingsPage> {
       }
     } catch (e) {
       debugPrint('❌ Error al solicitar permiso de instalación: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error al solicitar permisos. Activa manualmente "Fuentes desconocidas" '
+              'en Configuración > Seguridad',
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
       return false;
     }
+  }
+
+  // Diálogo cuando el permiso es denegado
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 10),
+            Expanded(child: Text('Permiso denegado')),
+          ],
+        ),
+        content: Text(
+          'Sin este permiso no podemos instalar actualizaciones automáticamente.\n\n'
+          'Puedes activarlo manualmente en:\n'
+          'Configuración > Seguridad > Fuentes desconocidas',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Diálogo para abrir configuración
+  void _showOpenSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.settings, color: Colors.blue),
+            SizedBox(width: 10),
+            Expanded(child: Text('Abrir configuración')),
+          ],
+        ),
+        content: Text(
+          'Para instalar actualizaciones, debes activar "Fuentes desconocidas" '
+          'en la configuración del sistema.\n\n'
+          '¿Deseas abrir la configuración ahora?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await openAppSettings();
+            },
+            child: Text('Abrir'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> checkPermissionStatus() async {

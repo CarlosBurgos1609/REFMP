@@ -16,6 +16,11 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import 'dart:io';
 
 // Custom Cache Manager for CachedNetworkImage
@@ -56,6 +61,10 @@ class _HomePageState extends State<HomePage>
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
+  bool _hasCheckedForUpdates = false;
+  bool _checkingUpdate = false;
+  String _currentVersion = '';
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +72,7 @@ class _HomePageState extends State<HomePage>
     fetchSedes();
     fetchGamesData();
     _checkNotificationPermission();
+    _checkForUpdatesOnce(); // Verificar actualizaciones al iniciar
 
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen((result) async {
@@ -282,6 +292,892 @@ class _HomePageState extends State<HomePage>
           ],
         );
       },
+    );
+  }
+
+  // 🆕 Verificar actualizaciones solo una vez al iniciar
+  Future<void> _checkForUpdatesOnce() async {
+    if (_hasCheckedForUpdates) return;
+    
+    // Esperar un poco para que la UI esté lista
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (!mounted) return;
+    
+    _hasCheckedForUpdates = true;
+    await _checkForUpdates(showNoUpdateDialog: false);
+  }
+
+  // Verificar si hay actualizaciones disponibles
+  Future<void> _checkForUpdates({bool showNoUpdateDialog = false}) async {
+    if (_checkingUpdate) return;
+
+    setState(() {
+      _checkingUpdate = true;
+    });
+
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final currentBuildNumber = int.parse(packageInfo.buildNumber);
+
+      setState(() {
+        _currentVersion = '$currentVersion+$currentBuildNumber';
+      });
+
+      debugPrint('📱 Versión actual: $_currentVersion');
+
+      // Consultar versión disponible en Supabase
+      final response = await supabase
+          .from('app_version')
+          .select()
+          .order('build_number', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('⚠️ No se encontraron versiones en la tabla app_version');
+        return;
+      }
+
+      final latestVersion = response['version'] as String;
+      final latestBuildNumber = response['build_number'] as int;
+      final isRequired = response['required'] as bool? ?? false;
+      final releaseNotes = response['release_notes'] as String? ?? '';
+      final androidUrl = response['android_url'] as String? ?? '';
+
+      debugPrint('☁️ Versión disponible: $latestVersion+$latestBuildNumber');
+
+      // Comparar build numbers
+      if (latestBuildNumber > currentBuildNumber) {
+        if (mounted) {
+          _showUpdateDialog(
+            latestVersion,
+            releaseNotes,
+            isRequired,
+            androidUrl,
+          );
+        }
+      } else if (showNoUpdateDialog && mounted) {
+        // Mostrar que está al día
+        _showUpToDateDialog();
+      }
+    } catch (e) {
+      debugPrint('❌ Error al verificar actualizaciones: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingUpdate = false;
+        });
+      }
+    }
+  }
+
+  // Mostrar diálogo cuando hay actualización disponible
+  void _showUpdateDialog(
+    String version,
+    String releaseNotes,
+    bool isRequired,
+    String downloadUrl,
+  ) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: !isRequired,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => !isRequired,
+          child: AlertDialog(
+            backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            contentPadding: EdgeInsets.all(20),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isRequired ? Icons.warning_rounded : Icons.system_update_rounded,
+                    color: isRequired ? Colors.orange : Colors.blue,
+                    size: MediaQuery.of(context).size.width * 0.25,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    isRequired
+                        ? '¡Actualización Requerida!'
+                        : 'Nueva Actualización',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: isRequired ? Colors.orange : Colors.blue,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.new_releases, color: Colors.blue, size: 18),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Versión $version',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Tu versión: $_currentVersion',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (releaseNotes.isNotEmpty) ...[
+                    SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '🎉 Novedades:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        releaseNotes,
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (isRequired) ...[
+                    SizedBox(height: 16),
+                    Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.red.shade900.withOpacity(0.3) : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark ? Colors.red.shade700 : Colors.red.shade200,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red, size: 22),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Esta actualización es obligatoria para continuar.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: isDark ? Colors.red.shade300 : Colors.red.shade900,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (!isRequired)
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Más tarde',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isRequired ? Colors.red : Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: Size(isRequired ? double.infinity : 120, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  if (Platform.isAndroid && downloadUrl.isNotEmpty) {
+                    _downloadAndInstallApk(downloadUrl, version);
+                  }
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.download_rounded, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Actualizar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Mostrar diálogo cuando la app está actualizada
+  void _showUpToDateDialog() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          contentPadding: EdgeInsets.all(20),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                color: Colors.green,
+                size: MediaQuery.of(context).size.width * 0.3,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '¡Todo al día!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Ya tienes la versión más reciente instalada.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Versión $_currentVersion',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'OK',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Descargar e instalar APK
+  final Dio _dio = Dio();
+  double _downloadProgress = 0.0;
+
+  Future<void> _downloadAndInstallApk(String apkUrl, String version) async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      // 🔒 Verificar/Solicitar permiso de instalación (REQUEST_INSTALL_PACKAGES)
+      // Este es el único permiso realmente necesario para instalar APKs
+      final installStatus = await Permission.requestInstallPackages.status;
+      debugPrint('📋 Estado permiso instalación: $installStatus');
+      
+      if (!installStatus.isGranted) {
+        // Mostrar diálogo explicativo
+        final shouldRequest = await _showInstallPermissionDialog();
+        if (!shouldRequest) {
+          debugPrint('❌ Usuario canceló solicitud de permiso');
+          return;
+        }
+
+        // Solicitar el permiso
+        final installResult = await Permission.requestInstallPackages.request();
+        debugPrint('📋 Resultado solicitud permiso: $installResult');
+        
+        if (!installResult.isGranted) {
+          if (installResult.isPermanentlyDenied) {
+            debugPrint('🚫 Permiso denegado permanentemente');
+            _showOpenSettingsDialog();
+          } else {
+            debugPrint('❌ Permiso denegado');
+            _showPermissionError(
+              'Para instalar actualizaciones necesitas activar "Instalar apps desconocidas"'
+            );
+          }
+          return;
+        }
+      }
+      
+      debugPrint('✅ Permisos verificados, iniciando descarga...');
+
+      setState(() {
+        _downloadProgress = 0.0;
+      });
+
+      // Mostrar diálogo de progreso
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _buildDownloadDialog(version),
+      );
+
+      // Obtener directorio de descargas
+      final directory = await getExternalStorageDirectory();
+      if (directory == null) {
+        throw 'No se pudo acceder al almacenamiento';
+      }
+
+      final filePath = '${directory.path}/refmp_v$version.apk';
+      debugPrint('📥 Descargando APK desde: $apkUrl');
+      debugPrint('💾 Guardando en: $filePath');
+
+      // Eliminar archivo anterior si existe
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+
+      // Descargar el APK
+      await _dio.download(
+        apkUrl,
+        filePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            setState(() {
+              _downloadProgress = received / total;
+            });
+          }
+        },
+        options: Options(
+          followRedirects: true,
+          receiveTimeout: Duration(minutes: 5),
+        ),
+      );
+
+      debugPrint('✅ Descarga completada: $filePath');
+
+      // Cerrar diálogo de progreso
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Instalar el APK
+      await _installApk(filePath);
+    } catch (e) {
+      debugPrint('❌ Error al descargar/instalar: $e');
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadProgress = 0.0;
+        });
+      }
+    }
+  }
+
+  // Construir diálogo de descarga con progreso
+  Widget _buildDownloadDialog(String version) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          contentPadding: EdgeInsets.all(20),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_download_rounded,
+                color: Colors.blue,
+                size: MediaQuery.of(context).size.width * 0.25,
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Descargando',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Versión $version',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                ),
+              ),
+              SizedBox(height: 20),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: _downloadProgress,
+                  minHeight: 12,
+                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 24,
+                  color: Colors.blue,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Por favor espera...',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Instalar el APK descargado
+  Future<void> _installApk(String filePath) async {
+    try {
+      debugPrint('📲 Instalando APK: $filePath');
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw 'El archivo APK no existe';
+      }
+
+      // Usar open_file que maneja automáticamente FileProvider
+      final result = await OpenFile.open(
+        filePath,
+        type: 'application/vnd.android.package-archive',
+      );
+
+      debugPrint('📦 Resultado de instalación: ${result.type} - ${result.message}');
+
+      if (mounted) {
+        if (result.type == ResultType.done) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Instalación iniciada. Sigue las instrucciones.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else if (result.type == ResultType.noAppToOpen) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se encontró una aplicación para instalar el APK'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else if (result.type == ResultType.permissionDenied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Permiso denegado para instalar'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al abrir el instalador: ${result.message}'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error al instalar APK: $e');
+      rethrow;
+    }
+  }
+
+  // Mostrar diálogo para solicitar permiso de instalación
+  Future<bool> _showInstallPermissionDialog() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+        contentPadding: EdgeInsets.all(20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.install_mobile_rounded,
+              color: Colors.blue,
+              size: MediaQuery.of(context).size.width * 0.25,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Permiso Necesario',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Para instalar actualizaciones automáticamente, necesitas activar:',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.verified_user, color: Colors.blue, size: 20),
+                  SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      '"Instalar apps desconocidas"',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Es seguro, solo se usará para actualizar esta aplicación.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancelar', style: TextStyle(fontSize: 15)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              minimumSize: Size(120, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Activar',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  // Mostrar diálogo para abrir configuración
+  void _showOpenSettingsDialog() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+        contentPadding: EdgeInsets.all(20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.settings_rounded,
+              color: Colors.orange,
+              size: MediaQuery.of(context).size.width * 0.25,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Configuración Necesaria',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Para instalar actualizaciones, sigue estos pasos:',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            SizedBox(height: 16),
+            _buildStep('1', 'Abre la Configuración de REFMP', isDark),
+            _buildStep('2', 'Busca "Instalar apps desconocidas"', isDark),
+            _buildStep('3', 'Activa el interruptor', isDark),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Te llevaremos directamente a la configuración',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancelar', style: TextStyle(fontSize: 15)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              minimumSize: Size(120, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await openAppSettings();
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.open_in_new, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  'Ir a Ajustes',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper para los pasos del diálogo
+  Widget _buildStep(String number, String text, bool isDark) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Mostrar error de permisos
+  void _showPermissionError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Configuración',
+          textColor: Colors.white,
+          onPressed: () => openAppSettings(),
+        ),
+      ),
     );
   }
 
