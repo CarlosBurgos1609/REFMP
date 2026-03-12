@@ -528,7 +528,8 @@ class _SettingsPage extends State<SettingsPage> {
         type: 'application/vnd.android.package-archive',
       );
 
-      debugPrint('📦 Resultado de instalación: ${result.type} - ${result.message}');
+      debugPrint(
+          '📦 Resultado de instalación: ${result.type} - ${result.message}');
 
       if (mounted) {
         if (result.type == ResultType.done) {
@@ -543,7 +544,8 @@ class _SettingsPage extends State<SettingsPage> {
         } else if (result.type == ResultType.noAppToOpen) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No se encontró una aplicación para instalar el APK'),
+              content:
+                  Text('No se encontró una aplicación para instalar el APK'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
             ),

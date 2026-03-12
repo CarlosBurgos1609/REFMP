@@ -17,7 +17,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+// import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
@@ -298,12 +298,12 @@ class _HomePageState extends State<HomePage>
   // 🆕 Verificar actualizaciones solo una vez al iniciar
   Future<void> _checkForUpdatesOnce() async {
     if (_hasCheckedForUpdates) return;
-    
+
     // Esperar un poco para que la UI esté lista
     await Future.delayed(const Duration(seconds: 2));
-    
+
     if (!mounted) return;
-    
+
     _hasCheckedForUpdates = true;
     await _checkForUpdates(showNoUpdateDialog: false);
   }
@@ -382,7 +382,7 @@ class _HomePageState extends State<HomePage>
   ) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
-    
+
     showDialog(
       context: context,
       barrierDismissible: !isRequired,
@@ -400,7 +400,9 @@ class _HomePageState extends State<HomePage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    isRequired ? Icons.warning_rounded : Icons.system_update_rounded,
+                    isRequired
+                        ? Icons.warning_rounded
+                        : Icons.system_update_rounded,
                     color: isRequired ? Colors.orange : Colors.blue,
                     size: MediaQuery.of(context).size.width * 0.25,
                   ),
@@ -420,7 +422,9 @@ class _HomePageState extends State<HomePage>
                   Container(
                     padding: EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                      color: isDark
+                          ? Colors.blue.shade900.withOpacity(0.3)
+                          : Colors.blue.shade50,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Column(
@@ -428,7 +432,8 @@ class _HomePageState extends State<HomePage>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.new_releases, color: Colors.blue, size: 18),
+                            Icon(Icons.new_releases,
+                                color: Colors.blue, size: 18),
                             SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -437,7 +442,9 @@ class _HomePageState extends State<HomePage>
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
-                                  color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                                  color: isDark
+                                      ? Colors.blue.shade200
+                                      : Colors.blue.shade900,
                                 ),
                               ),
                             ),
@@ -448,7 +455,9 @@ class _HomePageState extends State<HomePage>
                           'Tu versión: $_currentVersion',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                            color: isDark
+                                ? Colors.grey.shade400
+                                : Colors.grey.shade700,
                             fontSize: 13,
                           ),
                         ),
@@ -473,7 +482,9 @@ class _HomePageState extends State<HomePage>
                       width: double.infinity,
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -492,22 +503,29 @@ class _HomePageState extends State<HomePage>
                     Container(
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.red.shade900.withOpacity(0.3) : Colors.red.shade50,
+                        color: isDark
+                            ? Colors.red.shade900.withOpacity(0.3)
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isDark ? Colors.red.shade700 : Colors.red.shade200,
+                          color: isDark
+                              ? Colors.red.shade700
+                              : Colors.red.shade200,
                         ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red, size: 22),
+                          Icon(Icons.error_outline,
+                              color: Colors.red, size: 22),
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Esta actualización es obligatoria para continuar.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: isDark ? Colors.red.shade300 : Colors.red.shade900,
+                                color: isDark
+                                    ? Colors.red.shade300
+                                    : Colors.red.shade900,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -574,16 +592,16 @@ class _HomePageState extends State<HomePage>
   void _showUpToDateDialog() {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(12),
           ),
-          contentPadding: EdgeInsets.all(20),
+          contentPadding: EdgeInsets.all(16),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -592,50 +610,34 @@ class _HomePageState extends State<HomePage>
                 color: Colors.green,
                 size: MediaQuery.of(context).size.width * 0.3,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 '¡Todo al día!',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.blue,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  fontSize: 22,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 'Ya tienes la versión más reciente instalada.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-              const SizedBox(height: 16),
-              Container(
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Versión $_currentVersion',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 8),
+              Text(
+                'Versión $_currentVersion',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.blue.shade200 : Colors.blue,
                 ),
               ),
             ],
@@ -644,7 +646,6 @@ class _HomePageState extends State<HomePage>
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
                 minimumSize: Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -652,10 +653,11 @@ class _HomePageState extends State<HomePage>
               ),
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'OK',
+                'Aceptar',
                 style: TextStyle(
-                  fontSize: 16,
+                  color: Colors.white,
                   fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
             ),
@@ -677,7 +679,7 @@ class _HomePageState extends State<HomePage>
       // Este es el único permiso realmente necesario para instalar APKs
       final installStatus = await Permission.requestInstallPackages.status;
       debugPrint('📋 Estado permiso instalación: $installStatus');
-      
+
       if (!installStatus.isGranted) {
         // Mostrar diálogo explicativo
         final shouldRequest = await _showInstallPermissionDialog();
@@ -689,7 +691,7 @@ class _HomePageState extends State<HomePage>
         // Solicitar el permiso
         final installResult = await Permission.requestInstallPackages.request();
         debugPrint('📋 Resultado solicitud permiso: $installResult');
-        
+
         if (!installResult.isGranted) {
           if (installResult.isPermanentlyDenied) {
             debugPrint('🚫 Permiso denegado permanentemente');
@@ -697,13 +699,12 @@ class _HomePageState extends State<HomePage>
           } else {
             debugPrint('❌ Permiso denegado');
             _showPermissionError(
-              'Para instalar actualizaciones necesitas activar "Instalar apps desconocidas"'
-            );
+                'Para instalar actualizaciones necesitas activar "Instalar apps desconocidas"');
           }
           return;
         }
       }
-      
+
       debugPrint('✅ Permisos verificados, iniciando descarga...');
 
       setState(() {
@@ -784,7 +785,7 @@ class _HomePageState extends State<HomePage>
   Widget _buildDownloadDialog(String version) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
-    
+
     return StatefulBuilder(
       builder: (context, setState) {
         return AlertDialog(
@@ -826,7 +827,8 @@ class _HomePageState extends State<HomePage>
                 child: LinearProgressIndicator(
                   value: _downloadProgress,
                   minHeight: 12,
-                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  backgroundColor:
+                      isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                 ),
               ),
@@ -871,7 +873,8 @@ class _HomePageState extends State<HomePage>
         type: 'application/vnd.android.package-archive',
       );
 
-      debugPrint('📦 Resultado de instalación: ${result.type} - ${result.message}');
+      debugPrint(
+          '📦 Resultado de instalación: ${result.type} - ${result.message}');
 
       if (mounted) {
         if (result.type == ResultType.done) {
@@ -885,7 +888,8 @@ class _HomePageState extends State<HomePage>
         } else if (result.type == ResultType.noAppToOpen) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No se encontró una aplicación para instalar el APK'),
+              content:
+                  Text('No se encontró una aplicación para instalar el APK'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
             ),
@@ -918,112 +922,117 @@ class _HomePageState extends State<HomePage>
   Future<bool> _showInstallPermissionDialog() async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
-    
+
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
-        contentPadding: EdgeInsets.all(20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.install_mobile_rounded,
-              color: Colors.blue,
-              size: MediaQuery.of(context).size.width * 0.25,
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
             ),
-            SizedBox(height: 12),
-            Text(
-              'Permiso Necesario',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Para instalar actualizaciones automáticamente, necesitas activar:',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            SizedBox(height: 12),
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.verified_user, color: Colors.blue, size: 20),
-                  SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      '"Instalar apps desconocidas"',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
-                      ),
-                    ),
+            contentPadding: EdgeInsets.all(20),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.install_mobile_rounded,
+                  color: Colors.blue,
+                  size: MediaQuery.of(context).size.width * 0.25,
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Permiso Necesario',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
                   ),
-                ],
-              ),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Para instalar actualizaciones automáticamente, necesitas activar:',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                SizedBox(height: 12),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.blue.shade900.withOpacity(0.3)
+                        : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.verified_user, color: Colors.blue, size: 20),
+                      SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          '"Instalar apps desconocidas"',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? Colors.blue.shade200
+                                : Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Es seguro, solo se usará para actualizar esta aplicación.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
-            SizedBox(height: 12),
-            Text(
-              'Es seguro, solo se usará para actualizar esta aplicación.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                fontStyle: FontStyle.italic,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('Cancelar', style: TextStyle(fontSize: 15)),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: TextStyle(fontSize: 15)),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: Size(120, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(
+                  'Activar',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              minimumSize: Size(120, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Activar',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   // Mostrar diálogo para abrir configuración
   void _showOpenSettingsDialog() {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1068,7 +1077,9 @@ class _HomePageState extends State<HomePage>
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? Colors.blue.shade900.withOpacity(0.3) : Colors.blue.shade50,
+                color: isDark
+                    ? Colors.blue.shade900.withOpacity(0.3)
+                    : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1081,7 +1092,9 @@ class _HomePageState extends State<HomePage>
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                        color: isDark
+                            ? Colors.blue.shade200
+                            : Colors.blue.shade900,
                       ),
                     ),
                   ),
