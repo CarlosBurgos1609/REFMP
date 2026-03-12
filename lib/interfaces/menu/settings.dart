@@ -286,30 +286,76 @@ class _SettingsPage extends State<SettingsPage> {
 
   // Mostrar diálogo cuando no hay actualizaciones
   void _showNoUpdateDialog() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Row(
+          backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          contentPadding: EdgeInsets.all(16),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 30),
-              SizedBox(width: 10),
+              Icon(
+                Icons.check_circle_rounded,
+                color: Colors.green,
+                size: MediaQuery.of(context).size.width * 0.3,
+              ),
+              const SizedBox(height: 8),
               Text(
-                'Todo al día',
+                '¡Todo al día!',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.green,
+                  color: Colors.blue,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ya tienes la versión más reciente instalada.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Versión $_currentVersion',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.blue.shade200 : Colors.blue,
                 ),
               ),
             ],
           ),
-          content: Text(
-            'Ya tienes la última versión de la aplicación instalada.\n\nVersión actual: $_currentVersion',
-          ),
           actions: [
-            TextButton(
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                minimumSize: Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('Aceptar'),
+              child: Text(
+                'Aceptar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
             ),
           ],
         );
