@@ -10,11 +10,13 @@
 # Desacargar la ultima versión del software
 
 >[!NOTE]
-> Para descargar la aplicación movile primero otorgue permisos al navegador para su instalación y presione el siguiente botón
+> Para instalar la aplicación es necesario permitir la instalación desde fuentes desconocidas en tu navegador o dispositivo Android. Cuando descargues el archivo APK, activa esta opción si el sistema te lo solicita y luego procede con la instalación de la última versión disponible de la aplicación.
 
 <div align='center'>
   
 [![Descargar la versión v1.0.1](https://img.shields.io/badge/Descargar%20v1.0.1-REFMP-blue?style=for-the-badge&logo=android)](https://github.com/CarlosBurgos1609/REFMP/releases/download/v1.0.1/REFMP.apk)
+
+[![GitHub](https://img.shields.io/badge/GitHub-Repositorio-black?style=for-the-badge&logo=github)](https://github.com/CarlosBurgos1609/REFMP)
 
 </div>
 
