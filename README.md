@@ -7,7 +7,7 @@
 </div>
 
 ---
-# Desacargar la ultima versión del software
+# Desacargar la última versión del software
 
 >[!NOTE]
 > Para instalar la aplicación es necesario permitir la instalación desde fuentes desconocidas en tu navegador o dispositivo Android. Cuando descargues el archivo APK, activa esta opción si el sistema te lo solicita y luego procede con la instalación de la última versión disponible de la aplicación.
