@@ -201,6 +201,7 @@ class _LearningPageState extends State<LearningPage> {
                     maxLength: 14,
                     textCapitalization: TextCapitalization.words,
                     textAlign: TextAlign.center,
+                    cursorColor: Colors.blue,
                     decoration: InputDecoration(
                       hintText: 'Tu nickname (máx. 14 caracteres)',
                       hintStyle: TextStyle(color: Colors.grey[400]),
@@ -225,6 +226,7 @@ class _LearningPageState extends State<LearningPage> {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -324,7 +326,7 @@ class _LearningPageState extends State<LearningPage> {
         'nickname': nickname,
         'points_xp_totally': 0,
         'points_xp_weekend': 0,
-        'coins': 0,
+        'coins': 200,
       });
 
       // Guardar en caché que ya está registrado
@@ -334,7 +336,8 @@ class _LearningPageState extends State<LearningPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Bienvenido $nickname! Tu perfil ha sido creado.'),
+            content: Text(
+                '¡Bienvenido $nickname! Tu perfil ha sido creado con 200 monedas.'),
             backgroundColor: Colors.green,
           ),
         );
