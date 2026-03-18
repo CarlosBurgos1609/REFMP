@@ -88,6 +88,17 @@ class OfflineSyncService {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
 
+      final alreadyQueued = pendingList.any((item) =>
+          item['user_id'] == userId &&
+          item['source'] == source &&
+          item['source_id'] == sourceId);
+
+      if (alreadyQueued) {
+        debugPrint(
+            'ℹ️ XP pendiente ya existe, no se duplica: $source/$sourceId');
+        return;
+      }
+
       pendingList.add({
         'user_id': userId,
         'points': points,
@@ -205,6 +216,21 @@ class OfflineSyncService {
         try {
           final userId = item['user_id'];
           final points = item['points'];
+
+          final existingHistory = await supabase
+              .from('xp_history')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('source', item['source'])
+              .eq('source_id', item['source_id'])
+              .limit(1)
+              .maybeSingle();
+
+          if (existingHistory != null) {
+            debugPrint(
+                'ℹ️ XP ya sincronizado previamente, se omite duplicado: ${item['source']}/${item['source_id']}');
+            continue;
+          }
 
           // Actualizar en perfil de usuario
           bool updated = await _updateUserProfile(userId, points);

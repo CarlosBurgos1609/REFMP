@@ -28,6 +28,7 @@ class _TipsPageState extends State<TipsPage> {
   int totalExperience = 0;
   bool isLoading = true;
   bool showCompletionButton = false;
+  bool _experienceAlreadyProcessed = false;
 
   // NUEVO: Cache y sincronización offline
   final OfflineSyncService _syncService = OfflineSyncService();
@@ -240,6 +241,7 @@ class _TipsPageState extends State<TipsPage> {
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
+      const source = 'tips_completion';
 
       if (user == null) {
         debugPrint('Error: Usuario no autenticado');
@@ -257,6 +259,14 @@ class _TipsPageState extends State<TipsPage> {
 
       // NUEVO: Verificar si estamos online
       final isOnline = await _checkConnectivity();
+
+      final shouldAward =
+          await _shouldAwardExperience(user.id, source, isOnline);
+      if (!shouldAward) {
+        debugPrint(
+            '⏭️ XP omitido en tips: este subnivel ya otorgó experiencia previamente');
+        return true;
+      }
 
       if (isOnline) {
         // Guardar directamente en Supabase
@@ -307,6 +317,8 @@ class _TipsPageState extends State<TipsPage> {
         // 2. Actualizar puntos en users_games (total y semanal)
         await _updateUserGamePoints();
 
+        await _markExperienceAsAwarded(user.id, source);
+
         debugPrint('✅ Guardado de puntos completado exitosamente');
         return true;
       } else {
@@ -316,7 +328,7 @@ class _TipsPageState extends State<TipsPage> {
         await _syncService.savePendingXP(
           userId: user.id,
           points: totalExperience,
-          source: 'tips_completion',
+          source: source,
           sourceId: widget.sublevelId,
           sourceName: widget.sublevelTitle,
           sourceDetails: {
@@ -328,8 +340,10 @@ class _TipsPageState extends State<TipsPage> {
         await _syncService.savePendingCoins(
           userId: user.id,
           coins: totalExperience ~/ 10,
-          source: 'tips_completion',
+          source: source,
         );
+
+        await _markExperienceAsAwarded(user.id, source);
 
         debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
         debugPrint('   ⭐ XP: $totalExperience');
@@ -341,6 +355,64 @@ class _TipsPageState extends State<TipsPage> {
       debugPrint('🔍 Stack trace: $stackTrace');
       return false;
     }
+  }
+
+  String _xpAwardCacheKey(String userId, String source) {
+    return 'xp_awarded_${source}_${widget.sublevelId}_$userId';
+  }
+
+  Future<bool> _shouldAwardExperience(
+      String userId, String source, bool isOnline) async {
+    if (_experienceAlreadyProcessed) return false;
+    final supabase = Supabase.instance.client;
+
+    final box = Hive.box('offline_data');
+    final cacheKey = _xpAwardCacheKey(userId, source);
+    final alreadyAwardedInCache =
+        box.get(cacheKey, defaultValue: false) == true;
+    if (alreadyAwardedInCache) {
+      _experienceAlreadyProcessed = true;
+      return false;
+    }
+
+    if (isOnline) {
+      final completedRecord = await supabase
+          .from('users_sublevels')
+          .select('completed')
+          .eq('user_id', userId)
+          .eq('sublevel_id', widget.sublevelId)
+          .eq('completed', true)
+          .maybeSingle();
+
+      if (completedRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+
+      final historyRecord = await supabase
+          .from('xp_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .eq('source_id', widget.sublevelId)
+          .limit(1)
+          .maybeSingle();
+
+      if (historyRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<void> _markExperienceAsAwarded(String userId, String source) async {
+    final box = Hive.box('offline_data');
+    await box.put(_xpAwardCacheKey(userId, source), true);
+    _experienceAlreadyProcessed = true;
   }
 
   Future<void> _updateUserGamePoints() async {

@@ -78,6 +78,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   int perfectHits = 0;
   int goodHits = 0;
   int regularHits = 0;
+  bool _experienceAlreadyProcessed = false;
 
   // Audio
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -1087,11 +1088,6 @@ class _EducationalGamePageState extends State<EducationalGamePage>
   }
 
   void _showResultsDialog() {
-    // Guardar puntos de experiencia antes de mostrar el diálogo
-    if (experiencePoints > 0) {
-      _saveExperiencePoints();
-    }
-
     // Usar el diálogo centralizado con información del historial
     showCongratulationsDialog(
       context,
@@ -1101,7 +1097,10 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       coins: widget.coins,
       source: 'educational_game',
       sourceName: widget.title,
-      onContinue: () {
+      onContinue: () async {
+        if (experiencePoints > 0 && !_experienceAlreadyProcessed) {
+          await _saveExperiencePoints();
+        }
         if (mounted) {
           Navigator.of(context).pop(correctNotes > 0);
         }
@@ -1114,6 +1113,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
+      const source = 'educational_game';
+      final coinsEarned =
+          widget.coins > 0 ? widget.coins : (experiencePoints ~/ 10);
 
       if (user == null) {
         debugPrint('⚠️ Usuario no autenticado');
@@ -1139,6 +1141,26 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
       // Verificar si estamos online
       final isOnline = await _checkConnectivity();
+
+      final shouldAward =
+          await _shouldAwardExperience(user.id, source, isOnline);
+      if (!shouldAward) {
+        debugPrint(
+            '⏭️ XP omitido en juego educativo: subnivel ya recompensado. Se sumarán solo monedas.');
+
+        if (coinsEarned > 0) {
+          if (isOnline) {
+            await _addCoinsOnlyOnline(user.id, coinsEarned);
+          } else {
+            await _syncService.savePendingCoins(
+              userId: user.id,
+              coins: coinsEarned,
+              source: source,
+            );
+          }
+        }
+        return;
+      }
 
       if (isOnline) {
         // Guardar directamente en Supabase
@@ -1195,7 +1217,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
           final newTotal = currentTotal + experiencePoints;
           final newWeekend = currentWeekend + experiencePoints;
-          final newCoins = currentCoins + (experiencePoints ~/ 10);
+          final newCoins = currentCoins + coinsEarned;
 
           await supabase.from('users_games').update({
             'points_xp_totally': newTotal,
@@ -1204,9 +1226,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           }).eq('user_id', user.id);
 
           debugPrint(
-              '✅ users_games actualizado: +$experiencePoints XP, +${experiencePoints ~/ 10} monedas');
+              '✅ users_games actualizado: +$experiencePoints XP, +$coinsEarned monedas');
         } else {
-          final newCoins = experiencePoints ~/ 10;
+          final newCoins = coinsEarned;
 
           await supabase.from('users_games').insert({
             'user_id': user.id,
@@ -1224,15 +1246,17 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         await _recordXpHistory(
           user.id,
           experiencePoints,
-          'educational_game',
+          source,
           widget.sublevelId,
           widget.title,
           {
-            'coins_earned': experiencePoints ~/ 10,
+            'coins_earned': coinsEarned,
             'accuracy': accuracy,
             'stars': stars,
           },
         );
+
+        await _markExperienceAsAwarded(user.id, source);
 
         debugPrint('✅ Puntos guardados exitosamente ONLINE');
       } else {
@@ -1242,11 +1266,11 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         await _syncService.savePendingXP(
           userId: user.id,
           points: experiencePoints,
-          source: 'educational_game',
+          source: source,
           sourceId: widget.sublevelId,
           sourceName: widget.title,
           sourceDetails: {
-            'coins_earned': experiencePoints ~/ 10,
+            'coins_earned': coinsEarned,
             'accuracy': accuracy,
             'stars': stars,
             'correct_notes': correctNotes,
@@ -1256,9 +1280,11 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
         await _syncService.savePendingCoins(
           userId: user.id,
-          coins: experiencePoints ~/ 10,
-          source: 'educational_game',
+          coins: coinsEarned,
+          source: source,
         );
+
+        await _markExperienceAsAwarded(user.id, source);
 
         debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
       }
@@ -1267,6 +1293,64 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     } catch (e) {
       debugPrint('❌ Error al guardar puntos: $e');
     }
+  }
+
+  String _xpAwardCacheKey(String userId, String source) {
+    return 'xp_awarded_${source}_${widget.sublevelId}_$userId';
+  }
+
+  Future<bool> _shouldAwardExperience(
+      String userId, String source, bool isOnline) async {
+    if (_experienceAlreadyProcessed) return false;
+    final supabase = Supabase.instance.client;
+
+    final box = Hive.box('offline_data');
+    final cacheKey = _xpAwardCacheKey(userId, source);
+    final alreadyAwardedInCache =
+        box.get(cacheKey, defaultValue: false) == true;
+    if (alreadyAwardedInCache) {
+      _experienceAlreadyProcessed = true;
+      return false;
+    }
+
+    if (isOnline) {
+      final completedRecord = await supabase
+          .from('users_sublevels')
+          .select('completed')
+          .eq('user_id', userId)
+          .eq('sublevel_id', widget.sublevelId)
+          .eq('completed', true)
+          .maybeSingle();
+
+      if (completedRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+
+      final historyRecord = await supabase
+          .from('xp_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .eq('source_id', widget.sublevelId)
+          .limit(1)
+          .maybeSingle();
+
+      if (historyRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<void> _markExperienceAsAwarded(String userId, String source) async {
+    final box = Hive.box('offline_data');
+    await box.put(_xpAwardCacheKey(userId, source), true);
+    _experienceAlreadyProcessed = true;
   }
 
   Future<void> _recordXpHistory(
@@ -1295,6 +1379,39 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     } catch (e) {
       debugPrint('❌ Error al registrar historial de XP: $e');
       // No fallar el proceso principal si falla el historial
+    }
+  }
+
+  Future<void> _addCoinsOnlyOnline(String userId, int coinsEarned) async {
+    if (coinsEarned <= 0) return;
+
+    final supabase = Supabase.instance.client;
+    final existingRecord = await supabase
+        .from('users_games')
+        .select('coins')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (existingRecord != null) {
+      final currentCoins = existingRecord['coins'] ?? 0;
+      final newCoins = currentCoins + coinsEarned;
+
+      await supabase
+          .from('users_games')
+          .update({'coins': newCoins}).eq('user_id', userId);
+
+      debugPrint('✅ Monedas actualizadas: +$coinsEarned');
+    } else {
+      await supabase.from('users_games').insert({
+        'user_id': userId,
+        'nickname': 'Usuario',
+        'points_xp_totally': 0,
+        'points_xp_weekend': 0,
+        'coins': coinsEarned,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('✅ Nuevo registro en users_games creado con monedas');
     }
   }
 

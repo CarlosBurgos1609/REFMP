@@ -53,6 +53,7 @@ class _QuestionPageState extends State<QuestionPage> {
   YoutubePlayerController? _youtubeController;
   String? videoUrl;
   bool hasVideoError = false;
+  bool _experienceAlreadyProcessed = false;
 
   // NUEVO: Cache y sincronización offline
   final OfflineSyncService _syncService = OfflineSyncService();
@@ -697,6 +698,15 @@ class _QuestionPageState extends State<QuestionPage> {
 
       // Verificar si hay conexión a internet
       final isOnline = await _checkConnectivity();
+      final source = 'questions_${widget.sublevelType.toLowerCase()}';
+
+      final shouldAward =
+          await _shouldAwardExperience(user.id, source, isOnline);
+      if (!shouldAward) {
+        debugPrint(
+            '⏭️ XP omitido: este subnivel ya otorgó experiencia previamente');
+        return;
+      }
 
       if (!isOnline) {
         // Modo OFFLINE: Guardar en cola de pendientes
@@ -709,10 +719,9 @@ class _QuestionPageState extends State<QuestionPage> {
         await _syncService.savePendingXP(
           userId: user.id,
           points: totalExperience,
-          source: 'questions_${widget.sublevelType}',
+          source: source,
           sourceId: widget.sublevelId,
-          sourceName:
-              'Preguntas ${widget.sublevelType == 'quiz' ? 'Quiz' : 'Evaluación'}',
+          sourceName: 'Preguntas ${widget.sublevelType}',
           sourceDetails: {
             'total_questions': questions.length,
             'correct_answers': correctAnswers,
@@ -725,8 +734,10 @@ class _QuestionPageState extends State<QuestionPage> {
         await _syncService.savePendingCoins(
           userId: user.id,
           coins: coinsEarned,
-          source: 'questions_${widget.sublevelType}',
+          source: source,
         );
+
+        await _markExperienceAsAwarded(user.id, source);
 
         debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
         debugPrint('   XP pendientes: +$totalExperience');
@@ -793,10 +804,111 @@ class _QuestionPageState extends State<QuestionPage> {
       // 2. Actualizar puntos en users_games (total y semanal)
       await _updateUserGamePoints();
 
+      // 3. Registrar en historial para que la gráfica semanal sea exacta
+      await _recordXpHistory(
+        user.id,
+        totalExperience,
+        source,
+        widget.sublevelId,
+        widget.sublevelTitle,
+        {
+          'total_questions': questions.length,
+          'correct_answers': correctAnswers,
+          'incorrect_answers': incorrectAnswers,
+          'total_experience': totalExperience,
+          'coins_earned': totalExperience ~/ 10,
+          'sublevel_type': widget.sublevelType,
+        },
+      );
+
+      await _markExperienceAsAwarded(user.id, source);
+
       debugPrint('✅ Guardado de puntos completado exitosamente');
     } catch (e) {
       debugPrint('❌ Error crítico al guardar puntos de experiencia: $e');
       debugPrint('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  String _xpAwardCacheKey(String userId, String source) {
+    return 'xp_awarded_${source}_${widget.sublevelId}_$userId';
+  }
+
+  Future<bool> _shouldAwardExperience(
+      String userId, String source, bool isOnline) async {
+    if (_experienceAlreadyProcessed) return false;
+    final supabase = Supabase.instance.client;
+
+    final box = Hive.box('offline_data');
+    final cacheKey = _xpAwardCacheKey(userId, source);
+    final alreadyAwardedInCache =
+        box.get(cacheKey, defaultValue: false) == true;
+    if (alreadyAwardedInCache) {
+      _experienceAlreadyProcessed = true;
+      return false;
+    }
+
+    if (isOnline) {
+      final completedRecord = await supabase
+          .from('users_sublevels')
+          .select('completed')
+          .eq('user_id', userId)
+          .eq('sublevel_id', widget.sublevelId)
+          .eq('completed', true)
+          .maybeSingle();
+
+      if (completedRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+
+      final historyRecord = await supabase
+          .from('xp_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .eq('source_id', widget.sublevelId)
+          .limit(1)
+          .maybeSingle();
+
+      if (historyRecord != null) {
+        await box.put(cacheKey, true);
+        _experienceAlreadyProcessed = true;
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  Future<void> _markExperienceAsAwarded(String userId, String source) async {
+    final box = Hive.box('offline_data');
+    await box.put(_xpAwardCacheKey(userId, source), true);
+    _experienceAlreadyProcessed = true;
+  }
+
+  Future<void> _recordXpHistory(
+    String userId,
+    int pointsEarned,
+    String source,
+    String sourceId,
+    String sourceName,
+    Map<String, dynamic> sourceDetails,
+  ) async {
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.from('xp_history').insert({
+        'user_id': userId,
+        'points_earned': pointsEarned,
+        'source': source,
+        'source_id': sourceId,
+        'source_name': sourceName,
+        'source_details': sourceDetails,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('❌ Error al registrar historial de XP (questions): $e');
     }
   }
 

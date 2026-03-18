@@ -196,6 +196,7 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
 
   Future<void> ensureUserInUsersGames(String userId, String nickname) async {
     final box = Hive.box('offline_data');
+    const initialRegistrationCoins = 200;
     try {
       if (_isOnline) {
         final response = await supabase
@@ -209,9 +210,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
             'nickname': nickname,
             'points_xp_totally': 0,
             'points_xp_weekend': 0,
-            'coins': 0,
+            'coins': initialRegistrationCoins,
           });
-          await box.put('user_coins_$userId', 0);
+          await box.put('user_coins_$userId', initialRegistrationCoins);
         }
       }
     } catch (e) {
@@ -1462,6 +1463,8 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                           final userId = supabase.auth.currentUser?.id;
                           if (userId != null) {
                             try {
+                              const initialRegistrationCoins = 200;
+                              bool createdNewUserGames = false;
                               final response = await supabase
                                   .from('users_games')
                                   .select()
@@ -1475,8 +1478,9 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                                     'nickname': newNickname,
                                     'points_xp_totally': 0,
                                     'points_xp_weekend': 0,
-                                    'coins': 0,
+                                    'coins': initialRegistrationCoins,
                                   });
+                                  createdNewUserGames = true;
                                 } catch (e) {
                                   if (e.toString().contains('23505')) {
                                     showDialog(
@@ -1624,9 +1628,16 @@ class _ProfilePageGameState extends State<ProfilePageGame> {
                               final box = Hive.box('offline_data');
                               await box.put(
                                   'user_nickname_$userId', newNickname);
+                              if (createdNewUserGames) {
+                                await box.put('user_coins_$userId',
+                                    initialRegistrationCoins);
+                              }
                               if (_canUpdateState()) {
                                 setState(() {
                                   nickname = newNickname;
+                                  if (createdNewUserGames) {
+                                    totalCoins = initialRegistrationCoins;
+                                  }
                                 });
                               }
 
