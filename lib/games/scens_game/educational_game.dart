@@ -128,6 +128,9 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       // Inicializar servicio de sincronización
       await _syncService.initialize();
 
+      // Limpiar cache stale de XP antes de continuar
+      await _cleanStaleXpCache();
+
       // Verificar conectividad y sincronizar en segundo plano
       final isOnline = await _checkConnectivity();
       if (isOnline) {
@@ -135,6 +138,47 @@ class _EducationalGamePageState extends State<EducationalGamePage>
       }
     } catch (e) {
       debugPrint('❌ Error inicializando servicios: $e');
+    }
+  }
+
+  /// Limpiar el cache de XP si no existe en BD (evita bloqueos falsos)
+  Future<void> _cleanStaleXpCache() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final box = Hive.box('offline_data');
+      final userId = user.id;
+      const source = 'educational_game';
+      final cacheKey = _xpAwardCacheKey(userId, source);
+
+      // Verificar si el cache está marcado
+      final isMarkedInCache = box.get(cacheKey, defaultValue: false) == true;
+      if (!isMarkedInCache) return;
+
+      // Verificar si realmente existe en BD
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) return; // Si está offline, no limpiar
+
+      final existsInHistory = await supabase
+          .from('xp_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .eq('source_id', widget.sublevelId)
+          .limit(1)
+          .maybeSingle();
+
+      // Si NO existe en BD pero está en cache, limpiar el cache
+      if (existsInHistory == null) {
+        await box.delete(cacheKey);
+        debugPrint(
+            '🧹 Cache stale de XP eliminado en educational_game: $cacheKey');
+      }
+    } catch (e) {
+      debugPrint('Error limpiando cache stale en educational_game: $e');
+      // No fallar el proceso principal
     }
   }
 
@@ -1162,6 +1206,10 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         return;
       }
 
+      final xpToAward =
+          await _calculateXpWithBonus(user.id, source, experiencePoints);
+      debugPrint('📊 XP a otorgar (con bonus si aplica): $xpToAward');
+
       if (isOnline) {
         // Guardar directamente en Supabase
         debugPrint('🌐 Guardando puntos ONLINE');
@@ -1187,7 +1235,7 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
             if (userRecord != null) {
               final currentXP = userRecord['points_xp'] ?? 0;
-              final newXP = currentXP + experiencePoints;
+              final newXP = currentXP + xpToAward;
 
               await supabase
                   .from(table)
@@ -1215,8 +1263,8 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
           final currentCoins = existingRecord['coins'] ?? 0;
 
-          final newTotal = currentTotal + experiencePoints;
-          final newWeekend = currentWeekend + experiencePoints;
+          final newTotal = currentTotal + xpToAward;
+          final newWeekend = currentWeekend + xpToAward;
           final newCoins = currentCoins + coinsEarned;
 
           await supabase.from('users_games').update({
@@ -1226,15 +1274,15 @@ class _EducationalGamePageState extends State<EducationalGamePage>
           }).eq('user_id', user.id);
 
           debugPrint(
-              '✅ users_games actualizado: +$experiencePoints XP, +$coinsEarned monedas');
+              '✅ users_games actualizado: +$xpToAward XP, +$coinsEarned monedas');
         } else {
           final newCoins = coinsEarned;
 
           await supabase.from('users_games').insert({
             'user_id': user.id,
             'nickname': 'Usuario',
-            'points_xp_totally': experiencePoints,
-            'points_xp_weekend': experiencePoints,
+            'points_xp_totally': xpToAward,
+            'points_xp_weekend': xpToAward,
             'coins': newCoins,
             'created_at': DateTime.now().toIso8601String(),
           });
@@ -1245,11 +1293,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
         // Registrar en historial de XP
         await _recordXpHistory(
           user.id,
-          experiencePoints,
+          xpToAward,
           source,
           widget.sublevelId,
           widget.title,
           {
+            'base_experience': experiencePoints,
             'coins_earned': coinsEarned,
             'accuracy': accuracy,
             'stars': stars,
@@ -1265,11 +1314,12 @@ class _EducationalGamePageState extends State<EducationalGamePage>
 
         await _syncService.savePendingXP(
           userId: user.id,
-          points: experiencePoints,
+          points: xpToAward,
           source: source,
           sourceId: widget.sublevelId,
           sourceName: widget.title,
           sourceDetails: {
+            'base_experience': experiencePoints,
             'coins_earned': coinsEarned,
             'accuracy': accuracy,
             'stars': stars,
@@ -1299,57 +1349,44 @@ class _EducationalGamePageState extends State<EducationalGamePage>
     return 'xp_awarded_${source}_${widget.sublevelId}_$userId';
   }
 
-  Future<bool> _shouldAwardExperience(
-      String userId, String source, bool isOnline) async {
-    if (_experienceAlreadyProcessed) return false;
-    final supabase = Supabase.instance.client;
+  /// Calcular XP con bonus de primera completación (x2)
+  Future<int> _calculateXpWithBonus(
+      String userId, String source, int baseXp) async {
+    try {
+      final supabase = Supabase.instance.client;
 
-    final box = Hive.box('offline_data');
-    final cacheKey = _xpAwardCacheKey(userId, source);
-    final alreadyAwardedInCache =
-        box.get(cacheKey, defaultValue: false) == true;
-    if (alreadyAwardedInCache) {
-      _experienceAlreadyProcessed = true;
-      return false;
-    }
-
-    if (isOnline) {
-      final completedRecord = await supabase
-          .from('users_sublevels')
-          .select('completed')
-          .eq('user_id', userId)
-          .eq('sublevel_id', widget.sublevelId)
-          .eq('completed', true)
-          .maybeSingle();
-
-      if (completedRecord != null) {
-        await box.put(cacheKey, true);
-        _experienceAlreadyProcessed = true;
-        return false;
-      }
-
-      final historyRecord = await supabase
+      // Verificar si existe algún registro anterior en xp_history para este sublevel
+      final existingRecords = await supabase
           .from('xp_history')
           .select('id')
           .eq('user_id', userId)
           .eq('source', source)
           .eq('source_id', widget.sublevelId)
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
-      if (historyRecord != null) {
-        await box.put(cacheKey, true);
-        _experienceAlreadyProcessed = true;
-        return false;
+      // Si NO hay registros anteriores, duplicar XP (primera vez)
+      if (existingRecords.isEmpty) {
+        debugPrint('🎁 BONUS aplicado: Primera completación de este nivel');
+        return baseXp * 2;
       }
-    }
 
-    return true;
+      // Si hay registros anteriores, usar XP normal
+      debugPrint('ℹ️ XP normal: Este nivel ya fue completado anteriormente');
+      return baseXp;
+    } catch (e) {
+      debugPrint('Error calculando XP con bonus: $e');
+      // En caso de error, devolver XP normal por seguridad
+      return baseXp;
+    }
+  }
+
+  Future<bool> _shouldAwardExperience(
+      String userId, String source, bool isOnline) async {
+    // Solo bloquear doble click en la misma ejecución de pantalla.
+    return !_experienceAlreadyProcessed;
   }
 
   Future<void> _markExperienceAsAwarded(String userId, String source) async {
-    final box = Hive.box('offline_data');
-    await box.put(_xpAwardCacheKey(userId, source), true);
     _experienceAlreadyProcessed = true;
   }
 

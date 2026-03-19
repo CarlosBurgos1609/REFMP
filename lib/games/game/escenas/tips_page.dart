@@ -49,7 +49,49 @@ class _TipsPageState extends State<TipsPage> {
   // NUEVO: Inicializar servicio y cargar tips
   Future<void> _initializeAndLoadTips() async {
     await _syncService.initialize();
+    // Limpiar cache stale de XP antes de cargar
+    await _cleanStaleXpCache();
     await loadTips(); // Carga desde caché primero, luego actualiza si hay internet
+  }
+
+  /// Limpiar el cache de XP si no existe en BD (evita bloqueos falsos)
+  Future<void> _cleanStaleXpCache() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final box = Hive.box('offline_data');
+      final userId = user.id;
+      const source = 'tips_completion';
+      final cacheKey = _xpAwardCacheKey(userId, source);
+
+      // Verificar si el cache está marcado
+      final isMarkedInCache = box.get(cacheKey, defaultValue: false) == true;
+      if (!isMarkedInCache) return;
+
+      // Verificar si realmente existe en BD
+      final isOnline = await _checkConnectivity();
+      if (!isOnline) return; // Si está offline, no limpiar
+
+      final existsInHistory = await supabase
+          .from('xp_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('source', source)
+          .eq('source_id', widget.sublevelId)
+          .limit(1)
+          .maybeSingle();
+
+      // Si NO existe en BD pero está en cache, limpiar el cache
+      if (existsInHistory == null) {
+        await box.delete(cacheKey);
+        debugPrint('🧹 Cache stale de XP eliminado: $cacheKey');
+      }
+    } catch (e) {
+      debugPrint('Error limpiando cache stale: $e');
+      // No fallar el proceso principal
+    }
   }
 
   Future<bool> _checkConnectivity() async {
@@ -255,7 +297,7 @@ class _TipsPageState extends State<TipsPage> {
 
       debugPrint('Iniciando guardado de puntos de experiencia...');
       debugPrint('Usuario ID: ${user.id}');
-      debugPrint('Puntos a guardar: $totalExperience');
+      debugPrint('Puntos a guardar (base): $totalExperience');
 
       // NUEVO: Verificar si estamos online
       final isOnline = await _checkConnectivity();
@@ -267,6 +309,11 @@ class _TipsPageState extends State<TipsPage> {
             '⏭️ XP omitido en tips: este subnivel ya otorgó experiencia previamente');
         return true;
       }
+
+      // NUEVO: Calcular XP con bonus si es primera vez
+      final xpToAward =
+          await _calculateXpWithBonus(user.id, source, totalExperience);
+      debugPrint('📊 XP a otorgar (con bonus si aplica): $xpToAward');
 
       if (isOnline) {
         // Guardar directamente en Supabase
@@ -293,7 +340,7 @@ class _TipsPageState extends State<TipsPage> {
 
             if (userRecord != null) {
               final currentXP = userRecord['points_xp'] ?? 0;
-              final newXP = currentXP + totalExperience;
+              final newXP = currentXP + xpToAward;
 
               await supabase
                   .from(table)
@@ -315,7 +362,7 @@ class _TipsPageState extends State<TipsPage> {
         }
 
         // 2. Actualizar puntos en users_games (total y semanal)
-        await _updateUserGamePoints();
+        await _updateUserGamePoints(xpToAward);
 
         await _markExperienceAsAwarded(user.id, source);
 
@@ -327,27 +374,28 @@ class _TipsPageState extends State<TipsPage> {
 
         await _syncService.savePendingXP(
           userId: user.id,
-          points: totalExperience,
+          points: xpToAward,
           source: source,
           sourceId: widget.sublevelId,
           sourceName: widget.sublevelTitle,
           sourceDetails: {
             'total_tips': tips.length,
-            'coins_earned': totalExperience ~/ 10,
+            'coins_earned': xpToAward ~/ 10,
+            'is_first_time_bonus': xpToAward > totalExperience,
           },
         );
 
         await _syncService.savePendingCoins(
           userId: user.id,
-          coins: totalExperience ~/ 10,
+          coins: xpToAward ~/ 10,
           source: source,
         );
 
         await _markExperienceAsAwarded(user.id, source);
 
         debugPrint('💾 Puntos guardados para sincronizar cuando haya conexión');
-        debugPrint('   ⭐ XP: $totalExperience');
-        debugPrint('   💰 Monedas: ${totalExperience ~/ 10}');
+        debugPrint('   ⭐ XP: $xpToAward');
+        debugPrint('   💰 Monedas: ${xpToAward ~/ 10}');
         return true; // Éxito offline
       }
     } catch (e, stackTrace) {
@@ -361,69 +409,56 @@ class _TipsPageState extends State<TipsPage> {
     return 'xp_awarded_${source}_${widget.sublevelId}_$userId';
   }
 
-  Future<bool> _shouldAwardExperience(
-      String userId, String source, bool isOnline) async {
-    if (_experienceAlreadyProcessed) return false;
-    final supabase = Supabase.instance.client;
+  /// Calcular XP con bonus de primera completación (x2)
+  Future<int> _calculateXpWithBonus(
+      String userId, String source, int baseXp) async {
+    try {
+      final supabase = Supabase.instance.client;
 
-    final box = Hive.box('offline_data');
-    final cacheKey = _xpAwardCacheKey(userId, source);
-    final alreadyAwardedInCache =
-        box.get(cacheKey, defaultValue: false) == true;
-    if (alreadyAwardedInCache) {
-      _experienceAlreadyProcessed = true;
-      return false;
-    }
-
-    if (isOnline) {
-      final completedRecord = await supabase
-          .from('users_sublevels')
-          .select('completed')
-          .eq('user_id', userId)
-          .eq('sublevel_id', widget.sublevelId)
-          .eq('completed', true)
-          .maybeSingle();
-
-      if (completedRecord != null) {
-        await box.put(cacheKey, true);
-        _experienceAlreadyProcessed = true;
-        return false;
-      }
-
-      final historyRecord = await supabase
+      // Verificar si existe algún registro anterior en xp_history para este sublevel
+      final existingRecords = await supabase
           .from('xp_history')
           .select('id')
           .eq('user_id', userId)
           .eq('source', source)
           .eq('source_id', widget.sublevelId)
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
-      if (historyRecord != null) {
-        await box.put(cacheKey, true);
-        _experienceAlreadyProcessed = true;
-        return false;
+      // Si NO hay registros anteriores, duplicar XP (primera vez)
+      if (existingRecords.isEmpty) {
+        debugPrint('🎁 BONUS aplicado: Primera completación de este nivel');
+        return baseXp * 2;
       }
-    }
 
-    return true;
+      // Si hay registros anteriores, usar XP normal
+      debugPrint('ℹ️ XP normal: Este nivel ya fue completado anteriormente');
+      return baseXp;
+    } catch (e) {
+      debugPrint('Error calculando XP con bonus: $e');
+      // En caso de error, devolver XP normal por seguridad
+      return baseXp;
+    }
+  }
+
+  Future<bool> _shouldAwardExperience(
+      String userId, String source, bool isOnline) async {
+    // Solo bloquear doble click en la misma ejecución de pantalla.
+    return !_experienceAlreadyProcessed;
   }
 
   Future<void> _markExperienceAsAwarded(String userId, String source) async {
-    final box = Hive.box('offline_data');
-    await box.put(_xpAwardCacheKey(userId, source), true);
     _experienceAlreadyProcessed = true;
   }
 
-  Future<void> _updateUserGamePoints() async {
+  Future<void> _updateUserGamePoints(int xpToAward) async {
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
-      if (user == null || totalExperience <= 0) return;
+      if (user == null || xpToAward <= 0) return;
 
       debugPrint('Actualizando puntos para usuario: ${user.id}');
-      debugPrint('Puntos a agregar: $totalExperience');
+      debugPrint('Puntos a agregar: $xpToAward');
 
       final existingRecord = await supabase
           .from('users_games')
@@ -436,9 +471,9 @@ class _TipsPageState extends State<TipsPage> {
         final currentWeekend = existingRecord['points_xp_weekend'] ?? 0;
         final currentCoins = existingRecord['coins'] ?? 0;
 
-        final newTotal = currentTotal + totalExperience;
-        final newWeekend = currentWeekend + totalExperience;
-        final newCoins = currentCoins + (totalExperience ~/ 10);
+        final newTotal = currentTotal + xpToAward;
+        final newWeekend = currentWeekend + xpToAward;
+        final newCoins = currentCoins + (xpToAward ~/ 10);
 
         await supabase.from('users_games').update({
           'points_xp_totally': newTotal,
@@ -448,13 +483,13 @@ class _TipsPageState extends State<TipsPage> {
 
         debugPrint('✅ Puntos actualizados en users_games');
       } else {
-        final newCoins = totalExperience ~/ 10;
+        final newCoins = xpToAward ~/ 10;
 
         await supabase.from('users_games').insert({
           'user_id': user.id,
           'nickname': 'Usuario',
-          'points_xp_totally': totalExperience,
-          'points_xp_weekend': totalExperience,
+          'points_xp_totally': xpToAward,
+          'points_xp_weekend': xpToAward,
           'coins': newCoins,
           'created_at': DateTime.now().toIso8601String(),
         });
@@ -465,13 +500,13 @@ class _TipsPageState extends State<TipsPage> {
       // Registrar en historial de XP
       await _recordXpHistory(
         user.id,
-        totalExperience,
+        xpToAward,
         'tips_completion',
         widget.sublevelId,
         widget.sublevelTitle,
         {
           'total_tips': tips.length,
-          'coins_earned': totalExperience ~/ 10,
+          'coins_earned': xpToAward ~/ 10,
         },
       );
     } catch (e) {

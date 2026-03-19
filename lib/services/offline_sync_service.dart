@@ -210,25 +210,56 @@ class OfflineSyncService {
       if (pendingList.isEmpty) return true;
 
       final supabase = Supabase.instance.client;
+      final offlineDataBox = Hive.box('offline_data');
       List<Map<String, dynamic>> remaining = [];
 
       for (var item in pendingList) {
         try {
           final userId = item['user_id'];
           final points = item['points'];
+          final source = item['source'];
+          final sourceId = item['source_id'];
+          final cacheKey = 'xp_awarded_${source}_${sourceId}_$userId';
 
+          // Validar contra cache local: si ya fue procesado correctamente, omitir
+          final alreadyInCache =
+              offlineDataBox.get(cacheKey, defaultValue: false) == true;
+          if (alreadyInCache) {
+            // Verificar si realmente está en BD
+            final existingHistory = await supabase
+                .from('xp_history')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('source', source)
+                .eq('source_id', sourceId)
+                .limit(1)
+                .maybeSingle();
+
+            if (existingHistory != null) {
+              debugPrint(
+                  'ℹ️ XP ya sincronizado (en BD), se omite duplicado: $source/$sourceId');
+              continue;
+            }
+            // Cache está stale, limpiar y permitir reintento
+            await offlineDataBox.delete(cacheKey);
+            debugPrint('🧹 Cache stale limpiado para reintento: $cacheKey');
+          }
+
+          // Verificar en BD si ya existe
           final existingHistory = await supabase
               .from('xp_history')
               .select('id')
               .eq('user_id', userId)
-              .eq('source', item['source'])
-              .eq('source_id', item['source_id'])
+              .eq('source', source)
+              .eq('source_id', sourceId)
               .limit(1)
               .maybeSingle();
 
           if (existingHistory != null) {
             debugPrint(
-                'ℹ️ XP ya sincronizado previamente, se omite duplicado: ${item['source']}/${item['source_id']}');
+                'ℹ️ XP ya sincronizado previamente, se omite duplicado: $source/$sourceId');
+            // Actualizar cache local para futuras confirmaciones
+            await offlineDataBox.put(cacheKey, true);
             continue;
           }
 
@@ -244,14 +275,17 @@ class OfflineSyncService {
           await supabase.from('xp_history').insert({
             'user_id': userId,
             'points_earned': points,
-            'source': item['source'],
-            'source_id': item['source_id'],
+            'source': source,
+            'source_id': sourceId,
             'source_name': item['source_name'],
             'source_details': item['source_details'],
             'created_at': item['timestamp'],
           });
 
-          debugPrint('✅ XP sincronizado: $points puntos');
+          // Marcar en cache como procesado correctamente
+          await offlineDataBox.put(cacheKey, true);
+
+          debugPrint('✅ XP sincronizado: $points puntos desde $source');
         } catch (e) {
           debugPrint('❌ Error sincronizando XP: $e');
           remaining.add(item);
