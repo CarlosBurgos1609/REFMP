@@ -169,6 +169,11 @@ class BegginnerGamePage extends StatefulWidget {
 
 class _BegginnerGamePageState extends State<BegginnerGamePage>
     with TickerProviderStateMixin {
+  static const bool _verboseGameplayLogs = false;
+  static const double _hitZoneVerticalOffset = 40.0;
+  static const double _perfectCenterRatio = 0.05;
+  static const double _goodCenterRatio = 0.16;
+
   bool showLogo = true;
   bool showCountdown = false;
   int countdownNumber = 3;
@@ -474,15 +479,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       print('🔍 Loading from offline cache first...');
       await _loadSongFromOfflineCache();
 
-      print('🔍 Checking for database updates...');
-      final hasUpdates = await _checkForDatabaseUpdates();
-
-      if (hasUpdates) {
-        print('🆕 Database changes detected! Loading fresh data...');
-        await _loadFreshDataFromDatabase();
-      } else {
-        print('✅ Cache is up to date with database');
-      }
+      // ONLINE: forzar refresh desde BD para reflejar cambios inmediatamente.
+      print('🌐 ONLINE MODE: refreshing song from database...');
+      await _loadFreshDataFromDatabase();
 
       // Si después de verificar actualizaciones tenemos datos, validar calidad
       if (songNotes.isNotEmpty) {
@@ -664,10 +663,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           } else {
             print(
                 '⚠️ No ChromaticNote data in cache for note ${noteMap['note_id']}');
-            // Intentar usar los datos básicos si están disponibles
-            if (noteMap['note_name'] != null &&
-                noteMap['note_name'] != 'Unknown') {
-              print('   📝 Using basic cached data: ${noteMap['note_name']}');
+            final fallbackChromatic =
+                _buildFallbackChromaticFromNoteMap(noteMap);
+            if (fallbackChromatic != null) {
+              songNote.setChromaticNote(fallbackChromatic);
+              print(
+                  '🛟 Rebuilt fallback ChromaticNote: ${fallbackChromatic.englishName}');
             }
           }
 
@@ -755,7 +756,71 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
+  ChromaticNote? _buildFallbackChromaticFromNoteMap(
+      Map<String, dynamic> noteMap) {
+    final rawName = _normalizeNoteName((noteMap['note_name'] ?? '').toString());
+    final rawUrl = (noteMap['note_url'] ?? '').toString().trim();
+
+    if (rawName.isEmpty || rawName == 'Unknown' || rawUrl.isEmpty) {
+      return null;
+    }
+
+    final rawPistons = (noteMap['piston_combination'] as List?) ?? const [];
+    final pistonSet = rawPistons
+        .map((e) => int.tryParse(e.toString()))
+        .whereType<int>()
+        .toSet();
+
+    return ChromaticNote(
+      id: (noteMap['chromatic_id'] as int?) ?? 0,
+      instrumentId: 0,
+      englishName: rawName,
+      spanishName: rawName,
+      octave: 0,
+      alternative: null,
+      piston1: pistonSet.contains(1) ? 'Tocando' : 'Aire',
+      piston2: pistonSet.contains(2) ? 'Tocando' : 'Aire',
+      piston3: pistonSet.contains(3) ? 'Tocando' : 'Aire',
+      noteUrl: rawUrl,
+    );
+  }
+
+  String _normalizeNoteName(String value) {
+    return value
+        .trim()
+        .toUpperCase()
+        .replaceAll('♯', '#')
+        .replaceAll('%23', '#')
+        .replaceAll('%', '#')
+        .replaceAll(' ', '');
+  }
+
+  String _normalizeAudioUrl(String value) {
+    final trimmed = value.trim();
+    if (!trimmed.startsWith('http')) {
+      return trimmed;
+    }
+    return trimmed.replaceAll('#', '%23');
+  }
+
+  double _getHitZoneHeight(double screenHeight, double screenWidth) {
+    final isTablet = screenWidth > 600;
+    final isSmallPhone = screenHeight < 700;
+    return isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
+  }
+
+  double _getHitZoneY(double screenHeight, double screenWidth) {
+    final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+    return (screenHeight / 2) - (hitZoneHeight / 2) + _hitZoneVerticalOffset;
+  }
+
+  double _getHitZoneCenterY(double screenHeight, double screenWidth) {
+    final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+    return _getHitZoneY(screenHeight, screenWidth) + (hitZoneHeight / 2);
+  }
+
   // MEJORADO: Verificar si hay cambios en la base de datos comparado con el cache
+  // ignore: unused_element
   Future<bool> _checkForDatabaseUpdates() async {
     if (widget.songId == null || widget.songId!.isEmpty) {
       print('❌ No song ID to check for updates');
@@ -1010,54 +1075,68 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   // NUEVO: Método robusto de descarga y cache de audio (similar a objects.dart)
   Future<String?> _downloadAndCacheAudio(String url, String cacheKey) async {
+    final normalizedUrl = _normalizeAudioUrl(url);
+    final normalizedCacheKey = 'audio_${normalizedUrl.hashCode}';
+
     if (!Hive.isBoxOpen('offline_data')) {
       await Hive.openBox('offline_data');
     }
 
     final box = Hive.box('offline_data');
-    final cachedData = box.get(cacheKey, defaultValue: null);
+    dynamic cachedData = box.get(normalizedCacheKey, defaultValue: null);
+
+    // Compatibilidad: intentar una clave antigua y migrarla a la normalizada.
+    if (cachedData == null && cacheKey != normalizedCacheKey) {
+      final legacyData = box.get(cacheKey, defaultValue: null);
+      if (legacyData != null) {
+        await box.put(normalizedCacheKey, legacyData);
+        await box.delete(cacheKey);
+        cachedData = legacyData;
+      }
+    }
 
     // Verificar si ya está en cache y el archivo existe
     if (cachedData != null &&
-        cachedData['url'] == url &&
+        cachedData['url'] == normalizedUrl &&
         cachedData['path'] != null &&
         File(cachedData['path']).existsSync()) {
       print('🎵 Using cached audio: ${cachedData['path']}');
-      _audioLoadStatus[cacheKey] = true;
+      _audioLoadStatus[normalizedCacheKey] = true;
       return cachedData['path'];
     }
 
     // Validar URL
-    if (url.isEmpty || Uri.tryParse(url)?.isAbsolute != true) {
-      print('❌ Invalid audio URL: $url');
-      _audioLoadStatus[cacheKey] = false;
+    if (normalizedUrl.isEmpty ||
+        Uri.tryParse(normalizedUrl)?.isAbsolute != true) {
+      print('❌ Invalid audio URL: $normalizedUrl');
+      _audioLoadStatus[normalizedCacheKey] = false;
       return null;
     }
 
     try {
-      print('📥 Downloading audio: $url');
+      print('📥 Downloading audio: $normalizedUrl');
 
       // Usar el cache manager robusto
       final fileInfo =
-          await AudioCacheManager.instance.downloadFile(url).timeout(
+          await AudioCacheManager.instance.downloadFile(normalizedUrl).timeout(
                 const Duration(seconds: 8), // Timeout de 8 segundos
               );
 
       final filePath = fileInfo.file.path;
 
       // Guardar en Hive para persistencia offline
-      await box.put(cacheKey, {
+      await box.put(normalizedCacheKey, {
         'path': filePath,
-        'url': url,
+        'url': normalizedUrl,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
 
       print('✅ Audio cached successfully: $filePath');
-      _audioLoadStatus[cacheKey] = true;
+      _audioLoadStatus[normalizedCacheKey] = true;
       return filePath;
     } catch (e) {
-      print('❌ Error caching audio $url: $e');
-      _audioLoadStatus[cacheKey] = false;
+      print('❌ Error caching audio $normalizedUrl: $e');
+      _audioLoadStatus[normalizedCacheKey] = false;
       return null;
     }
   }
@@ -1113,7 +1192,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       int successCount = 0;
 
       for (String url in uniqueAudioUrls) {
-        final cacheKey = 'audio_${url.hashCode}';
+        final normalizedUrl = _normalizeAudioUrl(url);
+        final cacheKey = 'audio_${normalizedUrl.hashCode}';
 
         try {
           final cachedPath = await _downloadAndCacheAudio(url, cacheKey);
@@ -1366,9 +1446,50 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // No iniciar countdown automáticamente - esperar a que termine el cache o expire el timer
   }
 
+  // Asegura que el primer audio reproducible esté listo antes del countdown.
+  Future<void> _ensureFirstNoteAudioReady() async {
+    if (songNotes.isEmpty) return;
+
+    final firstPlayable = songNotes.firstWhere(
+      (n) => n.noteUrl != null && n.noteUrl!.isNotEmpty,
+      orElse: () => songNotes.first,
+    );
+
+    final firstUrl = firstPlayable.noteUrl;
+    if (firstUrl == null || firstUrl.isEmpty) return;
+
+    final normalizedFirstUrl = _normalizeAudioUrl(firstUrl);
+    final cacheKey = 'audio_${normalizedFirstUrl.hashCode}';
+
+    try {
+      if (!Hive.isBoxOpen('offline_data')) {
+        await Hive.openBox('offline_data');
+      }
+
+      final box = Hive.box('offline_data');
+      final cachedData = box.get(cacheKey, defaultValue: null);
+      if (cachedData != null &&
+          cachedData['path'] != null &&
+          File(cachedData['path']).existsSync()) {
+        print('✅ First note audio already cached');
+        return;
+      }
+
+      print('🎵 Preloading first note audio before countdown...');
+      await _downloadAndCacheAudio(normalizedFirstUrl, cacheKey)
+          .timeout(const Duration(seconds: 3));
+      print('✅ First note audio ready');
+    } catch (e) {
+      // No bloquea el inicio del juego si la precarga falla.
+      print('⚠️ First note preload skipped: $e');
+    }
+  }
+
   // NUEVO: Proceder al countdown cuando el cache esté listo o expire el timer
-  void _proceedToCountdown() {
+  Future<void> _proceedToCountdown() async {
     if (mounted && showLogo) {
+      await _ensureFirstNoteAudioReady();
+
       setState(() {
         showLogo = false;
         showCountdown = true;
@@ -1587,13 +1708,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     for (int i = 0; i < songNotes.length; i++) {
       final songNote = songNotes[i];
       final noteAppearTime = songNote.startTimeMs - fallTimeMs;
+      final scheduledAppearTime = noteAppearTime < 0 ? 0 : noteAppearTime;
 
       print('📅 Programming note ${i + 1}: ${songNote.noteName}');
       print('  - DB hit time: ${songNote.startTimeMs}ms');
-      print('  - Will appear at: ${noteAppearTime}ms');
+      print('  - Will appear at: ${scheduledAppearTime}ms');
 
       // Programar la aparición de la nota con Timer.delayed y guardar referencia
-      final timer = Timer(Duration(milliseconds: noteAppearTime), () {
+      final timer = Timer(Duration(milliseconds: scheduledAppearTime), () {
         if (isGameActive && !isGamePaused) {
           _spawnSingleNote(songNote, i);
         }
@@ -1609,24 +1731,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   void _spawnSingleNote(SongNote songNote, int index) {
     print('🎵 Spawning scheduled note: ${songNote.noteName}');
 
-    // Calcular posición Y basada estrictamente en el tiempo de aparición
-    final currentGameTime =
-        DateTime.now().millisecondsSinceEpoch - gameStartTime;
+    // La nota siempre inicia desde arriba; el Timer ya se encarga del timing.
     final screenHeight = MediaQuery.of(context).size.height;
-    final fallTimeMs = ((screenHeight * 1.3) / noteSpeed * 1000).round();
-
-    // La nota debe aparecer exactamente cuando sea su momento
-    final expectedAppearTime = songNote.startTimeMs - fallTimeMs;
-    final timeDifference = currentGameTime - expectedAppearTime;
-
-    // Calcular posición Y basada en cuánto tiempo ha pasado desde que debería haber aparecido
     final initialY = -screenHeight * 0.3;
-    final adjustedY = initialY + (timeDifference * noteSpeed / 1000);
-
-    print('  - Expected appear time: ${expectedAppearTime}ms');
-    print('  - Current game time: ${currentGameTime}ms');
-    print('  - Time difference: ${timeDifference}ms');
-    print('  - Calculated Y position: ${adjustedY.toStringAsFixed(1)}');
+    print('  - Spawn Y position: ${initialY.toStringAsFixed(1)}');
 
     final fallingNote = FallingNote(
       piston: songNote.pistonCombination.isNotEmpty
@@ -1634,7 +1742,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           : 1,
       songNote: songNote,
       chromaticNote: songNote.chromaticNote,
-      y: adjustedY,
+      y: initialY,
       startTime: DateTime.now().millisecondsSinceEpoch / 1000,
     );
 
@@ -1643,7 +1751,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     });
 
     print(
-        '✅ Note ${songNote.noteName} spawned at Y: ${adjustedY.toStringAsFixed(1)}');
+        '✅ Note ${songNote.noteName} spawned at Y: ${initialY.toStringAsFixed(1)}');
   }
 
   // ELIMINADO: Ya no necesario con el nuevo sistema programado
@@ -1663,16 +1771,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
 
-        // Calcular zona de hit responsive - EN EL CENTRO DE LA PANTALLA
-        final isTablet = screenWidth > 600;
-        final isSmallPhone = screenHeight < 700;
-
-        // Zona de hit en el centro de la pantalla (mucho más arriba que los pistones)
-        final hitZoneHeight = isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
-
-        // Colocar la zona de hit un poco más abajo del centro de la pantalla
-        final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
-        final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
+        final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+        final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
+        final hitZoneCenterY = _getHitZoneCenterY(screenHeight, screenWidth);
 
         // Actualizar sombras de pistones según notas activas en zona de hit
         Map<int, Color> newShadows = {};
@@ -1713,7 +1814,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             note.y = initialY + (elapsed * noteSpeed);
 
             // DEBUG: Imprimir posición de las primeras notas
-            if (note.songNote != null && note.songNote!.startTimeMs <= 6000) {
+            if (_verboseGameplayLogs &&
+                note.songNote != null &&
+                note.songNote!.startTimeMs <= 6000) {
               print(
                   '📍 Note ${note.noteName}: Y=${note.y.toStringAsFixed(1)}, elapsed=${elapsed.toStringAsFixed(1)}s, DB_time=${note.songNote!.startTimeMs}ms');
             }
@@ -1722,12 +1825,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             if (note.isOpenNote) {
               final noteCenter = note.y + 30;
 
-              // Solo auto-hit si la nota está en el centro exacto (25% del hit zone)
-              final hitZoneHeight = 120.0;
-              final perfectZone = hitZoneHeight * 0.25;
+              // Solo auto-hit si la nota está muy cerca del centro del hit zone.
+              final perfectZone = hitZoneHeight * _perfectCenterRatio;
               final distanceFromCenter = (noteCenter - hitZoneCenterY).abs();
 
-              if (distanceFromCenter < perfectZone) {
+              if (distanceFromCenter <= perfectZone) {
                 print('🌬️ AUTO-HIT for open note (aire): ${note.noteName}');
                 note.isHit = true;
 
@@ -1737,25 +1839,21 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 });
 
                 // MEJORADO: Solo reproducir sonido si NO está usando audio continuo
-                if (!_isAudioContinuous &&
-                    note.songNote != null &&
-                    note.songNote!.noteUrl != null) {
-                  _playFromRobustCache(note.songNote!);
+                if (!_isAudioContinuous) {
+                  _playBestAudioForFallingNote(note);
                 } else if (_isAudioContinuous) {
                   print(
                       '🔇 Audio continuo activo - no reproducir nota de aire automática');
                 }
 
-                _onNoteHit(note.noteName, 1.0); // Perfect timing
+                _onNoteHit(note.noteName, 0.0);
                 continue; // Pasar a la siguiente nota
               }
             }
 
-            // Verificar si la nota se perdió (pasó de la zona de hit)
+            // Si no se tocó y ya pasó completamente el hit, se considera perdida.
             final noteTop = note.y;
-            final hitZoneHeight = 120.0;
-            if (noteTop > hitZoneCenterY + (hitZoneHeight / 2)) {
-              // Reducido de +80 a +50 para eliminar notas más rápido
+            if (!note.isOpenNote && noteTop > hitZoneY + hitZoneHeight) {
               note.isMissed = true;
               print('❌ Note missed: ${note.noteName} at Y: ${note.y}');
 
@@ -1766,6 +1864,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 print('🔇 Note missed');
               }
 
+              _showFeedback('Erronea', Colors.red);
               _onNoteMissed();
             }
           }
@@ -1815,7 +1914,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       // Debug: mostrar estado actual cada 2 segundos
       if (currentGameTime % 2000 < 100) {
         final timeLeft = expectedEndTime - currentGameTime;
-        print('🔄 Game status: ${timeLeft}ms remaining until last note ends');
+        if (_verboseGameplayLogs) {
+          print('🔄 Game status: ${timeLeft}ms remaining until last note ends');
+        }
       }
     }
   }
@@ -2142,13 +2243,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
 
-        // Calcular zona de hit responsive en el centro de la pantalla
-        final isTablet = screenWidth > 600;
-        final isSmallPhone = screenHeight < 700;
-
-        final hitZoneHeight = isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
-        final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
-        final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
+        final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+        final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
+        final hitZoneCenterY = _getHitZoneCenterY(screenHeight, screenWidth);
 
         final noteCenter = note.y + 30;
         final noteBottom = note.y + 60;
@@ -2156,8 +2253,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final distanceFromCenter = (noteCenter - hitZoneCenterY).abs();
 
         // Definir zonas de hit basadas en distancia del centro
-        final perfectZone = hitZoneHeight * 0.25; // 25% del centro es "perfect"
-        final goodZone = hitZoneHeight * 0.4; // 40% del centro es "good"
+        final perfectZone =
+            hitZoneHeight * _perfectCenterRatio; // Solo centro estricto.
+        final goodZone = hitZoneHeight * _goodCenterRatio;
 
         // Verificar si la nota está en la zona de hit
         if (noteBottom >= hitZoneY && noteTop <= hitZoneY + hitZoneHeight) {
@@ -2207,24 +2305,25 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
             // NUEVO: Calcular calidad del timing basado en distancia del centro
             double timingQuality;
+            // ignore: unused_local_variable
             String feedback;
+            // ignore: unused_local_variable
             Color feedbackColor;
 
             if (distanceFromCenter < perfectZone) {
-              timingQuality = 1.0;
+              timingQuality = 0.0;
               feedback = 'Perfect';
               feedbackColor = Colors.green;
             } else if (distanceFromCenter < goodZone) {
-              timingQuality = 0.7;
+              timingQuality = 0.5;
               feedback = 'Good';
               feedbackColor = Colors.blue;
             } else {
-              timingQuality = 0.5;
+              timingQuality = 0.9;
               feedback = 'Regular';
               feedbackColor = Colors.orange;
             }
 
-            _showFeedback(feedback, feedbackColor);
             _onNoteHit(note.noteName, timingQuality);
 
             // Feedback háptico
@@ -2366,6 +2465,82 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         required.every((piston) => pressedPistons.contains(piston));
   }
 
+  SongNote? _findHitZonePlayableNote(Set<int> pistons) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+    final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
+    final hitZoneCenterY = _getHitZoneCenterY(screenHeight, screenWidth);
+
+    FallingNote? bestNote;
+    double bestDistance = double.infinity;
+
+    for (final note in fallingNotes) {
+      if (note.isHit || note.isMissed || note.songNote == null) {
+        continue;
+      }
+
+      if (!_exactPistonMatch(note, pistons)) {
+        continue;
+      }
+
+      final noteTop = note.y;
+      final noteBottom = note.y + 60;
+      if (noteBottom < hitZoneY || noteTop > hitZoneY + hitZoneHeight) {
+        continue;
+      }
+
+      final distance = ((note.y + 30) - hitZoneCenterY).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestNote = note;
+      }
+    }
+
+    if (bestNote?.songNote == null) {
+      return null;
+    }
+
+    final exactNote = bestNote!.songNote!;
+    if (exactNote.noteUrl != null && exactNote.noteUrl!.isNotEmpty) {
+      return exactNote;
+    }
+
+    final targetName = _normalizeNoteName(exactNote.noteName);
+    for (final candidate in songNotes) {
+      if (_normalizeNoteName(candidate.noteName) == targetName &&
+          candidate.noteUrl != null &&
+          candidate.noteUrl!.isNotEmpty) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _playBestAudioForFallingNote(FallingNote note) async {
+    final directNote = note.songNote;
+    if (directNote != null &&
+        directNote.noteUrl != null &&
+        directNote.noteUrl!.isNotEmpty) {
+      await _playFromRobustCache(directNote);
+      return;
+    }
+
+    final targetName = _normalizeNoteName(note.noteName);
+    for (final candidate in songNotes) {
+      if (_normalizeNoteName(candidate.noteName) == targetName &&
+          candidate.noteUrl != null &&
+          candidate.noteUrl!.isNotEmpty) {
+        print('🛟 Using fallback by note name for ${note.noteName}');
+        await _playFromRobustCache(candidate);
+        return;
+      }
+    }
+
+    print('❌ No playable audio found for note: ${note.noteName}');
+  }
+
   // MEJORADO: Mejor detección de combinaciones de pistones para reproducir sonido
   void _playNoteFromPistonCombination() {
     print('🎹 Playing note for combination: $pressedPistons');
@@ -2378,6 +2553,13 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
 
     SongNote? noteToPlay;
+
+    final hitZoneNote = _findHitZonePlayableNote(pressedPistons);
+    if (hitZoneNote != null) {
+      print('🎯 Using hit-zone note: ${hitZoneNote.noteName}');
+      _playFromRobustCache(hitZoneNote);
+      return;
+    }
 
     // 1. Buscar en notas cayendo que coincidan EXACTAMENTE
     for (var fallingNote in fallingNotes) {
@@ -2515,8 +2697,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       return;
     }
 
-    print('🔗 Audio URL: ${note.noteUrl}');
-    final cacheKey = 'audio_${note.noteUrl.hashCode}';
+    final normalizedUrl = _normalizeAudioUrl(note.noteUrl!);
+    final cacheKey = 'audio_${normalizedUrl.hashCode}';
+    print('🔗 Audio URL: $normalizedUrl');
 
     try {
       // Intentar reproducir desde cache robusto primero
@@ -2533,7 +2716,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         // Reproducir desde archivo local cached
         final localFile = File(cachedData['path']);
         await NoteAudioService.playNoteFromUrl(
-          localFile.uri.toString(),
+          localFile.path,
           noteId: note.chromaticId?.toString(),
           durationMs: note.durationMs,
         );
@@ -2542,7 +2725,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         // Fallback: descargar y reproducir directamente
         print('⬇️ Cache miss, playing from URL: ${note.noteName}');
         await NoteAudioService.playNoteFromUrl(
-          note.noteUrl!,
+          normalizedUrl,
           noteId: note.chromaticId?.toString(),
           durationMs: note.durationMs,
         );
@@ -2554,7 +2737,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       // Último fallback: intentar una vez más con la URL original
       try {
         await NoteAudioService.playNoteFromUrl(
-          note.noteUrl!,
+          normalizedUrl,
           noteId: note.chromaticId?.toString(),
           durationMs: note.durationMs,
         );
@@ -2576,14 +2759,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // NUEVO: Mostrar feedback basado en la precisión del timing
     // timingQuality: 0.0 = centro perfecto, 1.0 = borde de tolerancia
-    if (timingQuality <= 0.3) {
+    if (timingQuality <= 0.05) {
       _showFeedback('Perfecto', Colors.green);
       HapticFeedback.mediumImpact();
-    } else if (timingQuality <= 0.7) {
+    } else if (timingQuality <= 0.6) {
       _showFeedback('Bien', Colors.blue);
       HapticFeedback.lightImpact();
     } else {
-      _showFeedback('Bien', Colors.orange);
+      _showFeedback('Regular', Colors.orange);
       HapticFeedback.lightImpact();
     }
   }
@@ -2632,16 +2815,14 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   Widget _buildLogoScreen() {
-    // Obtener dimensiones de la pantalla para diseño responsive
     final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 360; // Detectar pantallas pequeñas
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360 || screenHeight < 430;
 
-    // Calcular tamaños responsive
-    final logoSize = isSmallScreen ? 120.0 : 200.0;
-    final titleFontSize = isSmallScreen ? 24.0 : 32.0;
-    final subtitleFontSize = isSmallScreen ? 14.0 : 18.0;
-    final progressBarWidth =
-        (screenWidth - 40).clamp(200.0, 300.0); // Con padding de 20 a cada lado
+    final logoSize = isSmallScreen ? 100.0 : 180.0;
+    final titleFontSize = isSmallScreen ? 22.0 : 30.0;
+    final subtitleFontSize = isSmallScreen ? 13.0 : 17.0;
+    final progressBarWidth = (screenWidth - 40).clamp(180.0, 300.0);
 
     return Container(
       width: double.infinity,
@@ -2651,37 +2832,33 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF1E3A8A), // Azul oscuro
-            Color(0xFF3B82F6), // Azul medio
-            Color(0xFF60A5FA), // Azul claro
+            Color(0xFF1E3A8A),
+            Color(0xFF3B82F6),
+            Color(0xFF60A5FA),
           ],
         ),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Spacer flexible para centrar mejor en pantallas pequeñas
-              const Spacer(flex: 1),
-
-              // Logo responsive
+              SizedBox(height: isSmallScreen ? 6 : 12),
               Container(
                 width: logoSize,
                 height: logoSize,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(isSmallScreen ? 15 : 20),
+                  borderRadius: BorderRadius.circular(isSmallScreen ? 14 : 20),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.3),
-                      blurRadius: isSmallScreen ? 15 : 20,
-                      offset: Offset(0, isSmallScreen ? 5 : 10),
+                      blurRadius: isSmallScreen ? 12 : 20,
+                      offset: Offset(0, isSmallScreen ? 4 : 10),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(isSmallScreen ? 15 : 20),
+                  borderRadius: BorderRadius.circular(isSmallScreen ? 14 : 20),
                   child: Image.asset(
                     'assets/images/icono.png',
                     fit: BoxFit.cover,
@@ -2690,11 +2867,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius:
-                              BorderRadius.circular(isSmallScreen ? 15 : 20),
+                              BorderRadius.circular(isSmallScreen ? 14 : 20),
                         ),
                         child: Icon(
                           Icons.music_note,
-                          size: logoSize * 0.5, // 50% del tamaño del logo
+                          size: logoSize * 0.5,
                           color: Colors.blue,
                         ),
                       );
@@ -2702,10 +2879,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   ),
                 ),
               ),
-
-              SizedBox(height: isSmallScreen ? 20 : 30),
-
-              // Título responsive
+              SizedBox(height: isSmallScreen ? 14 : 22),
               Text(
                 'REFMP',
                 style: TextStyle(
@@ -2716,10 +2890,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 ),
                 textAlign: TextAlign.center,
               ),
-
-              SizedBox(height: isSmallScreen ? 5 : 10),
-
-              // Subtítulo responsive
+              SizedBox(height: isSmallScreen ? 4 : 8),
               Text(
                 'Nivel Principiante',
                 style: TextStyle(
@@ -2729,13 +2900,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                 ),
                 textAlign: TextAlign.center,
               ),
-
-              // Spacer flexible
-              const Spacer(flex: 1),
-
-              // Indicador de carga de audio (parte inferior)
+              SizedBox(height: isSmallScreen ? 18 : 30),
               if (isLoadingSong || isPreloadingAudio) ...[
-                // Barra de progreso responsive
                 Container(
                   width: progressBarWidth,
                   height: isSmallScreen ? 6 : 8,
@@ -2745,7 +2911,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   ),
                   child: Stack(
                     children: [
-                      // Progreso de descarga de audio
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
                         width: isPreloadingAudio
@@ -2758,24 +2923,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                               : Colors.white.withOpacity(0.8),
                           borderRadius:
                               BorderRadius.circular(isSmallScreen ? 3 : 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (isPreloadingAudio
-                                      ? Colors.blue
-                                      : Colors.white)
-                                  .withOpacity(0.5),
-                              blurRadius: isSmallScreen ? 6 : 8,
-                            ),
-                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                SizedBox(height: isSmallScreen ? 10 : 15),
-
-                // Texto de estado compacto
+                SizedBox(height: isSmallScreen ? 8 : 12),
                 Text(
                   isLoadingSong
                       ? 'Cargando canción...'
@@ -2786,29 +2939,12 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                               : 'Preparando...',
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: isSmallScreen ? 12 : 14,
+                    fontSize: isSmallScreen ? 11 : 14,
                     fontWeight: FontWeight.w400,
                   ),
                   textAlign: TextAlign.center,
                 ),
-
-                // Información adicional solo si hay espacio
-                if (isPreloadingAudio && !isSmallScreen) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Guardando para reproducción offline',
-                    style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
               ],
-
-              // Spacer final para mantener el contenido centrado
-              const Spacer(flex: 1),
             ],
           ),
         ),
@@ -3769,8 +3905,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       hitZoneHeight = 120; // Tamaño estándar para celulares normales
     }
 
-    // Calcular posición un poco más abajo del centro de la pantalla
-    final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
+    // Ajuste un poco más arriba respecto al valor anterior.
+    final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
 
     return Positioned(
       top: hitZoneY, // Ahora se posiciona desde arriba, en el centro
@@ -4061,15 +4197,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     final double pistonSize;
     final double realPistonSeparation;
 
+    // Igualar tamaño/espaciado al estilo del educational game.
     if (isSmallPhone) {
-      pistonSize = 60.0; // Más pequeños en celulares pequeños
-      realPistonSeparation = 12.0;
+      pistonSize = 75.0;
+      realPistonSeparation = 15.0;
     } else if (isTablet) {
-      pistonSize = 85.0; // Más grandes en tablets
-      realPistonSeparation = 20.0;
+      pistonSize = 100.0;
+      realPistonSeparation = 25.0;
     } else {
-      pistonSize = 70.0; // Tamaño estándar
-      realPistonSeparation = 16.0;
+      pistonSize = 90.0;
+      realPistonSeparation = 20.0;
     }
 
     const double realPistonDiameter = 18.0; // mm en trompeta real
@@ -4080,11 +4217,11 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     return Container(
       padding: EdgeInsets.symmetric(
-          horizontal: isSmallPhone ? 15 : 20, vertical: isSmallPhone ? 8 : 10),
+          horizontal: isSmallPhone ? 20 : 25, vertical: isSmallPhone ? 12 : 15),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(35),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 2),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -4240,14 +4377,15 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         if (!note.isHit && !note.isMissed) {
           final screenHeight = MediaQuery.of(context).size.height;
           final screenWidth = MediaQuery.of(context).size.width;
+          // ignore: unused_local_variable
           final isTablet = screenWidth > 600;
+          // ignore: unused_local_variable
           final isSmallPhone = screenHeight < 700;
 
-          // Calcular zona de hit un poco más abajo del centro de la pantalla
-          final hitZoneHeight =
-              isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
-          final hitZoneY = (screenHeight / 2) - (hitZoneHeight / 2) + 80;
-          final hitZoneCenterY = hitZoneY + (hitZoneHeight / 2);
+          final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
+          // ignore: unused_local_variable
+          final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
+          final hitZoneCenterY = _getHitZoneCenterY(screenHeight, screenWidth);
 
           final noteCenter = note.y + 30;
           final distance = (noteCenter - hitZoneCenterY).abs();

@@ -12,11 +12,20 @@ class NoteAudioService {
 
   // Variables para control de duración y flujo continuo
   static Timer? _durationTimer;
+  static int _playbackToken = 0;
   static bool _isPlayingContinuous = false;
   static String? _currentContinuousNote;
   static Set<int> _currentPistonCombination = {};
   static bool _isAudioOperationInProgress =
       false; // NUEVO: Semáforo para operaciones concurrentes
+
+  static String _normalizeAudioUrl(String value) {
+    final trimmed = value.trim();
+    if (!trimmed.startsWith('http')) {
+      return trimmed;
+    }
+    return trimmed.replaceAll('#', '%23');
+  }
 
   // Base de datos de combinaciones de pistones a notas (backup local) - ACTUALIZADO
   static final Map<Set<int>, Map<String, dynamic>> _pistonToNoteMap = {
@@ -103,14 +112,15 @@ class NoteAudioService {
   // NUEVO: Obtener archivo desde caché
   static Future<File?> _getCachedFile(String noteUrl) async {
     try {
-      if (_audioCache.containsKey(noteUrl)) {
-        final cachedPath = _audioCache[noteUrl]!;
+      final normalizedUrl = _normalizeAudioUrl(noteUrl);
+      if (_audioCache.containsKey(normalizedUrl)) {
+        final cachedPath = _audioCache[normalizedUrl]!;
         final file = File(cachedPath);
         if (await file.exists()) {
           return file;
         } else {
           // Archivo no existe, remover del caché
-          _audioCache.remove(noteUrl);
+          _audioCache.remove(normalizedUrl);
         }
       }
       return null;
@@ -123,18 +133,19 @@ class NoteAudioService {
   // NUEVO: Cachear archivo de audio en background
   static Future<void> _cacheAudioFile(String noteUrl) async {
     try {
-      final response = await http.get(Uri.parse(noteUrl)).timeout(
+      final normalizedUrl = _normalizeAudioUrl(noteUrl);
+      final response = await http.get(Uri.parse(normalizedUrl)).timeout(
             const Duration(seconds: 10),
           );
 
       if (response.statusCode == 200) {
         final dir = await getApplicationDocumentsDirectory();
-        final fileName = 'cached_${noteUrl.hashCode}.mp3';
+        final fileName = 'cached_${normalizedUrl.hashCode}.mp3';
         final filePath = '${dir.path}/$fileName';
         final file = File(filePath);
 
         await file.writeAsBytes(response.bodyBytes);
-        _audioCache[noteUrl] = filePath;
+        _audioCache[normalizedUrl] = filePath;
         print('✅ Audio cached: $fileName');
       }
     } catch (e) {
@@ -405,15 +416,17 @@ class NoteAudioService {
   static Future<String?> _downloadAndCacheAudio(
       String noteUrl, String noteId) async {
     try {
+      final normalizedUrl = _normalizeAudioUrl(noteUrl);
+
       // Verificar si ya está en caché
-      if (_audioCache.containsKey(noteUrl)) {
-        final cachedPath = _audioCache[noteUrl]!;
+      if (_audioCache.containsKey(normalizedUrl)) {
+        final cachedPath = _audioCache[normalizedUrl]!;
         if (await File(cachedPath).exists()) {
           print('🎵 Using cached audio: $cachedPath');
           return cachedPath;
         } else {
           // Archivo en caché ya no existe, remover de caché
-          _audioCache.remove(noteUrl);
+          _audioCache.remove(normalizedUrl);
         }
       }
 
@@ -424,13 +437,13 @@ class NoteAudioService {
         return null;
       }
 
-      print('📥 Downloading audio from: $noteUrl');
+      print('📥 Downloading audio from: $normalizedUrl');
 
       // Timeout más corto y manejo de errores mejorado
-      final response = await http.get(Uri.parse(noteUrl)).timeout(
+      final response = await http.get(Uri.parse(normalizedUrl)).timeout(
         const Duration(seconds: 5), // Reducido de 10 a 5 segundos
         onTimeout: () {
-          print('⏰ Download timeout for: $noteUrl');
+          print('⏰ Download timeout for: $normalizedUrl');
           throw TimeoutException(
               'Download timeout', const Duration(seconds: 5));
         },
@@ -444,7 +457,7 @@ class NoteAudioService {
         final file = File(filePath);
 
         await file.writeAsBytes(response.bodyBytes);
-        _audioCache[noteUrl] = filePath;
+        _audioCache[normalizedUrl] = filePath;
 
         print('✅ Audio downloaded and cached: $filePath');
         return filePath;
@@ -467,6 +480,8 @@ class NoteAudioService {
     }
 
     try {
+      final normalizedUrl = _normalizeAudioUrl(noteUrl);
+
       // Asegurar que el servicio esté inicializado
       if (!_isInitialized) {
         await initialize();
@@ -480,13 +495,19 @@ class NoteAudioService {
       }
 
       print(
-          '🎵 Playing note from URL: $noteUrl${durationMs != null ? ' (duration: ${durationMs}ms)' : ''}');
+          '🎵 Playing note from URL: $normalizedUrl${durationMs != null ? ' (duration: ${durationMs}ms)' : ''}');
 
       String? audioPath;
 
+      // Cada reproducción invalida timers de notas previas para evitar cortes cruzados.
+      _durationTimer?.cancel();
+      _durationTimer = null;
+      final currentPlaybackToken = ++_playbackToken;
+
       // Si es una URL de internet, descargar y cachear
-      if (noteUrl.startsWith('http')) {
-        audioPath = await _downloadAndCacheAudio(noteUrl, noteId ?? 'unknown');
+      if (normalizedUrl.startsWith('http')) {
+        audioPath =
+            await _downloadAndCacheAudio(normalizedUrl, noteId ?? 'unknown');
         if (audioPath == null) {
           print('❌ Failed to download audio, skipping note playback');
           // No lanzar error, simplemente salir silenciosamente
@@ -494,7 +515,7 @@ class NoteAudioService {
         }
       } else {
         // Si es una ruta local, usar directamente
-        audioPath = noteUrl;
+        audioPath = normalizedUrl;
       }
 
       // ARREGLADO: Solo detener si no hay audio continuo o si la duración está especificada
@@ -510,8 +531,8 @@ class NoteAudioService {
       // Si se especifica duración, programar corte automático
       if (durationMs != null && durationMs > 0) {
         _durationTimer = Timer(Duration(milliseconds: durationMs), () async {
-          // Solo detener si este timer aún es válido y no hay otro audio
-          if (_durationTimer != null && !_isPlayingContinuous) {
+          // Solo detener si este timer sigue siendo el de la reproducción actual.
+          if (currentPlaybackToken == _playbackToken && !_isPlayingContinuous) {
             await _stopCurrentAudio();
             print('⏰ Audio stopped automatically after ${durationMs}ms');
           }
