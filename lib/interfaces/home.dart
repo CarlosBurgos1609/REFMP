@@ -64,6 +64,10 @@ class _HomePageState extends State<HomePage>
   bool _hasCheckedForUpdates = false;
   bool _checkingUpdate = false;
   String _currentVersion = '';
+  final ValueNotifier<double?> _downloadProgressNotifier =
+      ValueNotifier<double?>(0.0);
+  final ValueNotifier<int> _downloadedBytesNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _downloadTotalBytesNotifier = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -99,6 +103,10 @@ class _HomePageState extends State<HomePage>
     _pageController.dispose();
     _gamesTimer.cancel();
     _gamesPageController.dispose();
+    _downloadProgressNotifier.dispose();
+    _downloadedBytesNotifier.dispose();
+    _downloadTotalBytesNotifier.dispose();
+    _dio.close(force: true);
     super.dispose();
   }
 
@@ -669,6 +677,7 @@ class _HomePageState extends State<HomePage>
 
   // Descargar e instalar APK
   final Dio _dio = Dio();
+  // ignore: unused_field
   double _downloadProgress = 0.0;
 
   Future<void> _downloadAndInstallApk(String apkUrl, String version) async {
@@ -710,6 +719,9 @@ class _HomePageState extends State<HomePage>
       setState(() {
         _downloadProgress = 0.0;
       });
+      _downloadProgressNotifier.value = 0.0;
+      _downloadedBytesNotifier.value = 0;
+      _downloadTotalBytesNotifier.value = 0;
 
       // Mostrar diálogo de progreso
       showDialog(
@@ -739,10 +751,18 @@ class _HomePageState extends State<HomePage>
         apkUrl,
         filePath,
         onReceiveProgress: (received, total) {
+          _downloadedBytesNotifier.value = received;
+          _downloadTotalBytesNotifier.value = total;
+
           if (total != -1) {
+            final progress = received / total;
             setState(() {
-              _downloadProgress = received / total;
+              _downloadProgress = progress;
             });
+            _downloadProgressNotifier.value = progress;
+          } else {
+            // Sin content-length: mostrar barra indeterminada para indicar actividad.
+            _downloadProgressNotifier.value = null;
           }
         },
         options: Options(
@@ -755,7 +775,7 @@ class _HomePageState extends State<HomePage>
 
       // Cerrar diálogo de progreso
       if (mounted) {
-        Navigator.of(context).pop();
+        _closeDownloadDialogIfOpen();
       }
 
       // Instalar el APK
@@ -763,7 +783,7 @@ class _HomePageState extends State<HomePage>
     } catch (e) {
       debugPrint('❌ Error al descargar/instalar: $e');
       if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        _closeDownloadDialogIfOpen();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al actualizar: $e'),
@@ -777,7 +797,16 @@ class _HomePageState extends State<HomePage>
         setState(() {
           _downloadProgress = 0.0;
         });
+        _downloadProgressNotifier.value = 0.0;
+        _downloadedBytesNotifier.value = 0;
+        _downloadTotalBytesNotifier.value = 0;
       }
+    }
+  }
+
+  void _closeDownloadDialogIfOpen() {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -786,74 +815,97 @@ class _HomePageState extends State<HomePage>
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final isDark = themeProvider.isDarkMode;
 
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          contentPadding: EdgeInsets.all(20),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.cloud_download_rounded,
-                color: Colors.blue,
-                size: MediaQuery.of(context).size.width * 0.25,
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Descargando',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Versión $version',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
-                ),
-              ),
-              SizedBox(height: 20),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: _downloadProgress,
-                  minHeight: 12,
-                  backgroundColor:
-                      isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                ),
-              ),
-              SizedBox(height: 12),
-              Text(
-                '${(_downloadProgress * 100).toStringAsFixed(0)}%',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24,
-                  color: Colors.blue,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Por favor espera...',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return AlertDialog(
+      backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      contentPadding: EdgeInsets.all(20),
+      content: ValueListenableBuilder<double?>(
+        valueListenable: _downloadProgressNotifier,
+        builder: (context, progress, _) {
+          return ValueListenableBuilder<int>(
+            valueListenable: _downloadedBytesNotifier,
+            builder: (context, downloadedBytes, __) {
+              return ValueListenableBuilder<int>(
+                valueListenable: _downloadTotalBytesNotifier,
+                builder: (context, totalBytes, ___) {
+                  final downloadedMb = downloadedBytes / (1024 * 1024);
+                  final totalMb =
+                      totalBytes > 0 ? totalBytes / (1024 * 1024) : 0.0;
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_download_rounded,
+                        color: Colors.blue,
+                        size: MediaQuery.of(context).size.width * 0.25,
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'Descargando',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Versión $version',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                      SizedBox(height: 20),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 12,
+                          backgroundColor: isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade300,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.blue),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        progress != null
+                            ? '${(progress * 100).toStringAsFixed(0)}%'
+                            : '${downloadedMb.toStringAsFixed(1)} MB descargados',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        totalBytes > 0
+                            ? '${downloadedMb.toStringAsFixed(1)} / ${totalMb.toStringAsFixed(1)} MB'
+                            : 'Conectando al servidor...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 

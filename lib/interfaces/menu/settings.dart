@@ -31,6 +31,14 @@ class _SettingsPage extends State<SettingsPage> {
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
   final Dio _dio = Dio();
+  final ValueNotifier<double> _downloadProgressNotifier = ValueNotifier(0.0);
+
+  @override
+  void dispose() {
+    _downloadProgressNotifier.dispose();
+    _dio.close(force: true);
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -162,6 +170,9 @@ class _SettingsPage extends State<SettingsPage> {
     bool isRequired,
     String storeUrl,
   ) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+
     showDialog(
       context: context,
       barrierDismissible: !isRequired,
@@ -169,78 +180,144 @@ class _SettingsPage extends State<SettingsPage> {
         return WillPopScope(
           onWillPop: () async => !isRequired,
           child: AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.system_update, color: Colors.blue, size: 30),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    isRequired
-                        ? '¡Actualización Requerida!'
-                        : 'Actualización Disponible',
-                    style: TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                ),
-              ],
+            backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
             ),
+            contentPadding: EdgeInsets.all(20),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Icon(
+                    isRequired
+                        ? Icons.warning_rounded
+                        : Icons.system_update_rounded,
+                    color: isRequired ? Colors.orange : Colors.blue,
+                    size: MediaQuery.of(context).size.width * 0.25,
+                  ),
+                  SizedBox(height: 12),
                   Text(
-                    'Nueva versión: $version',
+                    isRequired
+                        ? '¡Actualización Requerida!'
+                        : 'Nueva Actualización',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
+                      color: isRequired ? Colors.orange : Colors.blue,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 22,
                     ),
                   ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Versión actual: $_currentVersion',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
+                  SizedBox(height: 16),
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.blue.shade900.withOpacity(0.3)
+                          : Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.new_releases,
+                                color: Colors.blue, size: 18),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Versión $version',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isDark
+                                      ? Colors.blue.shade200
+                                      : Colors.blue.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Tu versión: $_currentVersion',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isDark
+                                ? Colors.grey.shade400
+                                : Colors.grey.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (releaseNotes.isNotEmpty) ...[
-                    SizedBox(height: 15),
-                    Text(
-                      'Novedades:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                    SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '🎉 Novedades:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.blue,
+                        ),
                       ),
                     ),
-                    SizedBox(height: 5),
-                    Text(
-                      releaseNotes,
-                      style: TextStyle(fontSize: 14),
+                    SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        releaseNotes,
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
                     ),
                   ],
                   if (isRequired) ...[
-                    SizedBox(height: 15),
+                    SizedBox(height: 16),
                     Container(
-                      padding: EdgeInsets.all(10),
+                      padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
+                        color: isDark
+                            ? Colors.red.shade900.withOpacity(0.3)
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.red.shade700
+                              : Colors.red.shade200,
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.warning, color: Colors.orange, size: 20),
+                          Icon(Icons.error_outline,
+                              color: Colors.red, size: 22),
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Esta actualización es obligatoria para continuar usando la aplicación.',
+                              'Esta actualización es obligatoria para continuar.',
+                              textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.orange[900],
+                                color: isDark
+                                    ? Colors.red.shade300
+                                    : Colors.red.shade900,
                                 fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -257,25 +334,44 @@ class _SettingsPage extends State<SettingsPage> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: Text(
                     'Más tarde',
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
-              ElevatedButton.icon(
+              ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: isRequired ? Colors.red : Colors.blue,
                   foregroundColor: Colors.white,
+                  minimumSize: Size(isRequired ? double.infinity : 120, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  // En Android siempre intentar descargar e instalar el APK
                   if (Platform.isAndroid && storeUrl.isNotEmpty) {
                     _downloadAndInstallApk(storeUrl, version);
                   } else {
                     _openStore(storeUrl);
                   }
                 },
-                icon: Icon(Icons.download),
-                label: Text('Actualizar'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.download_rounded, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Actualizar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -421,6 +517,7 @@ class _SettingsPage extends State<SettingsPage> {
         _isDownloading = true;
         _downloadProgress = 0.0;
       });
+      _downloadProgressNotifier.value = 0.0;
 
       // Mostrar diálogo de progreso
       if (mounted) {
@@ -458,6 +555,7 @@ class _SettingsPage extends State<SettingsPage> {
             setState(() {
               _downloadProgress = progress;
             });
+            _downloadProgressNotifier.value = progress;
             debugPrint('📊 Progreso: ${(progress * 100).toStringAsFixed(0)}%');
           }
         },
@@ -480,7 +578,7 @@ class _SettingsPage extends State<SettingsPage> {
 
       // Cerrar diálogo de progreso
       if (mounted) {
-        Navigator.of(context).pop();
+        _closeDownloadDialogIfOpen();
       }
 
       // Instalar el APK
@@ -490,7 +588,7 @@ class _SettingsPage extends State<SettingsPage> {
       debugPrint('   Stack trace: $stackTrace');
 
       if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        _closeDownloadDialogIfOpen();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -511,50 +609,91 @@ class _SettingsPage extends State<SettingsPage> {
           _isDownloading = false;
           _downloadProgress = 0.0;
         });
+        _downloadProgressNotifier.value = 0.0;
       }
+    }
+  }
+
+  void _closeDownloadDialogIfOpen() {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
   // Construir diálogo de descarga con progreso
   Widget _buildDownloadDialog(String version) {
-    return StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.download, color: Colors.blue),
-              SizedBox(width: 10),
-              Text('Descargando actualización'),
-            ],
-          ),
-          content: Column(
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final isDark = themeProvider.isDarkMode;
+
+    return AlertDialog(
+      backgroundColor: isDark ? Color(0xFF2C2C2C) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      contentPadding: EdgeInsets.all(20),
+      content: ValueListenableBuilder<double>(
+        valueListenable: _downloadProgressNotifier,
+        builder: (context, progress, _) {
+          return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Versión: $version', style: TextStyle(fontSize: 14)),
-              SizedBox(height: 20),
-              LinearProgressIndicator(
-                value: _downloadProgress,
-                backgroundColor: Colors.grey.shade300,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              Icon(
+                Icons.cloud_download_rounded,
+                color: Colors.blue,
+                size: MediaQuery.of(context).size.width * 0.25,
               ),
-              SizedBox(height: 10),
+              SizedBox(height: 12),
               Text(
-                '${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                'Descargando',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Versión $version',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                ),
+              ),
+              SizedBox(height: 20),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 12,
+                  backgroundColor:
+                      isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '${(progress * 100).toStringAsFixed(0)}%',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: 24,
                   color: Colors.blue,
                 ),
               ),
-              SizedBox(height: 10),
+              SizedBox(height: 8),
               Text(
                 'Por favor espera...',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 13,
+                ),
               ),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
