@@ -234,6 +234,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   bool _playerIsOnTrack = true; // Si el jugador está tocando correctamente
 
   // Configuración del juego
+  static const int _firstNoteAppearDelayMs = 1000;
   static const double noteSpeed =
       150.0; // REDUCIDO: pixels por segundo para mejor control
   @Deprecated(
@@ -241,6 +242,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // ignore: unused_field
   static const double hitTolerance =
       80.0; // AUMENTADO: Tolerancia para hits más fáciles con la nueva velocidad
+  int _songTimelineOriginMs = 0;
+  int _scheduledLastNoteEndMs = 0;
+  int _fallToHitCenterMs = 0;
 
   // Sistema de recompensas fijas para nivel principiante según tabla
   // Canciones Fáciles: 10 monedas, Medias: 15 monedas, Difíciles: 20 monedas
@@ -1679,6 +1683,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   // Generar notas basadas en los datos de la base de datos
   void _spawnNotes() {
     gameStartTime = DateTime.now().millisecondsSinceEpoch;
+    _songTimelineOriginMs = 0;
+    _scheduledLastNoteEndMs = 0;
+    _fallToHitCenterMs = 0;
     print('🕒 Game start time: $gameStartTime');
 
     if (songNotes.isNotEmpty) {
@@ -1696,23 +1703,42 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   void _spawnNotesFromDatabase() {
     print('🎯 Programming all ${songNotes.length} notes after countdown');
 
-    // Calcular tiempo de caída una sola vez
-    final screenHeight = MediaQuery.of(context).size.height;
-    final fallDistance = screenHeight * 1.3;
-    final fallTimeMs = (fallDistance / noteSpeed * 1000).round();
+    final orderedNotes = [...songNotes]
+      ..sort((a, b) => a.startTimeMs.compareTo(b.startTimeMs));
 
-    print(
-        '📐 Fall time calculated: ${fallTimeMs}ms for ${fallDistance}px at ${noteSpeed}px/s');
+    _songTimelineOriginMs =
+        orderedNotes.isNotEmpty ? orderedNotes.first.startTimeMs : 0;
+    _scheduledLastNoteEndMs = 0;
+
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final initialY = -screenHeight * 0.3;
+    final hitZoneCenterY = _getHitZoneCenterY(screenHeight, screenWidth);
+    final distanceToHitCenter =
+        (hitZoneCenterY - (initialY + 30)).clamp(0.0, 1e9);
+    _fallToHitCenterMs = (distanceToHitCenter / noteSpeed * 1000).round();
+
+    print('🕒 Timeline origin (first start_time_ms): $_songTimelineOriginMs');
+    print('⏱️ First note will appear after ${_firstNoteAppearDelayMs}ms');
+    print('⬇️ Fall to hit center: ${_fallToHitCenterMs}ms');
 
     // Programar cada nota individualmente con Timer.delayed
-    for (int i = 0; i < songNotes.length; i++) {
-      final songNote = songNotes[i];
-      final noteAppearTime = songNote.startTimeMs - fallTimeMs;
-      final scheduledAppearTime = noteAppearTime < 0 ? 0 : noteAppearTime;
+    for (int i = 0; i < orderedNotes.length; i++) {
+      final songNote = orderedNotes[i];
+      final normalizedStartMs =
+          (songNote.startTimeMs - _songTimelineOriginMs).clamp(0, 1 << 30);
+      final scheduledAppearTime = _firstNoteAppearDelayMs + normalizedStartMs;
+      final scheduledHitTime = scheduledAppearTime + _fallToHitCenterMs;
+      final noteEndTime = scheduledHitTime + songNote.durationMs;
+      if (noteEndTime > _scheduledLastNoteEndMs) {
+        _scheduledLastNoteEndMs = noteEndTime;
+      }
 
       print('📅 Programming note ${i + 1}: ${songNote.noteName}');
-      print('  - DB hit time: ${songNote.startTimeMs}ms');
+      print('  - DB start_time_ms: ${songNote.startTimeMs}ms');
+      print('  - Normalized start: ${normalizedStartMs}ms');
       print('  - Will appear at: ${scheduledAppearTime}ms');
+      print('  - Expected hit at: ${scheduledHitTime}ms');
 
       // Programar la aparición de la nota con Timer.delayed y guardar referencia
       final timer = Timer(Duration(milliseconds: scheduledAppearTime), () {
@@ -1725,6 +1751,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
 
     print('🏁 All ${songNotes.length} notes programmed successfully');
+    print('🕒 Scheduled song end at: ${_scheduledLastNoteEndMs}ms');
   }
 
   // Spawn individual de una nota con posicionamiento basado en tiempo
@@ -1898,7 +1925,19 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     // El juego termina EXACTAMENTE cuando acaba la duración completa de la última nota
     // Sin buffer adicional - solo el tiempo exacto que dura el sonido
-    final expectedEndTime = lastNoteTime + lastNoteDuration;
+    final expectedEndTime = _scheduledLastNoteEndMs > 0
+        ? _scheduledLastNoteEndMs
+        : (lastNoteTime + lastNoteDuration);
+
+    final hasPendingSpawnTimers =
+        _scheduledNoteTimers.any((timer) => timer.isActive);
+    final hasActiveFallingNotes =
+        fallingNotes.any((note) => !note.isHit && !note.isMissed);
+
+    if (hasPendingSpawnTimers || hasActiveFallingNotes) {
+      return;
+    }
+
     final gameTimePassed = currentGameTime >= expectedEndTime;
 
     if (gameTimePassed) {
@@ -2577,6 +2616,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     if (noteToPlay == null && songNotes.isNotEmpty) {
       for (var songNote in songNotes) {
         if (_exactPistonMatchForSong(songNote, pressedPistons)) {
+          if (songNote.noteUrl == null || songNote.noteUrl!.isEmpty) {
+            continue;
+          }
           noteToPlay = songNote;
           print('🎵 Found exact match in database: ${noteToPlay.noteName}');
           break;
@@ -2717,7 +2759,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         final localFile = File(cachedData['path']);
         await NoteAudioService.playNoteFromUrl(
           localFile.path,
-          noteId: note.chromaticId?.toString(),
+          noteId: '${note.chromaticId}_${note.startTimeMs}',
           durationMs: note.durationMs,
         );
         print('✅ Audio played from cache: ${note.noteName}');
@@ -2726,7 +2768,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         print('⬇️ Cache miss, playing from URL: ${note.noteName}');
         await NoteAudioService.playNoteFromUrl(
           normalizedUrl,
-          noteId: note.chromaticId?.toString(),
+          noteId: '${note.chromaticId}_${note.startTimeMs}',
           durationMs: note.durationMs,
         );
         print('✅ Audio played from URL: ${note.noteName}');
@@ -2738,7 +2780,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       try {
         await NoteAudioService.playNoteFromUrl(
           normalizedUrl,
-          noteId: note.chromaticId?.toString(),
+          noteId: '${note.chromaticId}_${note.startTimeMs}',
           durationMs: note.durationMs,
         );
         print('✅ Final fallback successful for: ${note.noteName}');
