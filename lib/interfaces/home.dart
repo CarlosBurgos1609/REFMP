@@ -64,10 +64,16 @@ class _HomePageState extends State<HomePage>
   bool _hasCheckedForUpdates = false;
   bool _checkingUpdate = false;
   String _currentVersion = '';
+  bool _pageControllerInitialized = false;
+  bool _gamesPageControllerInitialized = false;
+  bool _autoScrollStarted = false;
+  bool _gamesAutoScrollStarted = false;
   final ValueNotifier<double?> _downloadProgressNotifier =
       ValueNotifier<double?>(0.0);
   final ValueNotifier<int> _downloadedBytesNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> _downloadTotalBytesNotifier = ValueNotifier<int>(0);
+  CancelToken? _apkDownloadCancelToken;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -90,19 +96,33 @@ class _HomePageState extends State<HomePage>
     });
 
     _pageController = PageController(viewportFraction: 0.9);
+    _pageControllerInitialized = true;
     _startAutoScroll();
+    _autoScrollStarted = true;
 
     _gamesPageController = PageController(viewportFraction: 0.95);
+    _gamesPageControllerInitialized = true;
     _startAutoScrollGames();
+    _gamesAutoScrollStarted = true;
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
+    _apkDownloadCancelToken?.cancel('HomePage disposed');
     _connectivitySubscription?.cancel();
-    _timer.cancel();
-    _pageController.dispose();
-    _gamesTimer.cancel();
-    _gamesPageController.dispose();
+    if (_autoScrollStarted) {
+      _timer.cancel();
+    }
+    if (_pageControllerInitialized) {
+      _pageController.dispose();
+    }
+    if (_gamesAutoScrollStarted) {
+      _gamesTimer.cancel();
+    }
+    if (_gamesPageControllerInitialized) {
+      _gamesPageController.dispose();
+    }
     _downloadProgressNotifier.dispose();
     _downloadedBytesNotifier.dispose();
     _downloadTotalBytesNotifier.dispose();
@@ -716,12 +736,19 @@ class _HomePageState extends State<HomePage>
 
       debugPrint('✅ Permisos verificados, iniciando descarga...');
 
-      setState(() {
-        _downloadProgress = 0.0;
-      });
-      _downloadProgressNotifier.value = 0.0;
-      _downloadedBytesNotifier.value = 0;
-      _downloadTotalBytesNotifier.value = 0;
+      _apkDownloadCancelToken?.cancel('Starting a new download');
+      _apkDownloadCancelToken = CancelToken();
+
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _downloadProgress = 0.0;
+        });
+      }
+      if (!_isDisposed) {
+        _downloadProgressNotifier.value = 0.0;
+        _downloadedBytesNotifier.value = 0;
+        _downloadTotalBytesNotifier.value = 0;
+      }
 
       // Mostrar diálogo de progreso
       showDialog(
@@ -751,20 +778,25 @@ class _HomePageState extends State<HomePage>
         apkUrl,
         filePath,
         onReceiveProgress: (received, total) {
+          if (_isDisposed) return;
+
           _downloadedBytesNotifier.value = received;
           _downloadTotalBytesNotifier.value = total;
 
           if (total != -1) {
             final progress = received / total;
-            setState(() {
-              _downloadProgress = progress;
-            });
+            if (mounted) {
+              setState(() {
+                _downloadProgress = progress;
+              });
+            }
             _downloadProgressNotifier.value = progress;
           } else {
             // Sin content-length: mostrar barra indeterminada para indicar actividad.
             _downloadProgressNotifier.value = null;
           }
         },
+        cancelToken: _apkDownloadCancelToken,
         options: Options(
           followRedirects: true,
           receiveTimeout: Duration(minutes: 5),
@@ -780,7 +812,13 @@ class _HomePageState extends State<HomePage>
 
       // Instalar el APK
       await _installApk(filePath);
+      _apkDownloadCancelToken = null;
     } catch (e) {
+      if (e is DioException && CancelToken.isCancel(e)) {
+        debugPrint('ℹ️ Descarga cancelada por dispose/navegación');
+        return;
+      }
+
       debugPrint('❌ Error al descargar/instalar: $e');
       if (mounted) {
         _closeDownloadDialogIfOpen();
@@ -793,14 +831,17 @@ class _HomePageState extends State<HomePage>
         );
       }
     } finally {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() {
           _downloadProgress = 0.0;
         });
+      }
+      if (!_isDisposed) {
         _downloadProgressNotifier.value = 0.0;
         _downloadedBytesNotifier.value = 0;
         _downloadTotalBytesNotifier.value = 0;
       }
+      _apkDownloadCancelToken = null;
     }
   }
 

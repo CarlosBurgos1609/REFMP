@@ -119,27 +119,89 @@ class _PlayPageState extends State<PlayPage> {
   Future<String> _downloadAndCacheMp3(String url, String songId) async {
     final box = Hive.box('offline_data');
     final cacheKey = 'mp3_$songId';
-    final cachedPath = box.get(cacheKey);
+    final metadataKey = 'mp3_meta_$songId';
+    final normalizedUrl = url.trim();
 
-    if (cachedPath != null && await File(cachedPath).exists()) {
-      debugPrint('Usando MP3 en caché: $cachedPath');
+    if (normalizedUrl.isEmpty) {
+      throw Exception('URL de MP3 vacia para songId=$songId');
+    }
+
+    final dynamic metadata = box.get(metadataKey);
+    final dynamic legacyCachedPath = box.get(cacheKey);
+
+    String? cachedPath;
+    String? cachedUrl;
+
+    if (metadata is Map) {
+      cachedPath = metadata['path']?.toString();
+      cachedUrl = metadata['url']?.toString();
+    }
+
+    // Compatibilidad con cache antiguo (solo path).
+    if ((cachedPath == null || cachedPath.isEmpty) &&
+        legacyCachedPath is String) {
+      cachedPath = legacyCachedPath;
+    }
+
+    // Si existe metadata y la URL no cambió, usar cache local.
+    if (cachedPath != null &&
+        cachedPath.isNotEmpty &&
+        cachedUrl == normalizedUrl &&
+        await File(cachedPath).exists()) {
+      debugPrint('Usando MP3 en caché (sin cambios): $cachedPath');
       return cachedPath;
     }
 
+    // Si la URL cambió, eliminar archivo anterior para forzar actualización.
+    if (cachedPath != null &&
+        cachedPath.isNotEmpty &&
+        cachedUrl != null &&
+        cachedUrl != normalizedUrl) {
+      try {
+        final oldFile = File(cachedPath);
+        if (await oldFile.exists()) {
+          await oldFile.delete();
+          debugPrint('MP3 cache anterior eliminado (URL cambió): $cachedPath');
+        }
+      } catch (e) {
+        debugPrint('No se pudo eliminar MP3 anterior: $e');
+      }
+    }
+
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http
+          .get(Uri.parse(normalizedUrl))
+          .timeout(const Duration(seconds: 20));
+
       if (response.statusCode == 200) {
         final dir = await getApplicationDocumentsDirectory();
         final filePath = '${dir.path}/$songId.mp3';
         final file = File(filePath);
         await file.writeAsBytes(response.bodyBytes);
+
+        // Mantener clave antigua por compatibilidad.
         await box.put(cacheKey, filePath);
+        await box.put(metadataKey, {
+          'path': filePath,
+          'url': normalizedUrl,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        });
+
         debugPrint('MP3 descargado y almacenado en: $filePath');
         return filePath;
       } else {
         throw Exception('Error al descargar MP3: ${response.statusCode}');
       }
     } catch (e) {
+      // Fallback: si hay cache legacy y existe archivo, usarlo para no romper reproducción.
+      if (cachedPath != null &&
+          cachedPath.isNotEmpty &&
+          await File(cachedPath).exists()) {
+        debugPrint(
+            'Error al actualizar MP3; usando cache existente: $cachedPath');
+        return cachedPath;
+      }
+
       debugPrint('Error downloading MP3: $e');
       rethrow;
     }

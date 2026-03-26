@@ -9,6 +9,25 @@ class DatabaseService {
   // Getter público para acceder al cliente desde otros servicios
   static SupabaseClient get supabase => _supabase;
 
+  // Obtener la URL mp3_file de una canción.
+  static Future<String?> getSongMp3File(String songId) async {
+    try {
+      final response = await _supabase
+          .from('songs')
+          .select('mp3_file')
+          .eq('id', songId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      final mp3 = response['mp3_file']?.toString().trim();
+      if (mp3 == null || mp3.isEmpty) return null;
+      return mp3;
+    } catch (e) {
+      print('❌ Error getting song mp3_file: $e');
+      return null;
+    }
+  }
+
   // Obtener todas las notas de una canción ordenadas por tiempo de inicio
   static Future<List<SongNote>> getSongNotes(String songId) async {
     try {

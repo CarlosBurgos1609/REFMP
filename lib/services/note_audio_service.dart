@@ -13,6 +13,12 @@ class NoteAudioService {
   // Variables para control de duración y flujo continuo
   static Timer? _durationTimer;
   static int _playbackToken = 0;
+  static int _currentTimedNoteEndEpochMs = 0;
+  static const double _defaultPlaybackVolume = 1.0;
+  static const int _softFadeDurationMs = 90;
+  static const int _softFadeSteps = 5;
+  static const int _minimumAudibleDurationMs = 180;
+  static const int _hardCutThresholdMs = 25;
   static bool _isPlayingContinuous = false;
   static String? _currentContinuousNote;
   static Set<int> _currentPistonCombination = {};
@@ -471,6 +477,28 @@ class NoteAudioService {
     }
   }
 
+  static Future<void> _fadeOutAndStop({
+    int durationMs = _softFadeDurationMs,
+    int steps = _softFadeSteps,
+  }) async {
+    final state = _audioPlayer.state;
+    if (state != PlayerState.playing && state != PlayerState.paused) {
+      return;
+    }
+
+    final safeSteps = steps <= 0 ? 1 : steps;
+    final stepDelayMs = (durationMs / safeSteps).round().clamp(5, 60);
+
+    for (int i = 1; i <= safeSteps; i++) {
+      final volume = _defaultPlaybackVolume * (1 - (i / safeSteps));
+      await _audioPlayer.setVolume(volume.clamp(0.0, 1.0));
+      await Future.delayed(Duration(milliseconds: stepDelayMs));
+    }
+
+    await _audioPlayer.stop();
+    await _audioPlayer.setVolume(_defaultPlaybackVolume);
+  }
+
   // Reproducir una nota desde su URL (con caché automático y control de duración)
   static Future<void> playNoteFromUrl(String? noteUrl,
       {String? noteId, int? durationMs}) async {
@@ -497,6 +525,13 @@ class NoteAudioService {
       print(
           '🎵 Playing note from URL: $normalizedUrl${durationMs != null ? ' (duration: ${durationMs}ms)' : ''}');
 
+      // Algunas notas en BD llegan con duración demasiado corta y suenan "cortadas".
+      final int? effectiveDurationMs = (durationMs != null && durationMs > 0)
+          ? (durationMs < _minimumAudibleDurationMs
+              ? _minimumAudibleDurationMs
+              : durationMs)
+          : null;
+
       String? audioPath;
 
       // Cada reproducción invalida timers de notas previas para evitar cortes cruzados.
@@ -520,21 +555,44 @@ class NoteAudioService {
 
       // ARREGLADO: Solo detener si no hay audio continuo o si la duración está especificada
       if (durationMs != null || !_isPlayingContinuous) {
-        await _audioPlayer.stop();
-        print('🔇 Stopped previous audio for timed playback');
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final remainingMs = _currentTimedNoteEndEpochMs - now;
+        final shouldFadeTransition = remainingMs > _hardCutThresholdMs;
+
+        if (shouldFadeTransition) {
+          final dynamicFadeMs = remainingMs > _softFadeDurationMs
+              ? _softFadeDurationMs
+              : remainingMs;
+          await _fadeOutAndStop(durationMs: dynamicFadeMs);
+          print('🎚️ Applied fade-out transition before next note');
+        } else {
+          await _audioPlayer.stop();
+          print('🔇 Hard stop for timed playback (note exceeded duration)');
+        }
       }
+
+      await _audioPlayer.setVolume(_defaultPlaybackVolume);
 
       // Reproducir desde archivo local
       await _audioPlayer.play(DeviceFileSource(audioPath));
       print('🎵 Playing audio from: $audioPath');
 
+      if (effectiveDurationMs != null && effectiveDurationMs > 0) {
+        _currentTimedNoteEndEpochMs =
+            DateTime.now().millisecondsSinceEpoch + effectiveDurationMs;
+      } else {
+        _currentTimedNoteEndEpochMs = 0;
+      }
+
       // Si se especifica duración, programar corte automático
-      if (durationMs != null && durationMs > 0) {
-        _durationTimer = Timer(Duration(milliseconds: durationMs), () async {
+      if (effectiveDurationMs != null && effectiveDurationMs > 0) {
+        _durationTimer =
+            Timer(Duration(milliseconds: effectiveDurationMs), () async {
           // Solo detener si este timer sigue siendo el de la reproducción actual.
           if (currentPlaybackToken == _playbackToken && !_isPlayingContinuous) {
             await _stopCurrentAudio();
-            print('⏰ Audio stopped automatically after ${durationMs}ms');
+            print(
+                '⏰ Audio stopped automatically after ${effectiveDurationMs}ms');
           }
         });
       }
@@ -593,6 +651,8 @@ class NoteAudioService {
       // Cancelar timer de duración
       _durationTimer?.cancel();
       _durationTimer = null;
+      _currentTimedNoteEndEpochMs = 0;
+      await _audioPlayer.setVolume(_defaultPlaybackVolume);
 
       // Reset estado continuo
       _isPlayingContinuous = false;
@@ -617,6 +677,8 @@ class NoteAudioService {
       // Cancelar timer de duración si existe
       _durationTimer?.cancel();
       _durationTimer = null;
+      _currentTimedNoteEndEpochMs = 0;
+      await _audioPlayer.setVolume(_defaultPlaybackVolume);
 
       // Reset continuous play state only if explicitly stopping
       if (_isPlayingContinuous) {
