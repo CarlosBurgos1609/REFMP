@@ -179,6 +179,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   static const double _noteHeadHeight = 60.0;
   static const double _maxSustainTailPx = 420.0;
   static const bool _useTrackOnlyMode = true;
+  // ignore: unused_field
   static const int _trackPenaltyDurationMs = 500;
   static const double _trackPenaltyVolume = 0.06;
   static const double _trackPenaltyPlaybackRate = 1.0;
