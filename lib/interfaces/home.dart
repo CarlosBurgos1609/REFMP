@@ -49,11 +49,11 @@ class _HomePageState extends State<HomePage>
   final supabase = Supabase.instance.client;
 
   late final PageController _pageController;
-  late Timer _timer;
+  Timer? _timer;
   int _currentPage = 0;
 
   late final PageController _gamesPageController;
-  late Timer _gamesTimer;
+  Timer? _gamesTimer;
   int _currentGamePage = 0;
 
   List<dynamic> sedes = [];
@@ -66,8 +66,6 @@ class _HomePageState extends State<HomePage>
   String _currentVersion = '';
   bool _pageControllerInitialized = false;
   bool _gamesPageControllerInitialized = false;
-  bool _autoScrollStarted = false;
-  bool _gamesAutoScrollStarted = false;
   final ValueNotifier<double?> _downloadProgressNotifier =
       ValueNotifier<double?>(0.0);
   final ValueNotifier<int> _downloadedBytesNotifier = ValueNotifier<int>(0);
@@ -87,7 +85,9 @@ class _HomePageState extends State<HomePage>
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen((result) async {
       if (!mounted) return;
-      if (result != ConnectivityResult.none) {
+      final hasConnection =
+          result.any((status) => status != ConnectivityResult.none);
+      if (hasConnection) {
         // Conexión restaurada, recarga los datos
         await fetchSedes();
         await fetchGamesData();
@@ -98,12 +98,13 @@ class _HomePageState extends State<HomePage>
     _pageController = PageController(viewportFraction: 0.9);
     _pageControllerInitialized = true;
     _startAutoScroll();
-    _autoScrollStarted = true;
 
     _gamesPageController = PageController(viewportFraction: 0.95);
     _gamesPageControllerInitialized = true;
-    _startAutoScrollGames();
-    _gamesAutoScrollStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isDisposed) return;
+      _startAutoScrollGames();
+    });
   }
 
   @override
@@ -111,15 +112,11 @@ class _HomePageState extends State<HomePage>
     _isDisposed = true;
     _apkDownloadCancelToken?.cancel('HomePage disposed');
     _connectivitySubscription?.cancel();
-    if (_autoScrollStarted) {
-      _timer.cancel();
-    }
+    _timer?.cancel();
     if (_pageControllerInitialized) {
       _pageController.dispose();
     }
-    if (_gamesAutoScrollStarted) {
-      _gamesTimer.cancel();
-    }
+    _gamesTimer?.cancel();
     if (_gamesPageControllerInitialized) {
       _gamesPageController.dispose();
     }
@@ -131,8 +128,9 @@ class _HomePageState extends State<HomePage>
   }
 
   void _startAutoScroll() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
-      if (!mounted) return; // <-- Agregado
+      if (!mounted || _isDisposed) return;
       if (sedes.isNotEmpty) {
         if (_currentPage < sedes.length - 1) {
           _currentPage++;
@@ -152,22 +150,31 @@ class _HomePageState extends State<HomePage>
   }
 
   void _startAutoScrollGames() {
+    _gamesTimer?.cancel();
     _gamesTimer = Timer.periodic(const Duration(seconds: 3), (Timer timer) {
-      if (!mounted) return; // <-- Agregado
-      if (games.isNotEmpty) {
+      if (!mounted || _isDisposed) return;
+      try {
+        if (games.isEmpty || !_gamesPageController.hasClients) return;
+
         if (_currentGamePage < games.length - 1) {
           _currentGamePage++;
         } else {
           _currentGamePage = 0;
         }
-        if (_gamesPageController.hasClients) {
-          // <-- Chequeo correcto
-          _gamesPageController.animateToPage(
-            _currentGamePage,
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.easeInOut,
-          );
-        }
+
+        _gamesPageController
+            .animateToPage(
+              _currentGamePage,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
+            )
+            .catchError((Object e, StackTrace st) {
+              debugPrint('AutoScrollGames animateToPage error: $e');
+              debugPrintStack(stackTrace: st);
+            });
+      } catch (e, st) {
+        debugPrint('AutoScrollGames timer error: $e');
+        debugPrintStack(stackTrace: st);
       }
     });
   }
