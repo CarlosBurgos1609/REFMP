@@ -151,6 +151,21 @@ class NotificationService {
     }
   }
 
+  /// Reintenta asociar el token FCM al usuario actual (útil justo después de login).
+  static Future<void> syncTokenWithCurrentUser() async {
+    try {
+      final token = await _firebaseMessaging.getToken();
+      if (token == null || token.isEmpty) {
+        debugPrint('⚠️ No hay token FCM para sincronizar');
+        return;
+      }
+
+      await _saveFCMToken(token);
+    } catch (e) {
+      debugPrint('❌ Error sincronizando token FCM con usuario actual: $e');
+    }
+  }
+
   /// Inicia el polling automático cada 30 segundos
   static void startPolling() {
     if (_isPollingActive) {
@@ -320,6 +335,20 @@ class NotificationService {
     try {
       final supabase = Supabase.instance.client;
 
+      // Ruta principal: Edge Function que persiste user_notifications y envía FCM.
+      final edgeResponse = await supabase.functions.invoke(
+        'send-push-notification',
+        body: {'notificationId': notificationId},
+      );
+
+      if (edgeResponse.status >= 200 && edgeResponse.status < 300) {
+        debugPrint('✅ Push enviado por Edge Function: ${edgeResponse.data}');
+        return;
+      }
+
+      debugPrint(
+          '⚠️ Edge Function devolvió status ${edgeResponse.status}. Activando fallback local.');
+
       // 1. Obtener la notificación creada
       // ignore: unused_local_variable
       final notification = await supabase
@@ -352,7 +381,8 @@ class NotificationService {
 
       await supabase.from('user_notifications').insert(userNotifications);
 
-      debugPrint('✅ Notificación enviada a ${tokens.length} usuarios');
+      debugPrint(
+          '✅ Fallback completado: notificación guardada para ${tokens.length} usuarios');
     } catch (e) {
       debugPrint('❌ Error enviando notificaciones a usuarios: $e');
     }

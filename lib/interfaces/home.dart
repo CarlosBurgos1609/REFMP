@@ -164,14 +164,14 @@ class _HomePageState extends State<HomePage>
 
         _gamesPageController
             .animateToPage(
-              _currentGamePage,
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeInOut,
-            )
+          _currentGamePage,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+        )
             .catchError((Object e, StackTrace st) {
-              debugPrint('AutoScrollGames animateToPage error: $e');
-              debugPrintStack(stackTrace: st);
-            });
+          debugPrint('AutoScrollGames animateToPage error: $e');
+          debugPrintStack(stackTrace: st);
+        });
       } catch (e, st) {
         debugPrint('AutoScrollGames timer error: $e');
         debugPrintStack(stackTrace: st);

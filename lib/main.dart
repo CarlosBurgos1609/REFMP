@@ -197,6 +197,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // Esperar un poco para que el contexto esté completamente inicializado
       await Future.delayed(const Duration(seconds: 1));
 
+      // Asegura que el token FCM quede asociado al usuario autenticado.
+      await NotificationService.syncTokenWithCurrentUser();
+
       // Verificar si hay notificaciones pendientes usando el método estático
       await NotificationPage.checkAndShowNotifications();
 
