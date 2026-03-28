@@ -183,7 +183,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   static const int _trackPenaltyDurationMs = 500;
   static const double _trackPenaltyVolume = 0.06;
   static const double _trackPenaltyPlaybackRate = 1.0;
-  static const int _countdownLeadStartMs = 1000;
   static const int _openNoteAutoHitWindowMs = 90;
   static const int _pistonTransitionMissGraceMs = 170;
   static const double _continuousHitCenterLockRatio = 0.60;
@@ -255,7 +254,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   String? _songTrackLocalPath;
   bool _isSongTrackPlaying = false;
   bool _countdownWasStarted = false;
-  bool _trackStartedDuringCountdown = false;
 
   // Configuración del juego
   static const int _firstNoteAppearDelayMs = 1000;
@@ -281,9 +279,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   int get _effectiveFirstNoteAppearDelayMs {
-    if (_useTrackOnlyMode && _trackStartedDuringCountdown) {
-      return (_firstNoteAppearDelayMs - _countdownLeadStartMs).clamp(0, 60000);
-    }
     return _firstNoteAppearDelayMs;
   }
 
@@ -1793,7 +1788,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     setState(() {
       _countdownWasStarted = true;
-      _trackStartedDuringCountdown = false;
       countdownNumber = 3;
       showLogo = false;
       showCountdown = true;
@@ -1810,16 +1804,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
           countdownNumber = nextValue;
         });
 
-        if (_useTrackOnlyMode && nextValue == 1 && !_isSongTrackPlaying) {
-          _trackStartedDuringCountdown = true;
-          _startSongTrackNow();
-        }
-
         if (nextValue <= 0) {
           timer.cancel();
           setState(() {
             showCountdown = false;
           });
+
+          if (_useTrackOnlyMode && !_isSongTrackPlaying) {
+            unawaited(_startSongTrackNow());
+          }
+
           // Iniciar el juego Guitar Hero
           _startGame();
         }
@@ -1928,8 +1922,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _spawnNotes();
     if (_useTrackOnlyMode) {
       if (!_isSongTrackPlaying) {
-        _trackStartedDuringCountdown = false;
-        _scheduleSongTrackStart();
+        unawaited(_startSongTrackNow());
       }
     } else {
       _scheduleSongTrackStart();
