@@ -254,6 +254,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   String? _songTrackLocalPath;
   bool _isSongTrackPlaying = false;
   bool _countdownWasStarted = false;
+  bool _isPreparingTrackAfterCountdown = false;
 
   // Configuración del juego
   static const int _firstNoteAppearDelayMs = 1000;
@@ -1807,18 +1808,33 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
         if (nextValue <= 0) {
           timer.cancel();
           setState(() {
-            showCountdown = false;
+            _isPreparingTrackAfterCountdown = true;
           });
 
-          if (_useTrackOnlyMode && !_isSongTrackPlaying) {
-            unawaited(_startSongTrackNow());
-          }
-
-          // Iniciar el juego Guitar Hero
-          _startGame();
+          // Al terminar el countdown: iniciar pista primero y luego el juego.
+          unawaited(_startTrackThenGameAfterCountdown());
         }
       }
     });
+  }
+
+  Future<void> _startTrackThenGameAfterCountdown() async {
+    try {
+      if (_useTrackOnlyMode) {
+        await _ensureSongTrackReady();
+        await _startSongTrackNow();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPreparingTrackAfterCountdown = false;
+          showCountdown = false;
+        });
+      }
+    }
+
+    if (!mounted) return;
+    _startGame(startTrackIfNeeded: false);
   }
 
   void _initializeAnimations() {
@@ -1836,14 +1852,16 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   // Iniciar el juego Guitar Hero
-  void _startGame() {
+  void _startGame({bool startTrackIfNeeded = true}) {
     print('🎮 Starting game...');
 
     // Si aún está cargando, esperar un poco
     if (isLoadingSong) {
       print('⏳ Still loading song data, waiting...');
       Timer(const Duration(milliseconds: 500), () {
-        if (mounted) _startGame();
+        if (mounted) {
+          _startGame(startTrackIfNeeded: startTrackIfNeeded);
+        }
       });
       return;
     }
@@ -1921,7 +1939,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     _spawnNotes();
     if (_useTrackOnlyMode) {
-      if (!_isSongTrackPlaying) {
+      if (startTrackIfNeeded && !_isSongTrackPlaying) {
         unawaited(_startSongTrackNow());
       }
     } else {
@@ -2573,6 +2591,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     setState(() {
       showCountdown = true;
       countdownNumber = 3;
+      _isPreparingTrackAfterCountdown = false;
     });
     _startCountdown();
   }
@@ -3367,6 +3386,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   }
 
   Widget _buildCountdownScreen() {
+    final bool preparingTrack = _isPreparingTrackAfterCountdown;
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -3403,23 +3424,47 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   child: child,
                 );
               },
-              child: Text(
-                countdownNumber > 0 ? '$countdownNumber' : '¡Comienza!',
-                key: ValueKey<String>(
-                    countdownNumber > 0 ? '$countdownNumber' : 'start'),
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 120,
-                  fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(
-                      color: Colors.blue.withOpacity(0.8),
-                      blurRadius: 20,
-                      offset: const Offset(0, 0),
+              child: preparingTrack
+                  ? Column(
+                      key: const ValueKey<String>('preparing_track'),
+                      children: const [
+                        SizedBox(
+                          width: 72,
+                          height: 72,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 6,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        SizedBox(height: 24),
+                        Text(
+                          'Preparando pista...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      countdownNumber > 0 ? '$countdownNumber' : '¡Comienza!',
+                      key: ValueKey<String>(
+                          countdownNumber > 0 ? '$countdownNumber' : 'start'),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 120,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            color: Colors.blue.withOpacity(0.8),
+                            blurRadius: 20,
+                            offset: const Offset(0, 0),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
             ),
           ],
         ),
