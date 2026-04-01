@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:refmp/edit/edit_music.dart';
 import 'package:refmp/details/instrumentsDetails.dart';
 import 'package:refmp/games/learning.dart';
 import 'package:refmp/games/scens_game/begginer_game.dart';
@@ -39,6 +40,7 @@ class _PlayPageState extends State<PlayPage> {
   List<dynamic> levels = [];
   bool isLoading = true;
   bool isFavorite = false;
+  bool _isAdmin = false;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool isPlaying = false;
@@ -62,6 +64,7 @@ class _PlayPageState extends State<PlayPage> {
   @override
   void initState() {
     super.initState();
+    _loadAdminStatus();
     _initializeHiveAndFetch();
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() {
@@ -113,6 +116,39 @@ class _PlayPageState extends State<PlayPage> {
     } catch (e) {
       debugPrint('Error en verificación de internet: $e');
       return false;
+    }
+  }
+
+  Future<void> _loadAdminStatus() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        if (mounted) {
+          setState(() {
+            _isAdmin = false;
+          });
+        }
+        return;
+      }
+
+      final response = await supabase
+          .from('users')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _isAdmin = response != null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading admin status: $e');
+      if (mounted) {
+        setState(() {
+          _isAdmin = false;
+        });
+      }
     }
   }
 
@@ -1194,6 +1230,53 @@ class _PlayPageState extends State<PlayPage> {
                                   },
                                 ),
                               ),
+                              if (_isAdmin) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 16, horizontal: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                    label: const Text(
+                                      'Editar canción',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    onPressed: song == null
+                                        ? null
+                                        : () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    EditMusicPage(
+                                                  songId:
+                                                      song!['id'].toString(),
+                                                  initialSongData:
+                                                      Map<String, dynamic>.from(
+                                                          song!),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 20),
                               const Divider(color: Colors.blue, thickness: 2),
                               const SizedBox(height: 10),
