@@ -257,7 +257,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   bool _isPreparingTrackAfterCountdown = false;
 
   // Configuración del juego
-  static const int _firstNoteAppearDelayMs = 1000;
+  // No artificial lead-in: the track starts right when countdown finishes.
+  static const int _firstNoteAppearDelayMs = 0;
   static const double noteSpeed =
       150.0; // REDUCIDO: pixels por segundo para mejor control
   @Deprecated(
@@ -584,8 +585,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     if (!_useTrackOnlyMode) return;
     if (_songTrackUrl == null && _songTrackLocalPath == null) return;
 
-    final startDelayMs =
-        (_effectiveFirstNoteAppearDelayMs + _fallToHitCenterMs).clamp(0, 60000);
+    // Align track t=0 with the first hit timeline origin used by notes.
+    final startDelayMs = _effectiveFirstNoteAppearDelayMs.clamp(0, 60000);
     _songTrackStartTimer = Timer(Duration(milliseconds: startDelayMs), () {
       if (isGameActive && !isGamePaused) {
         _startSongTrackNow();
@@ -1940,7 +1941,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     _spawnNotes();
     if (_useTrackOnlyMode) {
       if (startTrackIfNeeded && !_isSongTrackPlaying) {
-        unawaited(_startSongTrackNow());
+        _scheduleSongTrackStart();
       }
     } else {
       _scheduleSongTrackStart();

@@ -16,7 +16,7 @@ class EditMusicPage extends StatefulWidget {
   final String? initialSongName;
   final Map<String, dynamic>? initialSongData;
 
-  EditMusicPage({
+  const EditMusicPage({
     super.key,
     required this.songId,
     this.initialSongName,
@@ -60,15 +60,19 @@ class _EditMusicPageState extends State<EditMusicPage> {
   double _timelineViewportWidth = 0;
   bool _isNotesStep = false;
   bool _isDraggingNote = false;
-  String? _draggingNoteId;
+  String? _activeDraggedNoteId;
+  String? _pressedNoteId;
+  Timer? _noteHoldTimer;
+  double? _lastDragGlobalX;
+  DateTime _ignoreTapUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String _songImageUrl = '';
 
-  // Same lead-in used by beginner game before first note hit.
-  static int _gameLeadInMs = 1000;
+  // Keep editor timeline in absolute song time (no fixed artificial lead-in).
+  static const int _gameLeadInMs = 0;
 
-  static double _timelineScale = 0.12;
-  static double _laneHeight = 86;
-  static double _timelinePadding = 24;
+  static const double _timelineScale = 0.12;
+  static const double _laneHeight = 86;
+  static const double _timelinePadding = 24;
 
   @override
   void initState() {
@@ -100,6 +104,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
 
   @override
   void dispose() {
+    _noteHoldTimer?.cancel();
     _setPortraitMode();
     _audioPlayer.dispose();
     _timelineScrollController.dispose();
@@ -181,7 +186,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
           song['time_signature']?.toString() ?? '4/4';
       _bpm = _parseInt(song['bpm']) ?? 120;
       _beatsPerMeasure =
-          _parseTimeSignature(song['time_signature']?.toString()) ?? 4;
+          _parseTimeSignature(song['time_signature']?.toString());
 
       final notes = await DatabaseService.getSongNotes(widget.songId);
       _notes
@@ -357,7 +362,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
     final source = _mp3Controller.text.trim();
     if (source.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No hay archivo mp3 para reproducir.')),
+        const SnackBar(content: Text('No hay archivo mp3 para reproducir.')),
       );
       return;
     }
@@ -466,17 +471,17 @@ class _EditMusicPageState extends State<EditMusicPage> {
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: Text('Cancelar cambios'),
-              content: Text(
+              title: const Text('Cancelar cambios'),
+              content: const Text(
                   'Se cerrara el editor sin guardar los cambios. Deseas continuar?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: Text('No'),
+                  child: const Text('No'),
                 ),
                 ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: Text('Si, salir'),
+                  child: const Text('Si, salir'),
                 ),
               ],
             );
@@ -589,23 +594,23 @@ class _EditMusicPageState extends State<EditMusicPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Guardar cambios'),
-          content: Text(
+          title: const Text('Guardar cambios'),
+          content: const Text(
             'Elige cómo quieres guardar la edición de la canción y sus notas.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancelar'),
+              child: const Text('Cancelar'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop('stay'),
               child:
-                  Text('Guardar notas de la canción y seguir editando'),
+                  const Text('Guardar notas de la canción y seguir editando'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop('exit'),
-              child: Text('Guardar todos los cambios y salir'),
+              child: const Text('Guardar todos los cambios y salir'),
             ),
           ],
         );
@@ -649,6 +654,109 @@ class _EditMusicPageState extends State<EditMusicPage> {
     setState(() {});
   }
 
+  void _startNoteLongPressDrag(_EditableSongNote note, double globalX) {
+    setState(() {
+      _isDraggingNote = true;
+      _activeDraggedNoteId = note.id;
+      _lastDragGlobalX = globalX;
+      _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 350));
+    });
+  }
+
+  void _updateNoteLongPressDrag(_EditableSongNote note, double globalX) {
+    if (_activeDraggedNoteId != note.id) return;
+    final previousX = _lastDragGlobalX ?? globalX;
+    final deltaDx = globalX - previousX;
+    _lastDragGlobalX = globalX;
+
+    if (deltaDx.abs() < 0.1) return;
+    _moveNote(note, deltaDx);
+  }
+
+  void _endNoteLongPressDrag(_EditableSongNote note) {
+    if (_activeDraggedNoteId != note.id) return;
+    setState(() {
+      _isDraggingNote = false;
+      _activeDraggedNoteId = null;
+      _pressedNoteId = null;
+      _lastDragGlobalX = null;
+      _ignoreTapUntil = DateTime.now().add(const Duration(milliseconds: 180));
+    });
+  }
+
+  void _cancelPendingNoteHold() {
+    _noteHoldTimer?.cancel();
+    _noteHoldTimer = null;
+  }
+
+  void _onNotePointerDown(
+    _EditableSongNote note,
+    PointerDownEvent event,
+    double visualWidth,
+    bool isThinNote,
+  ) {
+    final localX = event.localPosition.dx;
+    final onResizeHandle =
+        !isThinNote && (localX <= 22 || localX >= (visualWidth - 22));
+    if (onResizeHandle) return;
+
+    _cancelPendingNoteHold();
+    _pressedNoteId = note.id;
+    _lastDragGlobalX = event.position.dx;
+
+    _noteHoldTimer = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted || _pressedNoteId != note.id) return;
+      _startNoteLongPressDrag(note, event.position.dx);
+    });
+  }
+
+  void _onNotePointerMove(_EditableSongNote note, PointerMoveEvent event) {
+    if (_activeDraggedNoteId != note.id) return;
+    _updateNoteLongPressDrag(note, event.position.dx);
+  }
+
+  void _onNotePointerUp(_EditableSongNote note) {
+    _cancelPendingNoteHold();
+
+    final isDraggingThisNote = _activeDraggedNoteId == note.id;
+    final wasPressedThisNote = _pressedNoteId == note.id;
+    _pressedNoteId = null;
+
+    if (isDraggingThisNote) {
+      _endNoteLongPressDrag(note);
+      return;
+    }
+
+    if (wasPressedThisNote) {
+      _onNoteTap(note);
+    }
+  }
+
+  void _onNotePointerCancel(_EditableSongNote note) {
+    _cancelPendingNoteHold();
+
+    if (_activeDraggedNoteId == note.id) {
+      _endNoteLongPressDrag(note);
+      return;
+    }
+
+    if (_pressedNoteId == note.id) {
+      _pressedNoteId = null;
+    }
+  }
+
+  bool _shouldHandleTapOnNote() {
+    return DateTime.now().isAfter(_ignoreTapUntil);
+  }
+
+  void _onNoteTap(_EditableSongNote note) {
+    if (!_shouldHandleTapOnNote()) return;
+    _showNoteEditor(
+      note: note,
+      isNew: note.isNew,
+    );
+  }
+
   void _resizeNoteEnd(_EditableSongNote note, double deltaDx) {
     final deltaMs = (deltaDx / _timelineScale).round();
     note.durationMs = math.max(1, note.durationMs + deltaMs);
@@ -686,422 +794,207 @@ class _EditMusicPageState extends State<EditMusicPage> {
     _timelineScrollController.jumpTo(target.toDouble());
   }
 
-  void _beginNoteDrag(_EditableSongNote note) {
-    setState(() {
-      _draggingNoteId = note.id;
-      _isDraggingNote = true;
-    });
-  }
+  Future<void> _showNoteEditor({
+    required _EditableSongNote note,
+    required bool isNew,
+  }) async {
+    if (_chromaticOptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No hay notas cromáticas disponibles para este instrumento.'),
+        ),
+      );
+      return;
+    }
 
-  void _updateNoteDrag(_EditableSongNote note, Offset delta) {
-    _moveNote(note, delta.dx);
-  }
+    late ChromaticNote selectedChromatic;
+    selectedChromatic =
+        _findChromaticById(note.chromaticId) ?? _chromaticOptions.first;
+    final startController =
+        TextEditingController(text: note.startTimeMs.toString());
+    final durationController =
+        TextEditingController(text: note.durationMs.toString());
 
-  void _endNoteDrag() {
-    if (!mounted) return;
-    setState(() {
-      _draggingNoteId = null;
-      _isDraggingNote = false;
-    });
-  }
-
-  Widget _buildNotesTimeline() {
-    final noteCount = math.max(_notes.length, 1);
-    final estimatedHeight = math.max(320.0,
-        (noteCount > 2 ? 2 : noteCount) * _laneHeight + _timelinePadding * 2);
-    final timelineWidth = math.max(
-      MediaQuery.of(context).size.width - 32,
-      (_songDurationMs * _timelineScale) + 120,
-    );
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.blue.withOpacity(0.6), width: 2),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final compactHeader = constraints.maxWidth < 520;
-              if (compactHeader) {
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                     Text(
-                      '| Notas de la canción',
+                    const Text(
+                      'Editar nota',
                       style: TextStyle(
-                        color: Colors.blue,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _hasAudioSource ? _playFromHitLine : null,
-                      icon: Icon(Icons.play_arrow, size: 18),
-                      label: Text('Desde línea roja'),
-                    ),
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '| Notas de la canción',
-                      style: TextStyle(
                         color: Colors.blue,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _hasAudioSource ? _playFromHitLine : null,
-                    icon: Icon(Icons.play_arrow),
-                    label: Text('Desde línea roja'),
-                  ),
-                ],
-              );
-            },
-          ),
-          SizedBox(height: 12),
-          if (_notes.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
-              ),
-              child: Text(
-                'La canción no tiene notas. Usa Agregar para crear la primera nota.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14),
-              ),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                _timelineViewportWidth = constraints.maxWidth;
-                return SizedBox(
-                  width: constraints.maxWidth,
-                  height: estimatedHeight,
-                  child: Stack(
-                    children: [
-                      SingleChildScrollView(
-                        controller: _timelineScrollController,
-                        scrollDirection: Axis.horizontal,
-                        child: SizedBox(
-                          width: timelineWidth,
-                          height: estimatedHeight,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  painter: _TimelineGridPainter(
-                                    beatsPerMeasure: _beatsPerMeasure,
-                                    bpm: _parseInt(_bpmController.text) ?? _bpm,
-                                    maxDurationMs: _songDurationMs,
-                                    scale: _timelineScale,
-                                  ),
-                                ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<int>(
+                      value: selectedChromatic.id,
+                      decoration: const InputDecoration(
+                        labelText: 'Nota',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _chromaticOptions
+                          .map(
+                            (chromatic) => DropdownMenuItem<int>(
+                              value: chromatic.id,
+                              child: Text(
+                                '${chromatic.englishName} (${chromatic.spanishName})',
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              ..._notes.asMap().entries.map((entry) {
-                                final index = entry.key;
-                                final note = entry.value;
-                                final lane = index % 2;
-                                final top =
-                                    _timelinePadding + (lane * _laneHeight);
-                                final left =
-                                    (note.startTimeMs + _gameLeadInMs) *
-                                        _timelineScale;
-                                final visualWidth =
-                                    _noteVisualWidth(note.durationMs);
-                                final touchWidth = math.max(28.0, visualWidth);
-                                final chromatic = note.chromaticNote ??
-                                    _findChromaticById(note.chromaticId);
-                                final color =
-                                    chromatic?.noteColor ?? Colors.blue;
-                                final showTiming = note.durationMs >= 1500;
-                                final isThinNote = note.durationMs <= 1000;
-                                final canDrag = note.durationMs > 1000;
-                                final isActiveDrag = _draggingNoteId == note.id;
-
-                                return Positioned(
-                                  left: left,
-                                  top: top,
-                                  child: AnimatedScale(
-                                    duration: Duration(milliseconds: 120),
-                                    scale: isActiveDrag ? 1.04 : 1.0,
-                                    child: SizedBox(
-                                      width: touchWidth,
-                                      height: 68,
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => _showNoteEditor(
-                                          note: note,
-                                          isNew: note.isNew,
-                                        ),
-                                        onHorizontalDragStart: canDrag
-                                            ? (_) => _beginNoteDrag(note)
-                                            : null,
-                                        onHorizontalDragUpdate: canDrag
-                                            ? (details) => _updateNoteDrag(
-                                                  note,
-                                                  details.delta,
-                                                )
-                                            : null,
-                                        onHorizontalDragEnd: canDrag
-                                            ? (_) => _endNoteDrag()
-                                            : null,
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: AnimatedContainer(
-                                            duration: Duration(
-                                                milliseconds: 120),
-                                            width: visualWidth,
-                                            height: 68,
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: isThinNote ? 2 : 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: color.withOpacity(0.92),
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                              border: Border.all(
-                                                color: isActiveDrag
-                                                    ? Colors.white
-                                                    : Colors.transparent,
-                                                width: 2,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.18),
-                                                  blurRadius: 6,
-                                                  offset: Offset(0, 3),
-                                                ),
-                                              ],
-                                            ),
-                                            child: isThinNote
-                                                ? Center(
-                                                    child: Text(
-                                                      chromatic?.englishName ??
-                                                          'Nota',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 12,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                  )
-                                                : Row(
-                                                    children: [
-                                                      GestureDetector(
-                                                        behavior:
-                                                            HitTestBehavior
-                                                                .opaque,
-                                                        onHorizontalDragStart:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                true;
-                                                          });
-                                                        },
-                                                        onHorizontalDragUpdate:
-                                                            (details) =>
-                                                                _resizeNoteStart(
-                                                          note,
-                                                          details.delta.dx,
-                                                        ),
-                                                        onHorizontalDragEnd:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                false;
-                                                          });
-                                                        },
-                                                        child: SizedBox(
-                                                          width: 16,
-                                                          child: Icon(
-                                                            Icons.drag_handle,
-                                                            color: Colors.white,
-                                                            size: 16,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        child: Center(
-                                                          child: Column(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .center,
-                                                            children: [
-                                                              Text(
-                                                                chromatic?.englishName ??
-                                                                    'Nota',
-                                                                style:
-                                                                    TextStyle(
-                                                                  color: Colors
-                                                                      .white,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontSize: 13,
-                                                                ),
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                              if (showTiming) ...[
-                                                                SizedBox(
-                                                                    height: 2),
-                                                                Text(
-                                                                  'start_time: ${note.startTimeMs} ms',
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: Colors
-                                                                        .white,
-                                                                    fontSize:
-                                                                        11,
-                                                                  ),
-                                                                  maxLines: 1,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                ),
-                                                                Text(
-                                                                  'duracion: ${note.durationMs} ms',
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: Colors
-                                                                        .white,
-                                                                    fontSize:
-                                                                        11,
-                                                                  ),
-                                                                  maxLines: 1,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                ),
-                                                              ],
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      GestureDetector(
-                                                        behavior:
-                                                            HitTestBehavior
-                                                                .opaque,
-                                                        onHorizontalDragStart:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                true;
-                                                          });
-                                                        },
-                                                        onHorizontalDragUpdate:
-                                                            (details) =>
-                                                                _resizeNoteEnd(
-                                                          note,
-                                                          details.delta.dx,
-                                                        ),
-                                                        onHorizontalDragEnd:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                false;
-                                                          });
-                                                        },
-                                                        child: SizedBox(
-                                                          width: 16,
-                                                          child: Icon(
-                                                            Icons.drag_handle,
-                                                            color: Colors.white,
-                                                            size: 16,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }),
-                              Positioned(
-                                left:
-                                    (_flagMs + _gameLeadInMs) * _timelineScale,
-                                top: 0,
-                                bottom: 0,
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber.shade700,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'Bandera',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Container(
-                                        width: 2,
-                                        color: Colors.amber.shade700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        final match = _findChromaticById(value);
+                        if (match != null) {
+                          setModalState(() {
+                            selectedChromatic = match;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: startController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Start time (ms)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: durationController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Duration (ms)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onPressed: () {
+                              final startTime =
+                                  int.tryParse(startController.text.trim()) ??
+                                      note.startTimeMs;
+                              final duration = int.tryParse(
+                                      durationController.text.trim()) ??
+                                  note.durationMs;
+                              setState(() {
+                                note.chromaticId = selectedChromatic.id;
+                                note.chromaticNote = selectedChromatic;
+                                note.startTimeMs = math.max(0, startTime);
+                                note.durationMs = math.max(1, duration);
+                                _syncNoteTiming(note);
+                                _sortNotes();
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Guardar'),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        left: (constraints.maxWidth / 2) - 1,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 2,
-                          color: Colors.redAccent,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _deleteNote(note);
+                            },
+                            child: const Text('Eliminar'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          SizedBox(height: 10),
-          Text(
-            'Línea roja = hit. Arrastra el centro para mover la nota y los extremos para cortar adelante o atrás. Puedes reproducir desde la línea roja.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
-      ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
+  }
+
+  Future<void> _addNote() async {
+    if (_chromaticOptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay notas disponibles para agregar.')),
+      );
+      return;
+    }
+
+    final baseChromatic = _chromaticOptions.first;
+    final lastEnd = _notes.isEmpty
+        ? 0
+        : _notes
+            .map((note) => note.startTimeMs + note.durationMs)
+            .reduce(math.max);
+    final newNote = _EditableSongNote(
+      id: 'new_${DateTime.now().microsecondsSinceEpoch}',
+      songId: widget.songId,
+      startTimeMs: _currentPosition.inMilliseconds > 0
+          ? _currentPosition.inMilliseconds
+          : lastEnd + 500,
+      durationMs: 900,
+      beatPosition: 0,
+      measureNumber: 1,
+      noteType: 'quarter',
+      velocity: 100,
+      chromaticId: baseChromatic.id,
+      chromaticNote: baseChromatic,
+      isNew: true,
+    );
+    _syncNoteTiming(newNote);
+
+    setState(() {
+      _notes.add(newNote);
+      _sortNotes();
+    });
+
+    await _showNoteEditor(note: newNote, isNew: true);
+  }
+
+  Future<void> _deleteNote(_EditableSongNote note) async {
+    setState(() {
+      _notes.removeWhere((item) => item.id == note.id);
+      if (!note.isNew) {
+        _deletedNoteIds.add(note.id);
+      }
+      _reindexMeasureNumbers();
+    });
   }
 
   Widget _buildSongImage() {
@@ -1119,7 +1012,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 width: double.infinity,
-                placeholder: (context, url) => Center(
+                placeholder: (context, url) => const Center(
                   child: CircularProgressIndicator(color: Colors.blue),
                 ),
                 errorWidget: (context, url, error) => Image.asset(
@@ -1146,7 +1039,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           '| Editar canción',
           style: TextStyle(
             color: Colors.blue,
@@ -1154,7 +1047,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         TextFormField(
           controller: _nameController,
           decoration:
@@ -1163,7 +1056,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
               ? 'Ingresa el nombre'
               : null,
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         TextFormField(
           controller: _artistController,
           decoration: _inputDecoration('Artista', Icons.person),
@@ -1171,7 +1064,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
               ? 'Ingresa el artista'
               : null,
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         if (_songFieldKeys.contains('difficulty'))
           DropdownButtonFormField<String>(
             value: currentDifficulty.isEmpty ? null : currentDifficulty,
@@ -1196,14 +1089,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
             controller: _difficultyController,
             decoration: _inputDecoration('Dificultad', Icons.speed_outlined),
           ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         TextFormField(
           controller: _mp3Controller,
           decoration:
               _inputDecoration('URL o ruta de la canción', Icons.audiotrack),
           onChanged: (_) => _updateAudioAvailability(),
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         if (_songFieldKeys.contains('bpm'))
           TextFormField(
             controller: _bpmController,
@@ -1215,7 +1108,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
               });
             },
           ),
-        SizedBox(height: 12),
+        const SizedBox(height: 12),
         if (_songFieldKeys.contains('time_signature'))
           TextFormField(
             controller: _timeSignatureController,
@@ -1235,14 +1128,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
     return InputDecoration(
       labelText: label,
       labelStyle:
-          TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+          const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
       prefixIcon: Icon(icon, color: Colors.blue),
       enabledBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.blue),
+        borderSide: const BorderSide(color: Colors.blue),
         borderRadius: BorderRadius.circular(12),
       ),
       focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.blue, width: 2),
+        borderSide: const BorderSide(color: Colors.blue, width: 2),
         borderRadius: BorderRadius.circular(12),
       ),
     );
@@ -1255,7 +1148,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
     final sliderValue = math.min(positionSeconds, sliderMax);
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.blue.withOpacity(0.6), width: 2),
@@ -1263,7 +1156,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             '| Reproducción',
             style: TextStyle(
               color: Colors.blue,
@@ -1271,12 +1164,12 @@ class _EditMusicPageState extends State<EditMusicPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
-              minimumSize: Size(double.infinity, 48),
+              minimumSize: const Size(double.infinity, 48),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1285,7 +1178,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
             icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
             label: Text(_isPlaying ? 'Pausar' : 'Reproducir canción'),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Slider(
             min: 0,
             max: sliderMax,
@@ -1299,7 +1192,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
           ),
           Text(
             '${_formatDuration(_currentPosition)} / ${_formatDuration(Duration(milliseconds: (totalSeconds * 1000).round()))}',
-            style: TextStyle(fontSize: 13, color: Colors.grey),
+            style: const TextStyle(fontSize: 13, color: Colors.grey),
           ),
         ],
       ),
@@ -1309,7 +1202,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
   Widget _buildFlagCard() {
     return Container(
       width: 250,
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.blue.withOpacity(0.6), width: 2),
@@ -1317,7 +1210,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             '| Bandera de reproducción',
             style: TextStyle(
               color: Colors.blue,
@@ -1325,27 +1218,27 @@ class _EditMusicPageState extends State<EditMusicPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
               'Bandera: ${_formatDuration(Duration(milliseconds: _flagMs))} (${_flagMs} ms)'),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Column(
             children: [
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _hasAudioSource ? _setFlagAtCurrentTime : null,
-                  icon: Icon(Icons.flag),
-                  label: Text('Fijar bandera'),
+                  icon: const Icon(Icons.flag),
+                  label: const Text('Fijar bandera'),
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _hasAudioSource ? _playFromFlag : null,
-                  icon: Icon(Icons.play_arrow),
-                  label: Text('Reproducir desde bandera'),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Reproducir desde bandera'),
                 ),
               ),
             ],
@@ -1366,7 +1259,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.blue.withOpacity(0.6), width: 2),
@@ -1374,64 +1267,36 @@ class _EditMusicPageState extends State<EditMusicPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final compactHeader = constraints.maxWidth < 520;
-              if (compactHeader) {
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      '| Notas de la canción',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _hasAudioSource ? _playFromHitLine : null,
-                      icon: Icon(Icons.play_arrow, size: 18),
-                      label: Text('Desde línea roja'),
-                    ),
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '| Notas de la canción',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '| Notas de la canción',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _hasAudioSource ? _playFromHitLine : null,
-                    icon: Icon(Icons.play_arrow),
-                    label: Text('Desde línea roja'),
-                  ),
-                ],
-              );
-            },
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _hasAudioSource ? _playFromHitLine : null,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Desde línea roja'),
+              ),
+            ],
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           if (_notes.isEmpty)
             Container(
               width: double.infinity,
-              padding: EdgeInsets.all(18),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Colors.blue.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.blue.withOpacity(0.3)),
               ),
-              child: Text(
+              child: const Text(
                 'La canción no tiene notas. Usa Agregar para crear la primera nota.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14),
@@ -1481,223 +1346,205 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                 final color =
                                     chromatic?.noteColor ?? Colors.blue;
                                 final showTiming = note.durationMs >= 1500;
-                                final isThinNote = note.durationMs <= 1000;
-                                final canDrag = note.durationMs > 1000;
-                                final isActiveDrag = _draggingNoteId == note.id;
+                                final isThinNote = note.durationMs < 1500;
+                                final isActiveDrag =
+                                    _activeDraggedNoteId == note.id;
 
                                 return Positioned(
                                   left: left,
                                   top: top,
-                                  child: AnimatedScale(
-                                    duration: Duration(milliseconds: 120),
-                                    scale: isActiveDrag ? 1.04 : 1.0,
-                                    child: AnimatedContainer(
-                                      duration:
-                                          Duration(milliseconds: 120),
-                                      curve: Curves.easeOut,
-                                      width: touchWidth,
-                                      height: 68,
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => _showNoteEditor(
-                                          note: note,
-                                          isNew: note.isNew,
-                                        ),
-                                        onLongPressStart: canDrag
-                                            ? (_) => _beginNoteDrag(note)
-                                            : null,
-                                        onLongPressMoveUpdate:
-                                            canDrag && isActiveDrag
-                                                ? (details) =>
-                                                    _updateNoteDrag(
-                                                  note,
-                                                  details.localOffsetFromOrigin,
-                                                )
-                                                : null,
-                                        onLongPressEnd:
-                                            canDrag && isActiveDrag
-                                                ? (_) => _endNoteDrag()
-                                                : null,
+                                  child: Listener(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPointerDown: (event) =>
+                                        _onNotePointerDown(
+                                      note,
+                                      event,
+                                      visualWidth,
+                                      isThinNote,
+                                    ),
+                                    onPointerMove: (event) =>
+                                        _onNotePointerMove(note, event),
+                                    onPointerUp: (_) => _onNotePointerUp(note),
+                                    onPointerCancel: (_) =>
+                                        _onNotePointerCancel(note),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      child: SizedBox(
+                                        width: touchWidth,
+                                        height: 68,
                                         child: Align(
                                           alignment: Alignment.centerLeft,
-                                          child: AnimatedContainer(
-                                            duration: Duration(
-                                                milliseconds: 120),
-                                            width: visualWidth,
-                                            height: 68,
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: isThinNote ? 2 : 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: color.withOpacity(0.92),
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                              border: Border.all(
-                                                color: isActiveDrag
-                                                    ? Colors.white
-                                                    : Colors.transparent,
-                                                width: 2,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.18),
-                                                  blurRadius: 6,
-                                                  offset: Offset(0, 3),
-                                                ),
-                                              ],
-                                            ),
-                                            child: isThinNote
-                                                ? Center(
-                                                    child: Text(
-                                                      chromatic?.englishName ??
-                                                          'Nota',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 12,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
+                                          child: AnimatedScale(
+                                            scale: isActiveDrag ? 1.1 : 1.0,
+                                            duration: const Duration(
+                                                milliseconds: 140),
+                                            curve: Curves.easeOutCubic,
+                                            child: Container(
+                                              width: visualWidth,
+                                              height: 68,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6),
+                                              decoration: BoxDecoration(
+                                                color: color.withOpacity(0.92),
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(
+                                                      isActiveDrag
+                                                          ? 0.28
+                                                          : 0.18,
                                                     ),
-                                                  )
-                                                : Row(
-                                                    children: [
-                                                      GestureDetector(
-                                                        behavior:
-                                                            HitTestBehavior
-                                                                .opaque,
-                                                        onHorizontalDragStart:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                true;
-                                                          });
-                                                        },
-                                                        onHorizontalDragUpdate:
-                                                            (details) =>
-                                                                _resizeNoteStart(
-                                                          note,
-                                                          details.delta.dx,
-                                                        ),
-                                                        onHorizontalDragEnd:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                false;
-                                                          });
-                                                        },
-                                                        child: SizedBox(
-                                                          width: 16,
-                                                          child: Icon(
-                                                            Icons.drag_handle,
-                                                            color: Colors.white,
-                                                            size: 16,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        child: Center(
-                                                          child: Column(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .center,
-                                                            children: [
-                                                              Text(
-                                                                chromatic?.englishName ??
-                                                                    'Nota',
-                                                                style:
-                                                                    TextStyle(
-                                                                  color: Colors
-                                                                      .white,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  fontSize: 13,
-                                                                ),
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                              if (showTiming) ...[
-                                                                SizedBox(
-                                                                    height: 2),
-                                                                Text(
-                                                                  'start_time: ${note.startTimeMs} ms',
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: Colors
-                                                                        .white,
-                                                                    fontSize:
-                                                                        11,
-                                                                  ),
-                                                                  maxLines: 1,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                ),
-                                                                Text(
-                                                                  'duracion: ${note.durationMs} ms',
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: Colors
-                                                                        .white,
-                                                                    fontSize:
-                                                                        11,
-                                                                  ),
-                                                                  maxLines: 1,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                ),
-                                                              ],
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      GestureDetector(
-                                                        behavior:
-                                                            HitTestBehavior
-                                                                .opaque,
-                                                        onHorizontalDragStart:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                true;
-                                                          });
-                                                        },
-                                                        onHorizontalDragUpdate:
-                                                            (details) =>
-                                                                _resizeNoteEnd(
-                                                          note,
-                                                          details.delta.dx,
-                                                        ),
-                                                        onHorizontalDragEnd:
-                                                            (_) {
-                                                          setState(() {
-                                                            _isDraggingNote =
-                                                                false;
-                                                          });
-                                                        },
-                                                        child: SizedBox(
-                                                          width: 16,
-                                                          child: Icon(
-                                                            Icons.drag_handle,
-                                                            color: Colors.white,
-                                                            size: 16,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
+                                                    blurRadius:
+                                                        isActiveDrag ? 10 : 6,
+                                                    offset: const Offset(0, 3),
                                                   ),
+                                                ],
+                                              ),
+                                              child: isThinNote
+                                                  ? null
+                                                  : Row(
+                                                      children: [
+                                                        GestureDetector(
+                                                          behavior:
+                                                              HitTestBehavior
+                                                                  .opaque,
+                                                          onHorizontalDragStart:
+                                                              (_) {
+                                                            setState(() {
+                                                              _isDraggingNote =
+                                                                  true;
+                                                            });
+                                                          },
+                                                          onHorizontalDragUpdate:
+                                                              (details) =>
+                                                                  _resizeNoteStart(
+                                                            note,
+                                                            details.delta.dx,
+                                                          ),
+                                                          onHorizontalDragEnd:
+                                                              (_) {
+                                                            setState(() {
+                                                              _isDraggingNote =
+                                                                  false;
+                                                            });
+                                                          },
+                                                          child: const SizedBox(
+                                                            width: 18,
+                                                            child: Icon(
+                                                              Icons.drag_handle,
+                                                              color:
+                                                                  Colors.white,
+                                                              size: 16,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          child: Center(
+                                                            child: Column(
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .center,
+                                                              children: [
+                                                                Text(
+                                                                  chromatic
+                                                                          ?.englishName ??
+                                                                      'Nota',
+                                                                  style:
+                                                                      const TextStyle(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    fontSize:
+                                                                        13,
+                                                                  ),
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                ),
+                                                                if (showTiming) ...[
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          2),
+                                                                  Text(
+                                                                    'start_time: ${note.startTimeMs} ms',
+                                                                    style:
+                                                                        const TextStyle(
+                                                                      color: Colors
+                                                                          .white,
+                                                                      fontSize:
+                                                                          11,
+                                                                    ),
+                                                                    maxLines: 1,
+                                                                    overflow:
+                                                                        TextOverflow
+                                                                            .ellipsis,
+                                                                  ),
+                                                                  Text(
+                                                                    'duracion: ${note.durationMs} ms',
+                                                                    style:
+                                                                        const TextStyle(
+                                                                      color: Colors
+                                                                          .white,
+                                                                      fontSize:
+                                                                          11,
+                                                                    ),
+                                                                    maxLines: 1,
+                                                                    overflow:
+                                                                        TextOverflow
+                                                                            .ellipsis,
+                                                                  ),
+                                                                ],
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        GestureDetector(
+                                                          behavior:
+                                                              HitTestBehavior
+                                                                  .opaque,
+                                                          onHorizontalDragStart:
+                                                              (_) {
+                                                            setState(() {
+                                                              _isDraggingNote =
+                                                                  true;
+                                                            });
+                                                          },
+                                                          onHorizontalDragUpdate:
+                                                              (details) =>
+                                                                  _resizeNoteEnd(
+                                                            note,
+                                                            details.delta.dx,
+                                                          ),
+                                                          onHorizontalDragEnd:
+                                                              (_) {
+                                                            setState(() {
+                                                              _isDraggingNote =
+                                                                  false;
+                                                            });
+                                                          },
+                                                          child: const SizedBox(
+                                                            width: 18,
+                                                            child: Icon(
+                                                              Icons.drag_handle,
+                                                              color:
+                                                                  Colors.white,
+                                                              size: 16,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
                                   ),
                                 );
                               }),
@@ -1709,13 +1556,13 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                 child: Column(
                                   children: [
                                     Container(
-                                      padding: EdgeInsets.symmetric(
+                                      padding: const EdgeInsets.symmetric(
                                           horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
                                         color: Colors.amber.shade700,
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: Text(
+                                      child: const Text(
                                         'Bandera',
                                         style: TextStyle(
                                           color: Colors.white,
@@ -1751,9 +1598,9 @@ class _EditMusicPageState extends State<EditMusicPage> {
                 );
               },
             ),
-          SizedBox(height: 10),
-          Text(
-            'Línea roja = hit. Arrastra el centro para mover la nota y los extremos para cortar adelante o atrás. Puedes reproducir desde la línea roja.',
+          const SizedBox(height: 10),
+          const Text(
+            'Línea roja = hit. Mantén presionada la nota para moverla y suéltala para fijar posición. Arrastra los extremos para cortar adelante o atrás. Puedes reproducir desde la línea roja.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ],
@@ -1779,84 +1626,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
         IconButton(
           tooltip: 'Cancelar cambios',
           onPressed: _cancelAndExit,
-          icon: Icon(Icons.cancel, color: Colors.white),
+          icon: const Icon(Icons.cancel, color: Colors.white),
         ),
         IconButton(
           tooltip: 'Guardar',
           onPressed: _isSaving ? null : _showSaveOptionsDialog,
-          icon: Icon(Icons.save, color: Colors.white),
+          icon: const Icon(Icons.save, color: Colors.white),
         ),
-        if (compactActions)
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: Colors.white),
-            onSelected: (value) {
-              if (value == 'start' && _hasAudioSource) {
-                _playFromStart();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem<String>(
-                value: 'start',
-                child: Text('Reproducir desde inicio'),
-              ),
-            ],
-          )
-        else
-          SizedBox(width: 6),
-      ];
-    }
-
-    if (compactActions) {
-      return <Widget>[
-        IconButton(
-          tooltip: 'Cancelar cambios',
-          onPressed: _cancelAndExit,
-          icon: Icon(Icons.cancel, color: Colors.white),
-        ),
-        IconButton(
-          tooltip: 'Guardar',
-          onPressed: _isSaving ? null : _showSaveOptionsDialog,
-          icon: Icon(Icons.save, color: Colors.white),
-        ),
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, color: Colors.white),
-          onSelected: (value) {
-            if (value == 'play' && _hasAudioSource) {
-              _togglePlayback();
-            } else if (value == 'start' && _hasAudioSource) {
-              _playFromStart();
-            } else if (value == 'hit' && _hasAudioSource) {
-              _playFromHitLine();
-            } else if (value == 'flag' && _hasAudioSource) {
-              _setFlagAtCurrentTime();
-            } else if (value == 'add') {
-              _addNote();
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem<String>(
-              value: 'play',
-              child: Text('Reproducir / Pausar'),
-            ),
-            PopupMenuItem<String>(
-              value: 'start',
-              child: Text('Reproducir desde inicio'),
-            ),
-            PopupMenuItem<String>(
-              value: 'hit',
-              child: Text('Reproducir desde línea roja'),
-            ),
-            PopupMenuItem<String>(
-              value: 'flag',
-              child: Text('Fijar bandera actual'),
-            ),
-            PopupMenuItem<String>(
-              value: 'add',
-              child: Text('Agregar nota'),
-            ),
-          ],
-        ),
-        SizedBox(width: 6),
+        const SizedBox(width: 6),
       ];
     }
 
@@ -1864,12 +1641,12 @@ class _EditMusicPageState extends State<EditMusicPage> {
       IconButton(
         tooltip: 'Cancelar cambios',
         onPressed: _cancelAndExit,
-        icon: Icon(Icons.cancel, color: Colors.white),
+        icon: const Icon(Icons.cancel, color: Colors.white),
       ),
       IconButton(
         tooltip: 'Guardar',
         onPressed: _isSaving ? null : _showSaveOptionsDialog,
-        icon: Icon(Icons.save, color: Colors.white),
+        icon: const Icon(Icons.save, color: Colors.white),
       ),
       IconButton(
         tooltip: 'Reproducir',
@@ -1882,7 +1659,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
       IconButton(
         tooltip: 'Agregar nota',
         onPressed: _isNotesStep ? _addNote : null,
-        icon: Icon(Icons.add_circle, color: Colors.white),
+        icon: const Icon(Icons.add_circle, color: Colors.white),
       ),
     ];
 
@@ -1891,29 +1668,62 @@ class _EditMusicPageState extends State<EditMusicPage> {
         IconButton(
           tooltip: 'Reproducir desde línea roja',
           onPressed: _hasAudioSource ? _playFromHitLine : null,
-          icon: Icon(Icons.playlist_play, color: Colors.white),
+          icon: const Icon(Icons.playlist_play, color: Colors.white),
         ),
       );
     }
 
-    actions.add(
-      IconButton(
-        tooltip: 'Reproducir desde inicio',
-        onPressed: _hasAudioSource ? _playFromStart : null,
-        icon: Icon(Icons.restart_alt, color: Colors.white),
-      ),
-    );
-    if (_isNotesStep) {
+    if (!compactActions) {
       actions.add(
         IconButton(
-          tooltip: 'Bandera actual',
-          onPressed: _hasAudioSource ? _setFlagAtCurrentTime : null,
-          icon: Icon(Icons.flag, color: Colors.white),
+          tooltip: 'Reproducir desde inicio',
+          onPressed: _hasAudioSource ? _playFromStart : null,
+          icon: const Icon(Icons.restart_alt, color: Colors.white),
+        ),
+      );
+      if (_isNotesStep) {
+        actions.add(
+          IconButton(
+            tooltip: 'Bandera actual',
+            onPressed: _hasAudioSource ? _setFlagAtCurrentTime : null,
+            icon: const Icon(Icons.flag, color: Colors.white),
+          ),
+        );
+      }
+    } else {
+      actions.add(
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
+          onSelected: (value) {
+            if (value == 'start' && _hasAudioSource) {
+              _playFromStart();
+            } else if (value == 'hit' && _hasAudioSource) {
+              _playFromHitLine();
+            } else if (value == 'flag' && _hasAudioSource) {
+              _setFlagAtCurrentTime();
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem<String>(
+              value: 'start',
+              child: Text('Reproducir desde inicio'),
+            ),
+            if (_isNotesStep)
+              const PopupMenuItem<String>(
+                value: 'hit',
+                child: Text('Reproducir desde línea roja'),
+              ),
+            if (_isNotesStep)
+              const PopupMenuItem<String>(
+                value: 'flag',
+                child: Text('Fijar bandera actual'),
+              ),
+          ],
         ),
       );
     }
 
-    actions.add(SizedBox(width: 6));
+    actions.add(const SizedBox(width: 6));
     return actions;
   }
 
@@ -1928,7 +1738,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
           onPressed: () async {
             if (_isNotesStep) {
               await _goToSongStep();
@@ -1940,25 +1750,25 @@ class _EditMusicPageState extends State<EditMusicPage> {
         title: Text(
           _isNotesStep ? 'Editar notas y pista' : 'Editar canción',
           style:
-              TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         actions: _buildAppBarActions(compactActions),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: Colors.blue))
+          ? const Center(child: CircularProgressIndicator(color: Colors.blue))
           : _songData == null
-              ? Center(child: Text('No se pudo cargar la canción.'))
+              ? const Center(child: Text('No se pudo cargar la canción.'))
               : (!_isNotesStep
                   ? Form(
                       key: _formKey,
                       child: ListView(
-                        padding: EdgeInsets.fromLTRB(12, 110, 12, 24),
+                        padding: const EdgeInsets.fromLTRB(12, 110, 12, 24),
                         children: [
                           _buildSongImage(),
-                          SizedBox(height: 14),
+                          const SizedBox(height: 14),
                           _buildSongFields(),
-                          SizedBox(height: 14),
+                          const SizedBox(height: 14),
                           _buildPlaybackCard(),
                         ],
                       ),
@@ -1968,16 +1778,16 @@ class _EditMusicPageState extends State<EditMusicPage> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           return Padding(
-                            padding: EdgeInsets.fromLTRB(0, 100, 0, 0),
+                            padding: const EdgeInsets.fromLTRB(0, 100, 0, 0),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                SizedBox(width: 8),
+                                const SizedBox(width: 8),
                                 _buildFlagCard(),
-                                SizedBox(width: 10),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Padding(
-                                    padding: EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.only(right: 8),
                                     child: SingleChildScrollView(
                                       child: ConstrainedBox(
                                         constraints: BoxConstraints(
@@ -2000,8 +1810,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
               ? FloatingActionButton.extended(
                   onPressed: _isSaving ? null : _goToNotesStep,
                   backgroundColor: Colors.green,
-                  icon: Icon(Icons.skip_next),
-                  label: Text('Siguiente'),
+                  icon: const Icon(Icons.skip_next),
+                  label: const Text('Siguiente'),
                 )
               : null),
     );
