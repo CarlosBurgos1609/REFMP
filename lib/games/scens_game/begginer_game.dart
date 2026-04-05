@@ -176,7 +176,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   static const double _hitZoneVerticalOffset = 40.0;
   static const double _perfectCenterRatio = 0.05;
   static const double _goodCenterRatio = 0.16;
-  static const double _noteHeadHeight = 60.0;
+  static const double _noteHeadHeight = 52.0;
   static const double _maxSustainTailPx = 420.0;
   static const bool _useTrackOnlyMode = true;
   // ignore: unused_field
@@ -1028,7 +1028,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   double _getHitZoneHeight(double screenHeight, double screenWidth) {
     final isTablet = screenWidth > 600;
     final isSmallPhone = screenHeight < 700;
-    return isSmallPhone ? 100.0 : (isTablet ? 140.0 : 120.0);
+    return isSmallPhone ? 82.0 : (isTablet ? 106.0 : 92.0);
   }
 
   double _getHitZoneY(double screenHeight, double screenWidth) {
@@ -4349,21 +4349,8 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Widget _buildHitZone() {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-
-    // Detectar si es tablet o celular para ajustar tamaño
-    final isTablet = screenWidth > 600;
     final isSmallPhone = screenHeight < 700;
-
-    // Tamaño responsive de la zona de hit
-    double hitZoneHeight;
-
-    if (isSmallPhone) {
-      hitZoneHeight = 100; // Zona más compacta para celulares pequeños
-    } else if (isTablet) {
-      hitZoneHeight = 140; // Zona más grande para tablets
-    } else {
-      hitZoneHeight = 120; // Tamaño estándar para celulares normales
-    }
+    final hitZoneHeight = _getHitZoneHeight(screenHeight, screenWidth);
 
     // Ajuste un poco más arriba respecto al valor anterior.
     final hitZoneY = _getHitZoneY(screenHeight, screenWidth);
@@ -4546,7 +4533,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               height: _noteHeadHeight,
               decoration: BoxDecoration(
                 color: displayColor,
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(_noteHeadHeight / 2),
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
@@ -4561,7 +4548,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   note.displayText,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: note.displayText.length > 8 ? 12 : 14,
+                    fontSize: note.displayText.length > 8 ? 11 : 12,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
@@ -4605,7 +4592,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               height: _noteHeadHeight,
               decoration: BoxDecoration(
                 color: displayColor,
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(_noteHeadHeight / 2),
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
@@ -4620,7 +4607,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   note.displayText,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: note.displayText.length > 8 ? 10 : 12,
+                    fontSize: note.displayText.length > 8 ? 9 : 11,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
@@ -4640,7 +4627,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     return SizedBox(
       width: width,
-      height: tailHeight + 40,
+      height: tailHeight + 34,
       child: Stack(
         children: [
           if (tailHeight > 0)
@@ -4661,10 +4648,10 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             top: tailHeight,
             child: Container(
               width: width,
-              height: 40, // Más delgada para notas libres
+              height: 34, // Más delgada para notas libres
               decoration: BoxDecoration(
                 color: displayColor.withOpacity(0.35),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: displayColor, width: 2),
               ),
               child: Center(
@@ -4716,7 +4703,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
               height: _noteHeadHeight,
               decoration: BoxDecoration(
                 color: displayColor,
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(_noteHeadHeight / 2),
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
@@ -4735,7 +4722,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                       note.displayText,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: note.displayText.length > 8 ? 10 : 12,
+                        fontSize: note.displayText.length > 8 ? 9 : 11,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
