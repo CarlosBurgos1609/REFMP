@@ -1792,20 +1792,23 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                               ),
                                               child: isThinNote
                                                   ? Center(
-                                                      child: Text(
-                                                        chromatic
-                                                                ?.englishName ??
-                                                            'Nota',
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize:
-                                                              noteFontSize,
+                                                      child: FittedBox(
+                                                        fit: BoxFit.scaleDown,
+                                                        child: Text(
+                                                          chromatic
+                                                                  ?.englishName ??
+                                                              'Nota',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize:
+                                                                noteFontSize,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
                                                         ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
                                                       ),
                                                     )
                                                   : Row(
@@ -2041,10 +2044,20 @@ class _EditMusicPageState extends State<EditMusicPage> {
 
   double _noteVisualWidth(int durationMs) {
     final safeDurationMs = math.max(1, durationMs);
-    return safeDurationMs * _timelineScale;
+    final rawWidth = safeDurationMs * _timelineScale;
+
+    // Keep very short notes readable (50-190 ms) without changing timing.
+    if (safeDurationMs >= 50 && safeDurationMs <= 190) {
+      return math.max(rawWidth, 22);
+    }
+
+    return rawWidth;
   }
 
   double _noteLabelFontSize(_EditableSongNote note) {
+    if (note.durationMs <= 70) return 7;
+    if (note.durationMs <= 120) return 8;
+    if (note.durationMs <= 190) return 8.5;
     if (note.durationMs <= 200) return 9;
     if (note.durationMs <= 350) return 10;
     if (note.durationMs <= 600) return 11;
