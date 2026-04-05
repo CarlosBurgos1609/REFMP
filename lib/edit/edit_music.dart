@@ -1228,8 +1228,11 @@ class _EditMusicPageState extends State<EditMusicPage> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _hasAudioSource ? _setFlagAtCurrentTime : null,
-                  icon: const Icon(Icons.flag),
-                  label: const Text('Fijar bandera'),
+                  icon: const Icon(Icons.flag, color: Colors.blue),
+                  label: const Text(
+                    'Fijar bandera',
+                    style: TextStyle(color: Colors.blue),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1237,8 +1240,9 @@ class _EditMusicPageState extends State<EditMusicPage> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _hasAudioSource ? _playFromFlag : null,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Reproducir desde bandera'),
+                  icon: const Icon(Icons.play_arrow, color: Colors.amber),
+                  label: const Text('Reproducir desde bandera',
+                      style: TextStyle(color: Colors.amber)),
                 ),
               ),
             ],
@@ -1281,8 +1285,9 @@ class _EditMusicPageState extends State<EditMusicPage> {
               ),
               OutlinedButton.icon(
                 onPressed: _hasAudioSource ? _playFromHitLine : null,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Desde línea roja'),
+                icon: const Icon(Icons.play_arrow, color: Colors.blue),
+                label: const Text('Desde línea roja',
+                    style: TextStyle(color: Colors.blue)),
               ),
             ],
           ),
