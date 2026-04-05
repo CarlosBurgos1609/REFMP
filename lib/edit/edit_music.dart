@@ -46,6 +46,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
   final TextEditingController _bpmController = TextEditingController();
   final TextEditingController _timeSignatureController =
       TextEditingController();
+  final ValueNotifier<double> _saveProgressNotifier =
+      ValueNotifier<double>(0.0);
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -60,12 +62,18 @@ class _EditMusicPageState extends State<EditMusicPage> {
   double _timelineViewportWidth = 0;
   bool _isNotesStep = false;
   bool _isDraggingNote = false;
+  bool _isDraggingHitLine = false;
+  bool _isDraggingFlag = false;
   String? _activeDraggedNoteId;
   String? _pressedNoteId;
   Timer? _noteHoldTimer;
   double? _lastDragGlobalX;
+  double? _lastHitLineDragGlobalX;
+  double? _manualHitLineViewportX;
   DateTime _ignoreTapUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String _songImageUrl = '';
+  bool _isSavingDialogVisible = false;
+  BuildContext? _savingDialogContext;
 
   // Keep editor timeline in absolute song time (no fixed artificial lead-in).
   static const int _gameLeadInMs = 0;
@@ -106,6 +114,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
   void dispose() {
     _noteHoldTimer?.cancel();
     _setPortraitMode();
+    _saveProgressNotifier.dispose();
     _audioPlayer.dispose();
     _timelineScrollController.dispose();
     _nameController.dispose();
@@ -424,19 +433,13 @@ class _EditMusicPageState extends State<EditMusicPage> {
   Future<void> _playFromFlag() async {
     if (!_hasAudioSource) return;
 
-    await _seekPlayback(Duration(milliseconds: _flagMs));
-    if (!_isPlaying) {
-      await _togglePlayback();
-    }
+    await _playFromPlaybackPosition(Duration(milliseconds: _flagMs));
   }
 
   Future<void> _playFromStart() async {
     if (!_hasAudioSource) return;
 
-    await _seekPlayback(Duration.zero);
-    if (!_isPlaying) {
-      await _togglePlayback();
-    }
+    await _playFromPlaybackPosition(Duration.zero);
   }
 
   int _hitLineTimeMs() {
@@ -444,17 +447,133 @@ class _EditMusicPageState extends State<EditMusicPage> {
       return _currentPosition.inMilliseconds.clamp(0, _effectiveDurationMs);
     }
 
-    final hitX =
-        _timelineScrollController.offset + (_timelineViewportWidth / 2);
+    final viewportX = _currentHitLineViewportX(_timelineViewportWidth);
+    final hitX = _timelineScrollController.offset + viewportX;
     final timeMs = (hitX / _timelineScale).round() - _gameLeadInMs;
     return timeMs.clamp(0, _effectiveDurationMs);
+  }
+
+  double _timelineContentWidth(double viewportWidth) {
+    return math.max(viewportWidth, (_songDurationMs * _timelineScale) + 120);
+  }
+
+  double _defaultHitLineViewportX(double viewportWidth) {
+    if (viewportWidth <= 0) return 0;
+
+    if (!_timelineScrollController.hasClients) {
+      return viewportWidth / 2;
+    }
+
+    final timelineX =
+        (_currentPosition.inMilliseconds + _gameLeadInMs) * _timelineScale;
+    final offset = _timelineScrollController.offset;
+    final maxExtent = _timelineScrollController.position.maxScrollExtent;
+    const epsilon = 0.5;
+
+    if (offset <= epsilon) {
+      return timelineX.clamp(0.0, viewportWidth);
+    }
+
+    if (offset >= (maxExtent - epsilon)) {
+      return (timelineX - offset).clamp(0.0, viewportWidth);
+    }
+
+    return viewportWidth / 2;
+  }
+
+  double _currentHitLineViewportX(double viewportWidth) {
+    if (_isDraggingHitLine && _manualHitLineViewportX != null) {
+      return _manualHitLineViewportX!.clamp(0.0, viewportWidth);
+    }
+    return _defaultHitLineViewportX(viewportWidth);
+  }
+
+  bool _canDragHitLineFromEdge() {
+    if (!_timelineScrollController.hasClients) return true;
+    final offset = _timelineScrollController.offset;
+    final maxExtent = _timelineScrollController.position.maxScrollExtent;
+    const epsilon = 0.5;
+    return offset <= epsilon || offset >= (maxExtent - epsilon);
+  }
+
+  Future<void> _onHitLineDragStart(DragStartDetails details) async {
+    if (_timelineViewportWidth <= 0 || !_canDragHitLineFromEdge()) return;
+
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = false;
+      _isDraggingHitLine = true;
+      _lastHitLineDragGlobalX = details.globalPosition.dx;
+      _manualHitLineViewportX =
+          _defaultHitLineViewportX(_timelineViewportWidth);
+    });
+  }
+
+  Future<void> _onHitLineDragUpdate(DragUpdateDetails details) async {
+    if (!_isDraggingHitLine || _manualHitLineViewportX == null) return;
+
+    final previousX = _lastHitLineDragGlobalX ?? details.globalPosition.dx;
+    final deltaDx = details.globalPosition.dx - previousX;
+    _lastHitLineDragGlobalX = details.globalPosition.dx;
+
+    final nextViewportX =
+        (_manualHitLineViewportX! + deltaDx).clamp(0.0, _timelineViewportWidth);
+    final hitX = _timelineScrollController.offset + nextViewportX;
+    final targetMs = ((hitX / _timelineScale).round() - _gameLeadInMs)
+        .clamp(0, _effectiveDurationMs);
+
+    await _seekPlayback(Duration(milliseconds: targetMs));
+
+    if (!mounted) return;
+    setState(() {
+      _manualHitLineViewportX = nextViewportX.toDouble();
+    });
+  }
+
+  void _endHitLineDrag() {
+    if (!_isDraggingHitLine) return;
+    setState(() {
+      _isDraggingHitLine = false;
+      _lastHitLineDragGlobalX = null;
+      _manualHitLineViewportX = null;
+    });
+  }
+
+  void _onFlagDragStart(DragStartDetails details) {
+    setState(() {
+      _isDraggingFlag = true;
+    });
+  }
+
+  void _onFlagDragUpdate(DragUpdateDetails details) {
+    final deltaMs = (details.delta.dx / _timelineScale).round();
+    if (deltaMs == 0) return;
+
+    setState(() {
+      _flagMs = (_flagMs + deltaMs).clamp(0, _effectiveDurationMs);
+    });
+  }
+
+  void _onFlagDragEnd() {
+    if (!_isDraggingFlag) return;
+    setState(() {
+      _isDraggingFlag = false;
+    });
   }
 
   Future<void> _playFromHitLine() async {
     if (!_hasAudioSource) return;
 
     final fromMs = _hitLineTimeMs();
-    await _seekPlayback(Duration(milliseconds: fromMs));
+    await _playFromPlaybackPosition(Duration(milliseconds: fromMs));
+  }
+
+  Future<void> _playFromPlaybackPosition(Duration position) async {
+    await _seekPlayback(position);
     if (!_isPlaying) {
       await _togglePlayback();
     }
@@ -464,169 +583,6 @@ class _EditMusicPageState extends State<EditMusicPage> {
     setState(() {
       _flagMs = _currentPosition.inMilliseconds.clamp(0, _effectiveDurationMs);
     });
-  }
-
-  Future<void> _cancelAndExit() async {
-    final shouldDiscard = await showDialog<bool>(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('Cancelar cambios'),
-              content: const Text(
-                  'Se cerrara el editor sin guardar los cambios. Deseas continuar?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('No'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Si, salir'),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
-
-    if (!shouldDiscard || !mounted) return;
-    await _setPortraitMode();
-    if (!mounted) return;
-    Navigator.pop(context);
-  }
-
-  Future<bool> _saveSong({required bool autoArrangeNotes}) async {
-    if (!_formKey.currentState!.validate()) return false;
-
-    if (autoArrangeNotes) {
-      _autoArrangeNotes();
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      final updateData = <String, dynamic>{};
-
-      if (_songFieldKeys.contains('name')) {
-        updateData['name'] = _nameController.text.trim();
-      }
-      if (_songFieldKeys.contains('artist')) {
-        updateData['artist'] = _artistController.text.trim();
-      }
-      if (_songFieldKeys.contains('difficulty')) {
-        updateData['difficulty'] = _difficultyController.text.trim();
-      }
-      if (_songFieldKeys.contains('mp3_file')) {
-        updateData['mp3_file'] = _mp3Controller.text.trim();
-      }
-      if (_songFieldKeys.contains('bpm')) {
-        updateData['bpm'] = _parseInt(_bpmController.text) ?? _bpm;
-      }
-      if (_songFieldKeys.contains('time_signature')) {
-        updateData['time_signature'] = _timeSignatureController.text.trim();
-      }
-
-      if (updateData.isNotEmpty) {
-        await _supabase
-            .from('songs')
-            .update(updateData)
-            .eq('id', widget.songId);
-      }
-
-      for (final deletedId in _deletedNoteIds) {
-        await _supabase.from('song_notes').delete().eq('id', deletedId);
-      }
-
-      for (final note in _notes) {
-        if (note.isNew) {
-          final inserted = await _supabase
-              .from('song_notes')
-              .insert(note.toInsertMap(widget.songId))
-              .select('id')
-              .single();
-          note.id = inserted['id'].toString();
-          note.isNew = false;
-        } else {
-          await _supabase
-              .from('song_notes')
-              .update(note.toUpdateMap(widget.songId))
-              .eq('id', note.id);
-        }
-      }
-
-      _deletedNoteIds.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              autoArrangeNotes
-                  ? 'Cambios guardados y notas organizadas automáticamente'
-                  : 'Cambios guardados con éxito',
-            ),
-          ),
-        );
-      }
-      return true;
-    } catch (e) {
-      debugPrint('Error saving music editor: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar los cambios: $e')),
-        );
-      }
-      return false;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _showSaveOptionsDialog() async {
-    if (_isSaving) return;
-
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Guardar cambios'),
-          content: const Text(
-            'Elige cómo quieres guardar la edición de la canción y sus notas.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop('stay'),
-              child:
-                  const Text('Guardar notas de la canción y seguir editando'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop('exit'),
-              child: const Text('Guardar todos los cambios y salir'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (action == null) return;
-
-    final saved = await _saveSong(autoArrangeNotes: false);
-    if (!saved || !mounted) return;
-
-    if (action == 'exit') {
-      await _setPortraitMode();
-      if (!mounted) return;
-      Navigator.pop(context);
-    }
   }
 
   void _autoArrangeNotes() {
@@ -687,6 +643,373 @@ class _EditMusicPageState extends State<EditMusicPage> {
   void _cancelPendingNoteHold() {
     _noteHoldTimer?.cancel();
     _noteHoldTimer = null;
+  }
+
+  void _updateSaveProgress(int completedSteps, int totalSteps) {
+    final safeTotal = math.max(1, totalSteps);
+    _saveProgressNotifier.value = (completedSteps / safeTotal).clamp(0.0, 1.0);
+  }
+
+  Future<void> _showSavingProgressDialog() async {
+    if (!mounted || _isSavingDialogVisible) return;
+
+    _saveProgressNotifier.value = 0.0;
+    _isSavingDialogVisible = true;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          _savingDialogContext = dialogContext;
+          final screenSize = MediaQuery.of(dialogContext).size;
+          final dialogIconSize = math.min(
+            92.0,
+            math.max(54.0, screenSize.shortestSide * 0.18),
+          );
+
+          return PopScope(
+            canPop: false,
+            child: Dialog(
+              backgroundColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 340,
+                  maxHeight: screenSize.height * 0.72,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _saveProgressNotifier,
+                    builder: (context, progress, _) {
+                      final percent = (progress * 100).round();
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_rounded,
+                            color: Colors.blue,
+                            size: dialogIconSize,
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Guardando cambios',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Subiendo notas y configuración...',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.grey[700],
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 12,
+                              backgroundColor: isDark
+                                  ? Colors.grey.shade800
+                                  : Colors.grey[300],
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.blue,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '$percent%',
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+  }
+
+  void _closeSavingProgressDialog() {
+    final dialogContext = _savingDialogContext;
+    _savingDialogContext = null;
+    _isSavingDialogVisible = false;
+
+    if (dialogContext != null && dialogContext.mounted) {
+      Navigator.of(dialogContext, rootNavigator: true).pop();
+    }
+  }
+
+  Future<void> _cancelAndExit() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shouldDiscard = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: const [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange, size: 26),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Cancelar cambios',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Se cerrará el editor sin guardar los cambios. ¿Deseas continuar?',
+                style: TextStyle(
+                  color: isDark ? Colors.grey.shade200 : Colors.black87,
+                  height: 1.3,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(
+                    'No',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Si, salir'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (!shouldDiscard || !mounted) return;
+    await _setPortraitMode();
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  Future<bool> _saveSong({required bool autoArrangeNotes}) async {
+    if (!_formKey.currentState!.validate()) return false;
+
+    if (autoArrangeNotes) {
+      _autoArrangeNotes();
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final updateData = <String, dynamic>{};
+      final totalOperations = math.max(
+        1,
+        (_songFieldKeys.isNotEmpty ? 1 : 0) +
+            _deletedNoteIds.length +
+            _notes.length,
+      );
+      var completedOperations = 0;
+
+      _updateSaveProgress(completedOperations, totalOperations);
+
+      if (_songFieldKeys.contains('name')) {
+        updateData['name'] = _nameController.text.trim();
+      }
+      if (_songFieldKeys.contains('artist')) {
+        updateData['artist'] = _artistController.text.trim();
+      }
+      if (_songFieldKeys.contains('difficulty')) {
+        updateData['difficulty'] = _difficultyController.text.trim();
+      }
+      if (_songFieldKeys.contains('mp3_file')) {
+        updateData['mp3_file'] = _mp3Controller.text.trim();
+      }
+      if (_songFieldKeys.contains('bpm')) {
+        updateData['bpm'] = _parseInt(_bpmController.text) ?? _bpm;
+      }
+      if (_songFieldKeys.contains('time_signature')) {
+        updateData['time_signature'] = _timeSignatureController.text.trim();
+      }
+
+      if (updateData.isNotEmpty) {
+        await _supabase
+            .from('songs')
+            .update(updateData)
+            .eq('id', widget.songId);
+        completedOperations++;
+        _updateSaveProgress(completedOperations, totalOperations);
+      }
+
+      for (final deletedId in _deletedNoteIds) {
+        await _supabase.from('song_notes').delete().eq('id', deletedId);
+        completedOperations++;
+        _updateSaveProgress(completedOperations, totalOperations);
+      }
+
+      for (final note in _notes) {
+        if (note.isNew) {
+          final inserted = await _supabase
+              .from('song_notes')
+              .insert(note.toInsertMap(widget.songId))
+              .select('id')
+              .single();
+          note.id = inserted['id'].toString();
+          note.isNew = false;
+        } else {
+          await _supabase
+              .from('song_notes')
+              .update(note.toUpdateMap(widget.songId))
+              .eq('id', note.id);
+        }
+
+        completedOperations++;
+        _updateSaveProgress(completedOperations, totalOperations);
+      }
+
+      _deletedNoteIds.clear();
+      _updateSaveProgress(totalOperations, totalOperations);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              autoArrangeNotes
+                  ? 'Cambios guardados y notas organizadas automáticamente'
+                  : 'Cambios guardados con éxito',
+            ),
+          ),
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error saving music editor: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al guardar los cambios: $e')),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showSaveOptionsDialog() async {
+    if (_isSaving) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: const [
+              Icon(Icons.save_rounded, color: Colors.blue, size: 26),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Guardar cambios',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Elige cómo quieres guardar la edición de la canción y sus notas.',
+            style: TextStyle(
+              color: isDark ? Colors.grey.shade200 : Colors.black87,
+              height: 1.3,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(context).pop('stay'),
+              child:
+                  const Text('Guardar notas de la canción y seguir editando'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(context).pop('exit'),
+              child: const Text('Guardar todos los cambios y salir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (action == null) return;
+
+    await _showSavingProgressDialog();
+    final saved = await _saveSong(autoArrangeNotes: false);
+    _closeSavingProgressDialog();
+    if (!saved || !mounted) return;
+
+    if (action == 'exit') {
+      await _setPortraitMode();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    }
   }
 
   void _onNotePointerDown(
@@ -781,13 +1104,20 @@ class _EditMusicPageState extends State<EditMusicPage> {
   void _syncTimelineToPlayback(int timeMs) {
     if (!_timelineScrollController.hasClients ||
         _timelineViewportWidth <= 0 ||
-        _isDraggingNote) {
+        _isDraggingNote ||
+        _isDraggingHitLine) {
       return;
     }
 
-    final timelineMs = timeMs + _gameLeadInMs;
-    final rawTarget =
-        (timelineMs * _timelineScale) - (_timelineViewportWidth / 2);
+    final contentWidth = _timelineContentWidth(_timelineViewportWidth);
+    final timelineX = (timeMs + _gameLeadInMs) * _timelineScale;
+    final startThreshold = _timelineViewportWidth / 2;
+    final endThreshold = contentWidth - (_timelineViewportWidth / 2);
+    final rawTarget = timelineX <= startThreshold
+        ? 0.0
+        : timelineX >= endThreshold
+            ? _timelineScrollController.position.maxScrollExtent
+            : timelineX - (_timelineViewportWidth / 2);
     final maxExtent = _timelineScrollController.position.maxScrollExtent;
     final target = rawTarget.clamp(0.0, maxExtent);
 
@@ -819,126 +1149,178 @@ class _EditMusicPageState extends State<EditMusicPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 16,
-                right: 16,
-                top: 16,
+            return Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(22)),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Editar nota',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<int>(
-                      value: selectedChromatic.id,
-                      decoration: const InputDecoration(
-                        labelText: 'Nota',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _chromaticOptions
-                          .map(
-                            (chromatic) => DropdownMenuItem<int>(
-                              value: chromatic.id,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.blue.shade900.withOpacity(0.3)
+                              : Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.music_note_rounded, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Expanded(
                               child: Text(
-                                '${chromatic.englishName} (${chromatic.spanishName})',
-                                overflow: TextOverflow.ellipsis,
+                                'Editar nota',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
                               ),
                             ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        final match = _findChromaticById(value);
-                        if (match != null) {
-                          setModalState(() {
-                            selectedChromatic = match;
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: startController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Start time (ms)',
-                        border: OutlineInputBorder(),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: durationController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Duration (ms)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onPressed: () {
-                              final startTime =
-                                  int.tryParse(startController.text.trim()) ??
-                                      note.startTimeMs;
-                              final duration = int.tryParse(
-                                      durationController.text.trim()) ??
-                                  note.durationMs;
-                              setState(() {
-                                note.chromaticId = selectedChromatic.id;
-                                note.chromaticNote = selectedChromatic;
-                                note.startTimeMs = math.max(0, startTime);
-                                note.durationMs = math.max(1, duration);
-                                _syncNoteTiming(note);
-                                _sortNotes();
-                              });
-                              Navigator.pop(context);
-                            },
-                            child: const Text('Guardar'),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        value: selectedChromatic.id,
+                        dropdownColor:
+                            isDark ? const Color(0xFF3B3B3B) : Colors.white,
+                        decoration: InputDecoration(
+                          labelText: 'Nota',
+                          filled: true,
+                          fillColor: isDark ? Colors.grey : Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _deleteNote(note);
-                            },
-                            child: const Text('Eliminar'),
+                        items: _chromaticOptions
+                            .map(
+                              (chromatic) => DropdownMenuItem<int>(
+                                value: chromatic.id,
+                                child: Text(
+                                  '${chromatic.englishName} (${chromatic.spanishName})',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          final match = _findChromaticById(value);
+                          if (match != null) {
+                            setModalState(() {
+                              selectedChromatic = match;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: startController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Start time (ms)',
+                          filled: true,
+                          fillColor: isDark ? Colors.grey : Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: durationController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Duration (ms)',
+                          filled: true,
+                          fillColor: isDark ? Colors.grey : Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () {
+                                final startTime =
+                                    int.tryParse(startController.text.trim()) ??
+                                        note.startTimeMs;
+                                final duration = int.tryParse(
+                                        durationController.text.trim()) ??
+                                    note.durationMs;
+                                setState(() {
+                                  note.chromaticId = selectedChromatic.id;
+                                  note.chromaticNote = selectedChromatic;
+                                  note.startTimeMs = math.max(0, startTime);
+                                  note.durationMs = math.max(1, duration);
+                                  _syncNoteTiming(note);
+                                  _sortNotes();
+                                });
+                                Navigator.pop(context);
+                              },
+                              child: const Text('Guardar'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _deleteNote(note);
+                              },
+                              child: const Text('Eliminar'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1256,9 +1638,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
     final noteCount = math.max(_notes.length, 1);
     final estimatedHeight = math.max(320.0,
         (noteCount > 2 ? 2 : noteCount) * _laneHeight + _timelinePadding * 2);
-    final timelineWidth = math.max(
+    final timelineWidth = _timelineContentWidth(
       MediaQuery.of(context).size.width - 32,
-      (_songDurationMs * _timelineScale) + 120,
     );
 
     return Container(
@@ -1351,9 +1732,10 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                 final color =
                                     chromatic?.noteColor ?? Colors.blue;
                                 final showTiming = note.durationMs >= 1500;
-                                final isThinNote = note.durationMs < 1500;
+                                final isThinNote = note.durationMs < 800;
                                 final isActiveDrag =
                                     _activeDraggedNoteId == note.id;
+                                final noteFontSize = _noteLabelFontSize(note);
 
                                 return Positioned(
                                   left: left,
@@ -1409,7 +1791,23 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                                 ],
                                               ),
                                               child: isThinNote
-                                                  ? null
+                                                  ? Center(
+                                                      child: Text(
+                                                        chromatic
+                                                                ?.englishName ??
+                                                            'Nota',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize:
+                                                              noteFontSize,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    )
                                                   : Row(
                                                       children: [
                                                         GestureDetector(
@@ -1458,14 +1856,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                                                           ?.englishName ??
                                                                       'Nota',
                                                                   style:
-                                                                      const TextStyle(
+                                                                      TextStyle(
                                                                     color: Colors
                                                                         .white,
                                                                     fontWeight:
                                                                         FontWeight
                                                                             .bold,
                                                                     fontSize:
-                                                                        13,
+                                                                        noteFontSize,
                                                                   ),
                                                                   maxLines: 1,
                                                                   overflow:
@@ -1558,31 +1956,46 @@ class _EditMusicPageState extends State<EditMusicPage> {
                                     (_flagMs + _gameLeadInMs) * _timelineScale,
                                 top: 0,
                                 bottom: 0,
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber.shade700,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Text(
-                                        'Bandera',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.translucent,
+                                  onHorizontalDragStart: _onFlagDragStart,
+                                  onHorizontalDragUpdate: _onFlagDragUpdate,
+                                  onHorizontalDragEnd: (_) => _onFlagDragEnd(),
+                                  onHorizontalDragCancel: _onFlagDragEnd,
+                                  child: SizedBox(
+                                    width: 34,
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 1, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: _isDraggingFlag
+                                                ? Colors.yellow
+                                                : Colors.amber.shade700,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'Bandera',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        Expanded(
+                                          child: Container(
+                                            width: 2,
+                                            color: _isDraggingFlag
+                                                ? Colors.yellow
+                                                : Colors.amber.shade700,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    Expanded(
-                                      child: Container(
-                                        width: 2,
-                                        color: Colors.amber.shade700,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -1590,12 +2003,25 @@ class _EditMusicPageState extends State<EditMusicPage> {
                         ),
                       ),
                       Positioned(
-                        left: (constraints.maxWidth / 2) - 1,
+                        left:
+                            _currentHitLineViewportX(constraints.maxWidth) - 12,
                         top: 0,
                         bottom: 0,
-                        child: Container(
-                          width: 2,
-                          color: Colors.redAccent,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: _onHitLineDragStart,
+                          onHorizontalDragUpdate: _onHitLineDragUpdate,
+                          onHorizontalDragEnd: (_) => _endHitLineDrag(),
+                          onHorizontalDragCancel: _endHitLineDrag,
+                          child: SizedBox(
+                            width: 24,
+                            child: Center(
+                              child: Container(
+                                width: 2,
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1605,7 +2031,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
             ),
           const SizedBox(height: 10),
           const Text(
-            'Línea roja = hit. Mantén presionada la nota para moverla y suéltala para fijar posición. Arrastra los extremos para cortar adelante o atrás. Puedes reproducir desde la línea roja.',
+            'Línea roja = hit. Normalmente queda centrada; en el inicio o final puedes mantenerla presionada y arrastrarla para fijar punto exacto. La bandera ahora se puede arrastrar libremente a cualquier punto del timeline. Mantén presionada la nota para moverla y arrastra los extremos para recortar. Puedes reproducir desde la línea roja.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ],
@@ -1618,6 +2044,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
     return safeDurationMs * _timelineScale;
   }
 
+  double _noteLabelFontSize(_EditableSongNote note) {
+    if (note.durationMs <= 200) return 9;
+    if (note.durationMs <= 350) return 10;
+    if (note.durationMs <= 600) return 11;
+    if (note.durationMs < 1500) return 12;
+    return 13;
+  }
+
   String _formatDuration(Duration duration) {
     final totalSeconds = duration.inSeconds;
     final minutes = totalSeconds ~/ 60;
@@ -1625,18 +2059,18 @@ class _EditMusicPageState extends State<EditMusicPage> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  List<Widget> _buildAppBarActions(bool compactActions) {
+  List<Widget> _buildAppBarActions(bool compactActions, Color iconColor) {
     if (!_isNotesStep) {
       return <Widget>[
         IconButton(
           tooltip: 'Cancelar cambios',
           onPressed: _cancelAndExit,
-          icon: const Icon(Icons.cancel, color: Colors.white),
+          icon: Icon(Icons.cancel, color: iconColor),
         ),
         IconButton(
           tooltip: 'Guardar',
           onPressed: _isSaving ? null : _showSaveOptionsDialog,
-          icon: const Icon(Icons.save, color: Colors.white),
+          icon: Icon(Icons.save, color: iconColor),
         ),
         const SizedBox(width: 6),
       ];
@@ -1646,25 +2080,25 @@ class _EditMusicPageState extends State<EditMusicPage> {
       IconButton(
         tooltip: 'Cancelar cambios',
         onPressed: _cancelAndExit,
-        icon: const Icon(Icons.cancel, color: Colors.white),
+        icon: Icon(Icons.cancel, color: iconColor),
       ),
       IconButton(
         tooltip: 'Guardar',
         onPressed: _isSaving ? null : _showSaveOptionsDialog,
-        icon: const Icon(Icons.save, color: Colors.white),
+        icon: Icon(Icons.save, color: iconColor),
       ),
       IconButton(
         tooltip: 'Reproducir',
         onPressed: _hasAudioSource ? _togglePlayback : null,
         icon: Icon(
           _isPlaying ? Icons.pause_circle : Icons.play_circle,
-          color: Colors.white,
+          color: iconColor,
         ),
       ),
       IconButton(
         tooltip: 'Agregar nota',
         onPressed: _isNotesStep ? _addNote : null,
-        icon: const Icon(Icons.add_circle, color: Colors.white),
+        icon: Icon(Icons.add_circle, color: iconColor),
       ),
     ];
 
@@ -1673,7 +2107,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
         IconButton(
           tooltip: 'Reproducir desde línea roja',
           onPressed: _hasAudioSource ? _playFromHitLine : null,
-          icon: const Icon(Icons.playlist_play, color: Colors.white),
+          icon: Icon(Icons.playlist_play, color: iconColor),
         ),
       );
     }
@@ -1683,7 +2117,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
         IconButton(
           tooltip: 'Reproducir desde inicio',
           onPressed: _hasAudioSource ? _playFromStart : null,
-          icon: const Icon(Icons.restart_alt, color: Colors.white),
+          icon: Icon(Icons.restart_alt, color: iconColor),
         ),
       );
       if (_isNotesStep) {
@@ -1691,14 +2125,14 @@ class _EditMusicPageState extends State<EditMusicPage> {
           IconButton(
             tooltip: 'Bandera actual',
             onPressed: _hasAudioSource ? _setFlagAtCurrentTime : null,
-            icon: const Icon(Icons.flag, color: Colors.white),
+            icon: Icon(Icons.flag, color: iconColor),
           ),
         );
       }
     } else {
       actions.add(
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white),
+          icon: Icon(Icons.more_vert, color: iconColor),
           onSelected: (value) {
             if (value == 'start' && _hasAudioSource) {
               _playFromStart();
@@ -1736,6 +2170,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final compactActions = screenWidth < 780;
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final appBarForegroundColor = isDarkTheme ? Colors.white : Colors.blue;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -1743,7 +2179,10 @@ class _EditMusicPageState extends State<EditMusicPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+          icon: Icon(
+            Icons.arrow_back_ios_rounded,
+            color: appBarForegroundColor,
+          ),
           onPressed: () async {
             if (_isNotesStep) {
               await _goToSongStep();
@@ -1754,11 +2193,13 @@ class _EditMusicPageState extends State<EditMusicPage> {
         ),
         title: Text(
           _isNotesStep ? 'Editar notas y pista' : 'Editar canción',
-          style:
-              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: appBarForegroundColor,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
-        actions: _buildAppBarActions(compactActions),
+        actions: _buildAppBarActions(compactActions, appBarForegroundColor),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.blue))
@@ -1816,7 +2257,10 @@ class _EditMusicPageState extends State<EditMusicPage> {
                   onPressed: _isSaving ? null : _goToNotesStep,
                   backgroundColor: Colors.green,
                   icon: const Icon(Icons.skip_next),
-                  label: const Text('Siguiente'),
+                  label: const Text(
+                    'Siguiente',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 )
               : null),
     );
