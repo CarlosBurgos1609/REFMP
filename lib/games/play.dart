@@ -104,6 +104,47 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  Future<void> _clearSongCaches({String? imageUrl}) async {
+    final box = Hive.box('offline_data');
+    await box.delete('song_${widget.songId}_${widget.songName}');
+    await box.delete('mp3_${widget.songId}');
+    await box.delete('mp3_meta_${widget.songId}');
+
+    final normalizedImageUrl = imageUrl?.trim() ?? '';
+    if (normalizedImageUrl.isNotEmpty) {
+      try {
+        await CustomCacheManager.instance.removeFile(normalizedImageUrl);
+      } catch (e) {
+        debugPrint('No se pudo limpiar caché de imagen: $e');
+      }
+    }
+
+    try {
+      await DefaultCacheManager().emptyCache();
+    } catch (e) {
+      debugPrint('No se pudo vaciar el cache manager global: $e');
+    }
+
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  }
+
+  Future<void> _refreshSongAfterEditorReturn() async {
+    if (!mounted) return;
+
+    final currentImageUrl = song?['image']?.toString() ??
+        song?['instruments']?['image']?.toString();
+
+    setState(() {
+      isLoading = true;
+    });
+
+    await _clearSongCaches(imageUrl: currentImageUrl);
+
+    if (!mounted) return;
+    await fetchSongDetails();
+  }
+
   Future<bool> _checkConnectivity() async {
     final connectivityResult = await Connectivity().checkConnectivity();
     debugPrint('Conectividad: $connectivityResult');
@@ -1259,8 +1300,8 @@ class _PlayPageState extends State<PlayPage> {
                                     ),
                                     onPressed: song == null
                                         ? null
-                                        : () {
-                                            Navigator.push(
+                                        : () async {
+                                            final result = await Navigator.push(
                                               context,
                                               MaterialPageRoute(
                                                 builder: (context) =>
@@ -1273,6 +1314,10 @@ class _PlayPageState extends State<PlayPage> {
                                                 ),
                                               ),
                                             );
+
+                                            if (result == true) {
+                                              await _refreshSongAfterEditorReturn();
+                                            }
                                           },
                                   ),
                                 ),

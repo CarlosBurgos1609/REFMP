@@ -48,9 +48,12 @@ class _EditMusicPageState extends State<EditMusicPage> {
       TextEditingController();
   final ValueNotifier<double> _saveProgressNotifier =
       ValueNotifier<double>(0.0);
+  final ValueNotifier<double> _deleteProgressNotifier =
+      ValueNotifier<double>(0.0);
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isDeleting = false;
   bool _isPlaying = false;
   bool _hasAudioSource = false;
   Duration _currentPosition = Duration.zero;
@@ -74,6 +77,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
   String _songImageUrl = '';
   bool _isSavingDialogVisible = false;
   BuildContext? _savingDialogContext;
+  bool _isDeletingDialogVisible = false;
+  BuildContext? _deletingDialogContext;
 
   // Keep editor timeline in absolute song time (no fixed artificial lead-in).
   static const int _gameLeadInMs = 0;
@@ -115,6 +120,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
     _noteHoldTimer?.cancel();
     _setPortraitMode();
     _saveProgressNotifier.dispose();
+    _deleteProgressNotifier.dispose();
     _audioPlayer.dispose();
     _timelineScrollController.dispose();
     _nameController.dispose();
@@ -650,6 +656,51 @@ class _EditMusicPageState extends State<EditMusicPage> {
     _saveProgressNotifier.value = (completedSteps / safeTotal).clamp(0.0, 1.0);
   }
 
+  void _updateDeleteProgress(int completedSteps, int totalSteps) {
+    final safeTotal = math.max(1, totalSteps);
+    _deleteProgressNotifier.value =
+        (completedSteps / safeTotal).clamp(0.0, 1.0);
+  }
+
+  String? _extractStoragePathFromPublicUrl(String? rawValue) {
+    final value = rawValue?.trim() ?? '';
+    if (value.isEmpty) return null;
+
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+
+    // Supabase public URL pattern: /storage/v1/object/public/<bucket>/<path>
+    if (uri.path.contains('/storage/v1/object/public/')) {
+      final parts = uri.pathSegments;
+      final publicIndex = parts.indexOf('public');
+      if (publicIndex >= 0 && publicIndex + 2 <= parts.length - 1) {
+        final objectSegments = parts.sublist(publicIndex + 2);
+        if (objectSegments.isNotEmpty) {
+          return objectSegments.join('/');
+        }
+      }
+    }
+
+    // If value is already a storage path (without protocol), keep it.
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      return value;
+    }
+
+    return null;
+  }
+
+  Future<void> _tryDeleteStorageObject(String? objectPath) async {
+    final path = objectPath?.trim() ?? '';
+    if (path.isEmpty) return;
+
+    try {
+      // Bucket name used in this project for song assets.
+      await _supabase.storage.from('song').remove(<String>[path]);
+    } catch (e) {
+      debugPrint('No se pudo eliminar archivo en storage ($path): $e');
+    }
+  }
+
   Future<void> _showSavingProgressDialog() async {
     if (!mounted || _isSavingDialogVisible) return;
 
@@ -762,6 +813,273 @@ class _EditMusicPageState extends State<EditMusicPage> {
     if (dialogContext != null && dialogContext.mounted) {
       Navigator.of(dialogContext, rootNavigator: true).pop();
     }
+  }
+
+  Future<void> _showDeletingProgressDialog() async {
+    if (!mounted || _isDeletingDialogVisible) return;
+
+    _deleteProgressNotifier.value = 0.0;
+    _isDeletingDialogVisible = true;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          _deletingDialogContext = dialogContext;
+          final screenSize = MediaQuery.of(dialogContext).size;
+          final dialogIconSize = math.min(
+            92.0,
+            math.max(54.0, screenSize.shortestSide * 0.18),
+          );
+
+          return PopScope(
+            canPop: false,
+            child: Dialog(
+              backgroundColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 340,
+                  maxHeight: screenSize.height * 0.72,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _deleteProgressNotifier,
+                    builder: (context, progress, _) {
+                      final percent = (progress * 100).round();
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.delete_forever_rounded,
+                            color: Colors.red,
+                            size: dialogIconSize,
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Borrando canción',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Eliminando notas, pista e imagen relacionada...',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey.shade300
+                                  : Colors.grey[700],
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 12,
+                              backgroundColor: isDark
+                                  ? Colors.grey.shade800
+                                  : Colors.grey[300],
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.red,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '$percent%',
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+  }
+
+  void _closeDeletingProgressDialog() {
+    final dialogContext = _deletingDialogContext;
+    _deletingDialogContext = null;
+    _isDeletingDialogVisible = false;
+
+    if (dialogContext != null && dialogContext.mounted) {
+      Navigator.of(dialogContext, rootNavigator: true).pop();
+    }
+  }
+
+  Future<bool> _deleteSongAndRelatedData() async {
+    if (_isDeleting || _isSaving) return false;
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    try {
+      final imagePath =
+          _extractStoragePathFromPublicUrl(_songData?['image']?.toString());
+      final mp3Path =
+          _extractStoragePathFromPublicUrl(_songData?['mp3_file']?.toString());
+      final storageObjects = <String>{
+        if (imagePath != null) imagePath,
+        if (mp3Path != null) mp3Path,
+      }.toList();
+
+      final totalOperations = math.max(1, 5 + storageObjects.length);
+      var completedOperations = 0;
+
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      await _supabase.from('song_notes').delete().eq('song_id', widget.songId);
+      completedOperations++;
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      await _supabase.from('song_levels').delete().eq('song_id', widget.songId);
+      completedOperations++;
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      await _supabase.from('user_songs').delete().eq('song_id', widget.songId);
+      completedOperations++;
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      await _supabase
+          .from('songs_favorite')
+          .delete()
+          .eq('song_id', widget.songId);
+      completedOperations++;
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      for (final object in storageObjects) {
+        await _tryDeleteStorageObject(object);
+        completedOperations++;
+        _updateDeleteProgress(completedOperations, totalOperations);
+      }
+
+      final deletedSong = await _supabase
+          .from('songs')
+          .delete()
+          .eq('id', widget.songId)
+          .select('id')
+          .maybeSingle();
+      if (deletedSong == null) {
+        throw Exception(
+          'La canción no se pudo eliminar de la base de datos. Verifica si el ID es correcto o si hay una política RLS que lo impide.',
+        );
+      }
+      completedOperations++;
+      _updateDeleteProgress(completedOperations, totalOperations);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Canción eliminada correctamente.')),
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting song: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al eliminar la canción: $e')),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showDeleteSongConfirmDialog() async {
+    if (_isDeleting || _isSaving) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: const [
+                  Icon(Icons.delete_forever_rounded,
+                      color: Colors.red, size: 26),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Borrar canción',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Esta acción eliminará la canción y todas sus notas asociadas. ¿Deseas continuar?',
+                style: TextStyle(
+                  color: isDark ? Colors.grey.shade200 : Colors.black87,
+                  height: 1.3,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Si, borrar'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    await _showDeletingProgressDialog();
+    final deleted = await _deleteSongAndRelatedData();
+    _closeDeletingProgressDialog();
+    if (!deleted || !mounted) return;
+
+    await _setPortraitMode();
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _cancelAndExit() async {
@@ -935,7 +1253,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
   }
 
   Future<void> _showSaveOptionsDialog() async {
-    if (_isSaving) return;
+    if (_isSaving || _isDeleting) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final action = await showDialog<String>(
@@ -1010,6 +1328,104 @@ class _EditMusicPageState extends State<EditMusicPage> {
       if (!mounted) return;
       Navigator.of(context).pop();
     }
+  }
+
+  Widget _buildSongBottomActions() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: (_isSaving || _isDeleting) ? null : _goToNotesStep,
+            icon: const Icon(Icons.skip_next, color: Colors.green),
+            label: const Text(
+              'Editar notas',
+              style:
+                  TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.green, width: 2),
+              backgroundColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: (_isSaving || _isDeleting)
+                ? null
+                : _showDeleteSongConfirmDialog,
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            label: const Text(
+              'Eliminar canción',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.red, width: 2),
+              backgroundColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: (_isSaving || _isDeleting) ? null : _cancelAndExit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text('Cancelar'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                onPressed:
+                    (_isSaving || _isDeleting) ? null : _showSaveOptionsDialog,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.save_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text('Guardar'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _onNotePointerDown(
@@ -2074,19 +2490,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
 
   List<Widget> _buildAppBarActions(bool compactActions, Color iconColor) {
     if (!_isNotesStep) {
-      return <Widget>[
-        IconButton(
-          tooltip: 'Cancelar cambios',
-          onPressed: _cancelAndExit,
-          icon: Icon(Icons.cancel, color: iconColor),
-        ),
-        IconButton(
-          tooltip: 'Guardar',
-          onPressed: _isSaving ? null : _showSaveOptionsDialog,
-          icon: Icon(Icons.save, color: iconColor),
-        ),
-        const SizedBox(width: 6),
-      ];
+      return const <Widget>[SizedBox(width: 6)];
     }
 
     final actions = <Widget>[
@@ -2097,7 +2501,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
       ),
       IconButton(
         tooltip: 'Guardar',
-        onPressed: _isSaving ? null : _showSaveOptionsDialog,
+        onPressed: (_isSaving || _isDeleting) ? null : _showSaveOptionsDialog,
         icon: Icon(Icons.save, color: iconColor),
       ),
       IconButton(
@@ -2229,6 +2633,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
                           _buildSongFields(),
                           const SizedBox(height: 14),
                           _buildPlaybackCard(),
+                          const SizedBox(height: 14),
+                          _buildSongBottomActions(),
                         ],
                       ),
                     )
@@ -2263,19 +2669,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
                         },
                       ),
                     )),
-      floatingActionButton: _isLoading || _songData == null
-          ? null
-          : (!_isNotesStep
-              ? FloatingActionButton.extended(
-                  onPressed: _isSaving ? null : _goToNotesStep,
-                  backgroundColor: Colors.green,
-                  icon: const Icon(Icons.skip_next),
-                  label: const Text(
-                    'Siguiente',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                )
-              : null),
+      floatingActionButton: null,
     );
   }
 }
