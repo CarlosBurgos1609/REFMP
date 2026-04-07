@@ -78,6 +78,7 @@ dependencies:
 
   flutter_native_splash: ^2.4.6
   flutter_launcher_icons: ^0.14.3
+  file_picker: ^8.1.7
   
   connectivity_plus: ^6.1.4
   hive_flutter: ^1.1.0

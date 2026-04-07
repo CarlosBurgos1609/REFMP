@@ -780,11 +780,17 @@ class _MusicPageState extends State<MusicPage> {
           if (snapshot.hasData && snapshot.data == true) {
             return FloatingActionButton(
               backgroundColor: Colors.blue,
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                // ignore: unused_local_variable
+                final created = await Navigator.push<bool>(
                   context,
-                  MaterialPageRoute(builder: (context) => SongsFormPage()),
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        SongsFormPage(instrumentName: widget.instrumentName),
+                  ),
                 );
+
+                await _refreshSongs();
               },
               child: const Icon(Icons.add, color: Colors.white),
             );

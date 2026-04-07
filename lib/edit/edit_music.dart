@@ -37,6 +37,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
   final List<_EditableSongNote> _notes = <_EditableSongNote>[];
   final Set<String> _deletedNoteIds = <String>{};
   final List<ChromaticNote> _chromaticOptions = <ChromaticNote>[];
+  final List<Map<String, dynamic>> _availableLevels = <Map<String, dynamic>>[];
+  final Set<String> _selectedLevelKeys = <String>{};
   final ScrollController _timelineScrollController = ScrollController();
 
   final TextEditingController _nameController = TextEditingController();
@@ -217,6 +219,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
         await _loadChromaticOptions(_instrumentId!);
       }
 
+      await _loadSongLevels();
+
       _updateAudioAvailability();
 
       if (mounted) {
@@ -235,6 +239,90 @@ class _EditMusicPageState extends State<EditMusicPage> {
         );
       }
     }
+  }
+
+  Future<void> _loadSongLevels() async {
+    try {
+      final levelsResponse = await _fetchLevelsForSongEditor();
+
+      final songLevelsResponse = await _supabase
+          .from('song_levels')
+          .select('level_id')
+          .eq('song_id', widget.songId);
+
+      // ignore: unnecessary_cast
+      final available = (levelsResponse as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+      final selected = <String>{};
+      for (final item in (songLevelsResponse as List<dynamic>)) {
+        if (item is! Map<String, dynamic>) continue;
+        selected.add(_levelKey(item['level_id']));
+      }
+
+      _availableLevels
+        ..clear()
+        ..addAll(available);
+      _selectedLevelKeys
+        ..clear()
+        ..addAll(selected.where((key) => key.isNotEmpty));
+    } catch (e) {
+      debugPrint('Error loading song levels: $e');
+    }
+  }
+
+  Future<List<dynamic>> _fetchLevelsForSongEditor() async {
+    try {
+      final response = await _supabase
+          .from('level')
+          .select('id, name, image, description')
+          .order('name', ascending: true);
+      return (response as List<dynamic>);
+    } catch (_) {
+      final response = await _supabase
+          .from('levels')
+          .select('id, name, image, description')
+          .order('name', ascending: true);
+      return (response as List<dynamic>);
+    }
+  }
+
+  String _levelKey(dynamic value) {
+    if (value == null) return '';
+    return value.toString();
+  }
+
+  dynamic _songIdForDb() {
+    return int.tryParse(widget.songId) ?? widget.songId;
+  }
+
+  dynamic _levelIdFromKey(String key) {
+    for (final level in _availableLevels) {
+      if (_levelKey(level['id']) == key) {
+        return level['id'];
+      }
+    }
+    return key;
+  }
+
+  Future<void> _saveSongLevels() async {
+    await _supabase.from('song_levels').delete().eq('song_id', widget.songId);
+
+    if (_selectedLevelKeys.isEmpty) {
+      return;
+    }
+
+    final inserts = _selectedLevelKeys
+        .map(
+          (key) => <String, dynamic>{
+            'song_id': _songIdForDb(),
+            'level_id': _levelIdFromKey(key),
+          },
+        )
+        .toList();
+
+    await _supabase.from('song_levels').insert(inserts);
   }
 
   Future<void> _loadChromaticOptions(int instrumentId) async {
@@ -662,9 +750,45 @@ class _EditMusicPageState extends State<EditMusicPage> {
         (completedSteps / safeTotal).clamp(0.0, 1.0);
   }
 
+  String _normalizeStorageObjectPath(String rawPath) {
+    var value = rawPath.trim().replaceAll('\\', '/');
+    if (value.isEmpty) return '';
+
+    if (value.startsWith('/')) {
+      value = value.substring(1);
+    }
+
+    final segments = value
+        .split('/')
+        .where((segment) => segment.isNotEmpty)
+        .map(Uri.decodeComponent)
+        .toList();
+    if (segments.isEmpty) return '';
+
+    // Handles full path fragments like storage/v1/object/public/<bucket>/<path>
+    final publicIndex = segments.indexOf('public');
+    if (publicIndex >= 0 && publicIndex + 2 <= segments.length - 1) {
+      return segments.sublist(publicIndex + 2).join('/');
+    }
+
+    // Strip bucket prefix when accidentally stored as songs/<path>
+    if (segments.first == 'songs' || segments.first == 'song') {
+      if (segments.length == 1) return '';
+      return segments.sublist(1).join('/');
+    }
+
+    return segments.join('/');
+  }
+
   String? _extractStoragePathFromPublicUrl(String? rawValue) {
     final value = rawValue?.trim() ?? '';
     if (value.isEmpty) return null;
+
+    // If value is already a storage path (without protocol), normalize it.
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      final normalized = _normalizeStorageObjectPath(value);
+      return normalized.isEmpty ? null : normalized;
+    }
 
     final uri = Uri.tryParse(value);
     if (uri == null) return null;
@@ -676,29 +800,130 @@ class _EditMusicPageState extends State<EditMusicPage> {
       if (publicIndex >= 0 && publicIndex + 2 <= parts.length - 1) {
         final objectSegments = parts.sublist(publicIndex + 2);
         if (objectSegments.isNotEmpty) {
-          return objectSegments.join('/');
+          final normalized = _normalizeStorageObjectPath(
+            objectSegments.join('/'),
+          );
+          return normalized.isEmpty ? null : normalized;
         }
       }
     }
 
-    // If value is already a storage path (without protocol), keep it.
-    if (!value.startsWith('http://') && !value.startsWith('https://')) {
-      return value;
-    }
+    final normalizedPath = _normalizeStorageObjectPath(uri.path);
+    if (normalizedPath.isNotEmpty) return normalizedPath;
 
     return null;
   }
 
-  Future<void> _tryDeleteStorageObject(String? objectPath) async {
-    final path = objectPath?.trim() ?? '';
-    if (path.isEmpty) return;
+  String? _extractBucketFromStorageValue(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
 
-    try {
-      // Bucket name used in this project for song assets.
-      await _supabase.storage.from('song').remove(<String>[path]);
-    } catch (e) {
-      debugPrint('No se pudo eliminar archivo en storage ($path): $e');
+    // Common Supabase URL: /storage/v1/object/public/<bucket>/<path>
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      final uri = Uri.tryParse(trimmed);
+      if (uri == null) return null;
+      final publicIndex = uri.pathSegments.indexOf('public');
+      if (publicIndex >= 0 && publicIndex + 1 < uri.pathSegments.length) {
+        final bucket = uri.pathSegments[publicIndex + 1].trim();
+        return bucket.isEmpty ? null : bucket;
+      }
+      return null;
     }
+
+    final normalized = trimmed.replaceAll('\\', '/');
+    final firstSegment = normalized.split('/').first.trim();
+    if (firstSegment.isEmpty) return null;
+    if (firstSegment == 'songs' || firstSegment == 'song') {
+      return firstSegment;
+    }
+    return null;
+  }
+
+  Future<bool> _tryDeleteStorageObject(String? rawStorageValue) async {
+    final value = rawStorageValue?.trim() ?? '';
+    if (value.isEmpty) return true;
+
+    final extractedPath = _extractStoragePathFromPublicUrl(value);
+    final normalizedValue = _normalizeStorageObjectPath(value);
+    final candidateBasenames = <String>{
+      if (extractedPath != null && extractedPath.isNotEmpty)
+        extractedPath.split('/').last,
+      if (normalizedValue.isNotEmpty) normalizedValue.split('/').last,
+      value.split('/').last,
+    }.where((item) => item.trim().isNotEmpty).toList();
+    final pathCandidates = <String>{
+      if (extractedPath != null && extractedPath.isNotEmpty) extractedPath,
+      if (normalizedValue.isNotEmpty) normalizedValue,
+      if (extractedPath != null && extractedPath.isNotEmpty)
+        'songs/$extractedPath',
+      if (normalizedValue.isNotEmpty) 'songs/$normalizedValue',
+      value,
+    }.where((item) => item.trim().isNotEmpty).toList();
+
+    final extractedBucket = _extractBucketFromStorageValue(value);
+    final bucketCandidates = <String>{
+      if (extractedBucket != null && extractedBucket.isNotEmpty)
+        extractedBucket,
+      'songs',
+      'song',
+    }.toList();
+
+    Object? lastError;
+    for (final bucket in bucketCandidates) {
+      for (final candidate in pathCandidates) {
+        try {
+          final removed =
+              await _supabase.storage.from(bucket).remove(<String>[candidate]);
+          if (removed.isNotEmpty) {
+            debugPrint('Archivo eliminado de storage: $bucket/$candidate');
+            return true;
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      final folderCandidates = <String>{
+        for (final candidate in pathCandidates)
+          if (candidate.contains('/'))
+            candidate.substring(0, candidate.lastIndexOf('/')),
+        '',
+      }.toList();
+
+      for (final folder in folderCandidates) {
+        try {
+          final items = await _supabase.storage.from(bucket).list(path: folder);
+          if (items.isEmpty) continue;
+
+          final matchedPaths = <String>[];
+          for (final item in items) {
+            final itemName = item.name.trim();
+            if (itemName.isEmpty) continue;
+            if (!candidateBasenames.contains(itemName)) continue;
+
+            matchedPaths.add(folder.isEmpty ? itemName : '$folder/$itemName');
+          }
+
+          if (matchedPaths.isEmpty) continue;
+
+          final removed =
+              await _supabase.storage.from(bucket).remove(matchedPaths);
+          if (removed.isNotEmpty) {
+            debugPrint(
+              'Archivo eliminado de storage por búsqueda en carpeta: $bucket/${matchedPaths.join(', ')}',
+            );
+            return true;
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+
+    debugPrint(
+      'No se pudo eliminar archivo en storage ($value). Error: $lastError',
+    );
+    return false;
   }
 
   Future<void> _showSavingProgressDialog() async {
@@ -937,13 +1162,13 @@ class _EditMusicPageState extends State<EditMusicPage> {
     });
 
     try {
-      final imagePath =
-          _extractStoragePathFromPublicUrl(_songData?['image']?.toString());
-      final mp3Path =
-          _extractStoragePathFromPublicUrl(_songData?['mp3_file']?.toString());
+      final imageStorageValue = _songData?['image']?.toString().trim();
+      final mp3StorageValue = _songData?['mp3_file']?.toString().trim();
       final storageObjects = <String>{
-        if (imagePath != null) imagePath,
-        if (mp3Path != null) mp3Path,
+        if (imageStorageValue != null && imageStorageValue.isNotEmpty)
+          imageStorageValue,
+        if (mp3StorageValue != null && mp3StorageValue.isNotEmpty)
+          mp3StorageValue,
       }.toList();
 
       final totalOperations = math.max(1, 5 + storageObjects.length);
@@ -970,8 +1195,12 @@ class _EditMusicPageState extends State<EditMusicPage> {
       completedOperations++;
       _updateDeleteProgress(completedOperations, totalOperations);
 
+      var storageDeleteFailures = 0;
       for (final object in storageObjects) {
-        await _tryDeleteStorageObject(object);
+        final deleted = await _tryDeleteStorageObject(object);
+        if (!deleted) {
+          storageDeleteFailures++;
+        }
         completedOperations++;
         _updateDeleteProgress(completedOperations, totalOperations);
       }
@@ -989,6 +1218,12 @@ class _EditMusicPageState extends State<EditMusicPage> {
       }
       completedOperations++;
       _updateDeleteProgress(completedOperations, totalOperations);
+
+      if (storageDeleteFailures > 0) {
+        debugPrint(
+          'Se eliminó la canción de la BD, pero falló el borrado de $storageDeleteFailures archivo(s) en storage.',
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1146,6 +1381,15 @@ class _EditMusicPageState extends State<EditMusicPage> {
   Future<bool> _saveSong({required bool autoArrangeNotes}) async {
     if (!_formKey.currentState!.validate()) return false;
 
+    if (_selectedLevelKeys.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona al menos un nivel para la canción.'),
+        ),
+      );
+      return false;
+    }
+
     if (autoArrangeNotes) {
       _autoArrangeNotes();
     }
@@ -1159,6 +1403,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
       final totalOperations = math.max(
         1,
         (_songFieldKeys.isNotEmpty ? 1 : 0) +
+            1 +
             _deletedNoteIds.length +
             _notes.length,
       );
@@ -1193,6 +1438,10 @@ class _EditMusicPageState extends State<EditMusicPage> {
         completedOperations++;
         _updateSaveProgress(completedOperations, totalOperations);
       }
+
+      await _saveSongLevels();
+      completedOperations++;
+      _updateSaveProgress(completedOperations, totalOperations);
 
       for (final deletedId in _deletedNoteIds) {
         await _supabase.from('song_notes').delete().eq('id', deletedId);
@@ -1326,7 +1575,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
     if (action == 'exit') {
       await _setPortraitMode();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     }
   }
 
@@ -1828,6 +2077,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
   }
 
   Widget _buildSongFields() {
+    final primaryText = _primaryTextColor(context);
     final currentDifficulty = _difficultyController.text.trim();
     final difficultyOptions = <String>{'Fácil', 'Medio', 'Difícil'};
     if (currentDifficulty.isNotEmpty) {
@@ -1837,10 +2087,10 @@ class _EditMusicPageState extends State<EditMusicPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '| Editar canción',
           style: TextStyle(
-            color: Colors.blue,
+            color: primaryText,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -1888,12 +2138,7 @@ class _EditMusicPageState extends State<EditMusicPage> {
             decoration: _inputDecoration('Dificultad', Icons.speed_outlined),
           ),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _mp3Controller,
-          decoration:
-              _inputDecoration('URL o ruta de la canción', Icons.audiotrack),
-          onChanged: (_) => _updateAudioAvailability(),
-        ),
+        _buildLevelsSelector(),
         const SizedBox(height: 12),
         if (_songFieldKeys.contains('bpm'))
           TextFormField(
@@ -1922,12 +2167,92 @@ class _EditMusicPageState extends State<EditMusicPage> {
     );
   }
 
+  Widget _buildLevelsSelector() {
+    final primaryText = _primaryTextColor(context);
+    final secondaryText = _secondaryTextColor(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Niveles disponibles de la canción',
+            style: TextStyle(
+              color: primaryText,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _selectedLevelKeys.isEmpty
+                ? 'Selecciona mínimo 1 nivel (puedes activar 1, 2 o 3).'
+                : 'Activos: ${_selectedLevelKeys.length}',
+            style: TextStyle(color: secondaryText, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (_availableLevels.isEmpty)
+            const Text(
+              'No se encontraron niveles en la base de datos.',
+              style: TextStyle(color: Colors.red, fontSize: 12),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _availableLevels.map((level) {
+                final key = _levelKey(level['id']);
+                final selected = _selectedLevelKeys.contains(key);
+                final label =
+                    level['name']?.toString().trim().isNotEmpty == true
+                        ? level['name'].toString()
+                        : 'Nivel';
+
+                return FilterChip(
+                  label: Text(label),
+                  selected: selected,
+                  onSelected: (value) {
+                    setState(() {
+                      if (value) {
+                        _selectedLevelKeys.add(key);
+                      } else {
+                        _selectedLevelKeys.remove(key);
+                      }
+                    });
+                  },
+                  selectedColor: Colors.blue.withOpacity(0.2),
+                  checkmarkColor: Colors.blue,
+                  labelStyle: TextStyle(
+                    color: selected
+                        ? (isDark ? Colors.white : Colors.blue.shade800)
+                        : (isDark ? Colors.grey.shade300 : Colors.blue),
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  side: BorderSide(
+                    color: selected ? Colors.blue : Colors.grey.shade400,
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
   InputDecoration _inputDecoration(String label, IconData icon) {
+    final primary = _primaryTextColor(context);
+    final secondary = _secondaryTextColor(context);
+
     return InputDecoration(
       labelText: label,
-      labelStyle:
-          const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
-      prefixIcon: Icon(icon, color: Colors.blue),
+      labelStyle: TextStyle(color: secondary, fontWeight: FontWeight.bold),
+      prefixIcon: Icon(icon, color: primary),
       enabledBorder: OutlineInputBorder(
         borderSide: const BorderSide(color: Colors.blue),
         borderRadius: BorderRadius.circular(12),
@@ -1937,6 +2262,16 @@ class _EditMusicPageState extends State<EditMusicPage> {
         borderRadius: BorderRadius.circular(12),
       ),
     );
+  }
+
+  Color _primaryTextColor(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? Colors.white : Colors.blue;
+  }
+
+  Color _secondaryTextColor(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? Colors.grey.shade300 : Colors.blue;
   }
 
   Widget _buildPlaybackCard() {
