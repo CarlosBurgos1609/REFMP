@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:refmp/forms/levelsForm.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/cup.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
@@ -1141,11 +1142,18 @@ class _LearningPageState extends State<LearningPage> {
             if (snapshot.hasData && snapshot.data == true) {
               return FloatingActionButton(
                 backgroundColor: Colors.blue,
-                onPressed: () {
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(builder: (context) => SongsFormPage()),
-                  // );
+                onPressed: () async {
+                  final created = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          LevelsFormPage(instrumentName: widget.instrumentName),
+                    ),
+                  );
+
+                  if (created == true) {
+                    await _refreshLevels();
+                  }
                 },
                 child: const Icon(Icons.add, color: Colors.white),
               );
