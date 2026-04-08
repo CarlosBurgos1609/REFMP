@@ -60,8 +60,10 @@ class _LevelsFormPageState extends State<LevelsFormPage> {
       if (!mounted) return;
 
       Map<String, dynamic>? matched;
+      // ignore: unnecessary_type_check
       if (instrumentsResponse is List) {
         for (final item in instrumentsResponse) {
+          // ignore: unnecessary_type_check
           if (item is! Map<String, dynamic>) continue;
           final dbName =
               _normalizeInstrumentName(item['name']?.toString() ?? '');
@@ -81,6 +83,7 @@ class _LevelsFormPageState extends State<LevelsFormPage> {
           orElse: () => <String, dynamic>{},
         );
 
+        // ignore: unnecessary_null_comparison
         if (matched != null && matched.isEmpty) {
           matched = null;
         }
