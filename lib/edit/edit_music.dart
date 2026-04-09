@@ -2316,6 +2316,8 @@ class _EditMusicPageState extends State<EditMusicPage> {
             min: 0,
             max: sliderMax,
             value: sliderValue,
+            activeColor: Colors.blue,
+            inactiveColor: Colors.blue.withOpacity(0.25),
             onChanged: _hasAudioSource
                 ? (value) {
                     _seekPlayback(

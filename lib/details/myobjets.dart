@@ -464,12 +464,7 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
                                 width: category == 'fondos' ? 80 : 100,
                                 child: _buildImageWidget(
                                   category,
-                                  item['local_image_path'] ??
-                                      (category == 'achievements' ||
-                                              category == 'songs'
-                                          ? item['image']
-                                          : item['image_url']) ??
-                                      'assets/images/refmmp.png',
+                                  _resolveItemImagePath(item, category),
                                   true,
                                   visibilityKey,
                                 ),
@@ -1546,9 +1541,48 @@ class _MyObjectsPageState extends State<MyObjectsPage> {
     return imageWidget;
   }
 
+  String _resolveItemImagePath(Map<String, dynamic> item, String category) {
+    final localPath = (item['local_image_path'] ?? '').toString();
+    final remotePath = ((category == 'achievements' || category == 'songs')
+            ? item['image']
+            : item['image_url'])
+        ?.toString();
+
+    if (localPath.isNotEmpty) {
+      if (localPath.startsWith('assets/')) return localPath;
+      if (!localPath.startsWith('http') && File(localPath).existsSync()) {
+        return localPath;
+      }
+      if (Uri.tryParse(localPath)?.isAbsolute == true) return localPath;
+    }
+
+    if (remotePath != null && remotePath.isNotEmpty) {
+      if (remotePath.startsWith('assets/')) return remotePath;
+      if (!remotePath.startsWith('http') && File(remotePath).existsSync()) {
+        return remotePath;
+      }
+      if (Uri.tryParse(remotePath)?.isAbsolute == true) return remotePath;
+    }
+
+    return 'assets/images/refmmp.png';
+  }
+
   Widget _buildImageContent(String imagePath, bool isVisible, String category) {
     if (!isVisible || imagePath.isEmpty) {
       return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+    }
+
+    if (imagePath.startsWith('assets/')) {
+      return Image.asset(
+        imagePath,
+        fit: category == 'trompetas' ? BoxFit.contain : BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('Error loading asset image: $error, path: $imagePath');
+          return Image.asset('assets/images/refmmp.png', fit: BoxFit.cover);
+        },
+      );
     }
 
     if (!imagePath.startsWith('http') && File(imagePath).existsSync()) {

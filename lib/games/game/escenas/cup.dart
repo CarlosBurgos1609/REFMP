@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
 import 'package:refmp/dialogs/dialog_classification.dart';
+import 'package:refmp/edit/edit_rewards.dart';
+import 'package:refmp/forms/rewardsForm.dart';
 import 'package:refmp/games/game/escenas/MusicPage.dart';
 import 'package:refmp/games/game/escenas/objects.dart';
 import 'package:refmp/games/game/escenas/profile.dart';
@@ -16,6 +19,7 @@ import 'package:refmp/theme/theme_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
 
 class CustomCacheManager {
   static const key = 'customCacheKey';
@@ -45,6 +49,54 @@ class _CupPageState extends State<CupPage> {
   int _selectedIndex = 2;
   bool _isOnline = false;
   Timer? _weeklyResetTimer;
+  Duration _timeUntilWeeklyReset = Duration.zero;
+  bool _isProcessingWeeklyReset = false;
+  bool _canManageRewards = false;
+
+  String _rewardsCacheKeyForCurrentWeek() {
+    final now = DateTime.now();
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final weekStartStr =
+        '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
+    return 'cup_rewards_$weekStartStr';
+  }
+
+  Future<List<Map<String, dynamic>>> _loadRewardsFromCache() async {
+    try {
+      final box = Hive.box('offline_data');
+      final cacheKey = _rewardsCacheKeyForCurrentWeek();
+      final cachedJson = box.get(cacheKey);
+
+      if (cachedJson == null) return <Map<String, dynamic>>[];
+      final decoded = jsonDecode(cachedJson.toString());
+      if (decoded is! List) return <Map<String, dynamic>>[];
+
+      final cachedRewards = decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+      if (cachedRewards.isNotEmpty) {
+        debugPrint('✅ Rewards cargados desde caché: ${cachedRewards.length}');
+      }
+      return cachedRewards;
+    } catch (e) {
+      debugPrint('Error cargando rewards desde caché: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _saveRewardsToCache(List<Map<String, dynamic>> rewards) async {
+    try {
+      final box = Hive.box('offline_data');
+      final cacheKey = _rewardsCacheKeyForCurrentWeek();
+      await box.put(cacheKey, jsonEncode(rewards));
+      debugPrint('✅ Rewards guardados en caché: ${rewards.length}');
+    } catch (e) {
+      debugPrint('Error guardando rewards en caché: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -52,6 +104,7 @@ class _CupPageState extends State<CupPage> {
     _checkConnectivityAndInitialize();
     fetchUserProfileImage();
     ensureCurrentUserInUsersGames();
+    _loadRewardManagementPermission();
     // Agregar debug de la base de datos
     debugDatabaseData();
     // Inicializar timer para verificar reset semanal
@@ -66,21 +119,128 @@ class _CupPageState extends State<CupPage> {
     super.dispose();
   }
 
-  void _initializeWeeklyResetTimer() {
-    // Verificar cada minuto si es domingo 23:59
-    _weeklyResetTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      _checkWeeklyReset();
-    });
-    // Verificar inmediatamente al iniciar
-    _checkWeeklyReset();
+  Future<void> _loadRewardManagementPermission() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final users = await supabase
+          .from('users')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final advisors = await supabase
+          .from('advisors')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final directors = await supabase
+          .from('directors')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() {
+        _canManageRewards =
+            users != null || advisors != null || directors != null;
+      });
+    } catch (e) {
+      debugPrint('Error loading reward management permissions: $e');
+      if (!mounted) return;
+      setState(() {
+        _canManageRewards = false;
+      });
+    }
   }
 
-  Future<void> _checkWeeklyReset() async {
+  DateTime _weeklyResetTargetFor(DateTime now) {
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final sunday = weekStart.add(const Duration(days: 6));
+    return DateTime(sunday.year, sunday.month, sunday.day, 23, 0, 0);
+  }
+
+  Duration _computeTimeUntilNextReset(DateTime now) {
+    final thisWeekTarget = _weeklyResetTargetFor(now);
+    if (now.isBefore(thisWeekTarget)) {
+      return thisWeekTarget.difference(now);
+    }
+    final nextWeekTarget = thisWeekTarget.add(const Duration(days: 7));
+    return nextWeekTarget.difference(now);
+  }
+
+  String _formatCountdown(Duration duration) {
+    final safe = duration.isNegative ? Duration.zero : duration;
+    final totalSeconds = safe.inSeconds;
+    final days = totalSeconds ~/ 86400;
+    final hours = (totalSeconds % 86400) ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    return '${days.toString().padLeft(2, '0')}d '
+        '${hours.toString().padLeft(2, '0')}h '
+        '${minutes.toString().padLeft(2, '0')}m '
+        '${seconds.toString().padLeft(2, '0')}s';
+  }
+
+  void _initializeWeeklyResetTimer() {
+    _weeklyResetTimer?.cancel();
+    _updateCountdownAndMaybeReset();
+    _weeklyResetTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _updateCountdownAndMaybeReset();
+    });
+  }
+
+  Future<void> _updateCountdownAndMaybeReset() async {
     final now = DateTime.now();
-    // Verificar si es domingo (weekday == 7) y hora 23:59
-    if (now.weekday == 7 && now.hour == 23 && now.minute == 59) {
-      debugPrint('Es domingo 23:59 - Iniciando proceso de reset semanal');
-      await _processWeeklyReset();
+    final thisWeekTarget = _weeklyResetTargetFor(now);
+
+    if (now.isAfter(thisWeekTarget) || now.isAtSameMomentAs(thisWeekTarget)) {
+      final box = await Hive.openBox('weekly_rewards');
+      final resetKey = DateFormat('yyyy-MM-dd').format(thisWeekTarget);
+      final lastGlobalResetKey = box.get('global_last_reset_key');
+
+      if (lastGlobalResetKey != resetKey && !_isProcessingWeeklyReset) {
+        _isProcessingWeeklyReset = true;
+        await _processWeeklyReset(resetKey: resetKey);
+        _isProcessingWeeklyReset = false;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _timeUntilWeeklyReset = _computeTimeUntilNextReset(now);
+    });
+  }
+
+  Future<void> _openRewardsForm() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const RewardsFormPage()),
+    );
+
+    if (result == true && mounted) {
+      setState(() {
+        _rewardsFuture = fetchRewardsData();
+      });
+    }
+  }
+
+  Future<void> _openEditReward(Map<String, dynamic> reward) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditRewardPage(reward: reward),
+      ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {
+        _rewardsFuture = fetchRewardsData();
+      });
     }
   }
 
@@ -130,57 +290,47 @@ class _CupPageState extends State<CupPage> {
     }
   }
 
-  Future<void> _processWeeklyReset() async {
+  Future<void> _processWeeklyReset({required String resetKey}) async {
     try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null || !_isOnline) {
-        debugPrint(
-            'No se puede procesar reset: usuario no autenticado o sin conexión');
+      if (!_isOnline) {
+        debugPrint('No se puede procesar reset semanal global sin conexión');
         return;
       }
 
-      debugPrint('Procesando reset semanal para usuario: $userId');
+      debugPrint('Procesando reset semanal global: $resetKey');
 
-      // 1. Obtener la posición del usuario en el ranking
-      final rankingData = await fetchCupData();
-      int userPosition = -1;
-      int userPoints = 0;
+      final rankingData = await supabase
+          .from('users_games')
+          .select('user_id, points_xp_weekend')
+          .gt('points_xp_weekend', 0)
+          .order('points_xp_weekend', ascending: false)
+          .limit(50);
 
       for (int i = 0; i < rankingData.length; i++) {
-        if (rankingData[i]['user_id'] == userId) {
-          userPosition = i + 1; // Posición (1-indexed)
-          userPoints = rankingData[i]['points_xp_weekend'] ?? 0;
-          break;
-        }
+        final item = rankingData[i];
+        final userId = item['user_id']?.toString();
+        final points = (item['points_xp_weekend'] ?? 0) as int;
+        final position = i + 1;
+
+        if (userId == null || userId.isEmpty || points <= 0) continue;
+        await _claimWeeklyRewardForUser(userId, position);
       }
 
-      debugPrint('Posición del usuario: $userPosition con $userPoints puntos');
-
-      // Si el usuario tiene puntos y está en el top 50, procesar recompensa
-      if (userPosition > 0 && userPosition <= 50 && userPoints > 0) {
-        await _claimWeeklyReward(userPosition);
-      } else {
-        debugPrint(
-            'Usuario no califica para recompensa: posición=$userPosition, puntos=$userPoints');
-      }
-
-      // 2. Resetear points_xp_weekend a 0
       await supabase
           .from('users_games')
-          .update({'points_xp_weekend': 0}).eq('user_id', userId);
+          .update({'points_xp_weekend': 0}).gte('points_xp_weekend', 0);
 
-      debugPrint('Points_xp_weekend reseteado a 0 para usuario $userId');
+      final resetDate = DateTime.tryParse(resetKey);
+      if (resetDate != null) {
+        await _rotateWeeklyRewardsAfterClaim(resetDate);
+      } else {
+        debugPrint(
+            'No se pudo parsear resetKey para rotar recompensas: $resetKey');
+      }
 
-      // 3. Guardar fecha del último reset
       final box = await Hive.openBox('weekly_rewards');
-      final now = DateTime.now();
-      final weekStart = DateTime(now.year, now.month, now.day)
-          .subtract(Duration(days: now.weekday - 1));
-      final weekStartStr =
-          '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
-      await box.put('last_reset_date_$userId', weekStartStr);
+      await box.put('global_last_reset_key', resetKey);
 
-      // 4. Refrescar datos
       if (mounted) {
         setState(() {
           _cupFuture = fetchCupData();
@@ -188,18 +338,95 @@ class _CupPageState extends State<CupPage> {
         });
       }
 
-      debugPrint('Reset semanal completado exitosamente');
+      debugPrint('Reset semanal global completado con éxito: $resetKey');
     } catch (e, stackTrace) {
-      debugPrint('Error en _processWeeklyReset: $e\nStack trace: $stackTrace');
+      debugPrint(
+          'Error en _processWeeklyReset global: $e\nStack trace: $stackTrace');
     }
   }
 
-  Future<void> _claimWeeklyReward(int position) async {
+  Future<void> _rotateWeeklyRewardsAfterClaim(DateTime resetSunday) async {
     try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      final currentWeekStart = DateTime(
+        resetSunday.year,
+        resetSunday.month,
+        resetSunday.day,
+      ).subtract(const Duration(days: 6));
+      final currentWeekEnd = DateTime(
+        resetSunday.year,
+        resetSunday.month,
+        resetSunday.day,
+      );
 
-      debugPrint('Reclamando recompensa para posición $position');
+      final nextWeekStart = currentWeekEnd.add(const Duration(days: 1));
+      final nextWeekEnd = nextWeekStart.add(const Duration(days: 6));
+
+      final currentWeekStartStr =
+          '${currentWeekStart.year}-${currentWeekStart.month.toString().padLeft(2, '0')}-${currentWeekStart.day.toString().padLeft(2, '0')}';
+      final currentWeekEndStr =
+          '${currentWeekEnd.year}-${currentWeekEnd.month.toString().padLeft(2, '0')}-${currentWeekEnd.day.toString().padLeft(2, '0')}';
+
+      final nextWeekStartStr =
+          '${nextWeekStart.year}-${nextWeekStart.month.toString().padLeft(2, '0')}-${nextWeekStart.day.toString().padLeft(2, '0')}';
+      final nextWeekEndStr =
+          '${nextWeekEnd.year}-${nextWeekEnd.month.toString().padLeft(2, '0')}-${nextWeekEnd.day.toString().padLeft(2, '0')}';
+
+      // Eliminar recompensas de la semana ya reclamada.
+      await supabase
+          .from('rewards')
+          .delete()
+          .eq('week_start', currentWeekStartStr)
+          .eq('week_end', currentWeekEndStr);
+
+      // Limpiar cualquier configuración previa de la próxima semana
+      // para volver al estado por defecto cada domingo.
+      await supabase
+          .from('rewards')
+          .delete()
+          .eq('week_start', nextWeekStartStr)
+          .eq('week_end', nextWeekEndStr);
+
+      final defaultRows = [
+        {
+          'position': 1,
+          'object_id': null,
+          'coins_reward': _getDefaultCoins(1),
+          'claimed': false,
+          'week_start': nextWeekStartStr,
+          'week_end': nextWeekEndStr,
+        },
+        {
+          'position': 2,
+          'object_id': null,
+          'coins_reward': _getDefaultCoins(2),
+          'claimed': false,
+          'week_start': nextWeekStartStr,
+          'week_end': nextWeekEndStr,
+        },
+        {
+          'position': 3,
+          'object_id': null,
+          'coins_reward': _getDefaultCoins(3),
+          'claimed': false,
+          'week_start': nextWeekStartStr,
+          'week_end': nextWeekEndStr,
+        },
+      ];
+
+      await supabase.from('rewards').insert(defaultRows);
+
+      debugPrint(
+          'Recompensas rotadas: eliminada semana $currentWeekStartStr-$currentWeekEndStr, sembrada semana $nextWeekStartStr-$nextWeekEndStr');
+    } catch (e, stackTrace) {
+      debugPrint(
+          'Error al rotar recompensas semanales: $e\nStack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _claimWeeklyRewardForUser(String userId, int position) async {
+    try {
+      debugPrint(
+          'Reclamando recompensa semanal para user=$userId, posición=$position');
 
       // Obtener la recompensa correspondiente a la posición
       final rewardsData = await fetchRewardsData();
@@ -293,11 +520,8 @@ class _CupPageState extends State<CupPage> {
       });
 
       // Marcar como recompensa reclamada
-      final box = await Hive.openBox('weekly_rewards');
-      await box.put('pending_reward_$userId', false);
-
-      // Mostrar notificación al usuario
-      if (mounted) {
+      final currentUserId = supabase.auth.currentUser?.id;
+      if (mounted && currentUserId == userId) {
         _showRewardClaimedDialog(
             rewardMessage, objectGiven, objectId, totalCoinsToGive);
       }
@@ -481,9 +705,14 @@ class _CupPageState extends State<CupPage> {
   List<Map<String, dynamic>> _getDefaultRewards() {
     return [
       {
+        'id': null,
+        'user_game_id': null,
         'position': 1,
         'object_id': null,
         'coins_reward': 500,
+        'claimed': false,
+        'week_start': null,
+        'week_end': null,
         'image_url': 'assets/images/coin.png',
         'object_category': 'coins',
         'object_name': '500 Monedas',
@@ -492,9 +721,14 @@ class _CupPageState extends State<CupPage> {
         'has_coins': true,
       },
       {
+        'id': null,
+        'user_game_id': null,
         'position': 2,
         'object_id': null,
         'coins_reward': 300,
+        'claimed': false,
+        'week_start': null,
+        'week_end': null,
         'image_url': 'assets/images/coin.png',
         'object_category': 'coins',
         'object_name': '300 Monedas',
@@ -503,9 +737,14 @@ class _CupPageState extends State<CupPage> {
         'has_coins': true,
       },
       {
+        'id': null,
+        'user_game_id': null,
         'position': 3,
         'object_id': null,
         'coins_reward': 200,
+        'claimed': false,
+        'week_start': null,
+        'week_end': null,
         'image_url': 'assets/images/coin.png',
         'object_category': 'coins',
         'object_name': '200 Monedas',
@@ -631,7 +870,12 @@ class _CupPageState extends State<CupPage> {
   Future<List<Map<String, dynamic>>> fetchRewardsData() async {
     try {
       if (!_isOnline) {
-        debugPrint('Offline: No rewards data available');
+        debugPrint('Offline: intentando cargar rewards desde caché');
+        final cachedRewards = await _loadRewardsFromCache();
+        if (cachedRewards.isNotEmpty) {
+          return cachedRewards;
+        }
+        debugPrint('Offline: sin caché disponible, usando rewards por defecto');
         return _getDefaultRewards();
       }
 
@@ -651,7 +895,8 @@ class _CupPageState extends State<CupPage> {
       // Primera consulta: obtener todos los rewards para esta semana
       final rewardsResponse = await supabase
           .from('rewards')
-          .select('position, object_id, coins_reward, week_start, week_end')
+          .select(
+              'id, user_game_id, position, object_id, coins_reward, claimed, week_start, week_end')
           .eq('week_start', weekStartStr)
           .eq('week_end', weekEndStr)
           .order('position', ascending: true);
@@ -667,7 +912,8 @@ class _CupPageState extends State<CupPage> {
             'No rewards found for specific week, trying to get any active rewards');
         finalRewardsResponse = await supabase
             .from('rewards')
-            .select('position, object_id, coins_reward, week_start, week_end')
+            .select(
+                'id, user_game_id, position, object_id, coins_reward, claimed, week_start, week_end')
             .order('position', ascending: true)
             .limit(10);
         debugPrint(
@@ -757,9 +1003,14 @@ class _CupPageState extends State<CupPage> {
         }
 
         rewards.add({
+          'id': item['id'],
+          'user_game_id': item['user_game_id'],
           'position': item['position'],
           'object_id': objectId,
           'coins_reward': coinsReward ?? 0,
+          'claimed': item['claimed'] == true,
+          'week_start': item['week_start'],
+          'week_end': item['week_end'],
           'image_url': imageUrl ?? 'assets/images/refmmp.png',
           'object_category': objectCategory,
           'object_name': objectName,
@@ -781,9 +1032,14 @@ class _CupPageState extends State<CupPage> {
         for (int pos = 1; pos <= 3; pos++) {
           if (!rewards.any((r) => r['position'] == pos)) {
             rewards.add({
+              'id': null,
+              'user_game_id': null,
               'position': pos,
               'object_id': null,
               'coins_reward': _getDefaultCoins(pos),
+              'claimed': false,
+              'week_start': weekStartStr,
+              'week_end': weekEndStr,
               'image_url': 'assets/images/coin.png',
               'object_category': 'coins',
               'object_name': '${_getDefaultCoins(pos)} Monedas',
@@ -805,10 +1061,16 @@ class _CupPageState extends State<CupPage> {
             'Final reward - Position: ${reward['position']}, Name: ${reward['object_name']}, HasObject: ${reward['has_object']}, HasCoins: ${reward['has_coins']}, Coins: ${reward['coins_reward']}');
       }
 
+      await _saveRewardsToCache(rewards);
+
       return rewards;
     } catch (e, stackTrace) {
       debugPrint(
           'Error al obtener datos de premios: $e\nStack trace: $stackTrace');
+      final cachedRewards = await _loadRewardsFromCache();
+      if (cachedRewards.isNotEmpty) {
+        return cachedRewards;
+      }
       return _getDefaultRewards();
     }
   }
@@ -1290,6 +1552,70 @@ class _CupPageState extends State<CupPage> {
                         textAlign: TextAlign.center,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: themeProvider.isDarkMode
+                            ? Colors.black54
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue, width: 1.6),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.timer_outlined, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Text(
+                                'Reinicio semanal (domingo 23:00)',
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _formatCountdown(_timeUntilWeeklyReset),
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 24,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_canManageRewards) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _isOnline ? _openRewardsForm : null,
+                              icon: const Icon(Icons.add, color: Colors.white),
+                              label: const Text(
+                                'Agregar recompensa',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     FutureBuilder<List<Map<String, dynamic>>>(
                       future: _rewardsFuture,
@@ -1319,391 +1645,350 @@ class _CupPageState extends State<CupPage> {
                         debugPrint(
                             'Rewards FutureBuilder: Rendering ${rewardsList.length} rewards');
 
+                        final sortedRewards =
+                            List<Map<String, dynamic>>.from(rewardsList)
+                              ..sort((a, b) {
+                                final aPos =
+                                    (a['position'] as num?)?.toInt() ?? 999;
+                                final bPos =
+                                    (b['position'] as num?)?.toInt() ?? 999;
+                                return aPos.compareTo(bPos);
+                              });
+
+                        final Map<int, Map<String, dynamic>> byPosition = {};
+                        for (final reward in sortedRewards) {
+                          final pos = (reward['position'] as num?)?.toInt();
+                          if (pos == null) continue;
+                          byPosition[pos] = reward;
+                        }
+
+                        final podiumRewards = <Map<String, dynamic>>[];
+                        for (final pos in [1, 2, 3]) {
+                          if (byPosition[pos] != null) {
+                            podiumRewards.add(byPosition[pos]!);
+                          }
+                        }
+
+                        final remainingRewards = sortedRewards
+                            .where((reward) =>
+                                ((reward['position'] as num?)?.toInt() ?? 0) >
+                                3)
+                            .toList();
+
+                        Widget buildRewardMedia(Map<String, dynamic> reward,
+                            {double size = 72}) {
+                          final imageUrl =
+                              (reward['image_url'] ?? '').toString();
+                          final objectCategory = reward['object_category'];
+                          return Container(
+                            width: size,
+                            height: size,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: Colors.grey.shade300, width: 1.2),
+                            ),
+                            padding: const EdgeInsets.all(6),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child:
+                                  _buildRewardImage(imageUrl, objectCategory),
+                            ),
+                          );
+                        }
+
+                        Widget buildPodiumCard(Map<String, dynamic> reward,
+                            {required int position}) {
+                          final hasObject = reward['has_object'] == true;
+                          final hasCoins = reward['has_coins'] == true;
+                          final isCoinsOnly = !hasObject && hasCoins;
+                          final hasObjectAndCoins = hasObject && hasCoins;
+                          final coins =
+                              (reward['coins_reward'] as num?)?.toInt() ?? 0;
+                          final objectName =
+                              (reward['object_name'] ?? 'Sin premio')
+                                  .toString();
+                          final objectDescription =
+                              reward['object_description'];
+                          final canTap =
+                              (hasObject && objectDescription != null) ||
+                                  hasCoins;
+
+                          String title;
+                          IconData trophyIcon;
+                          Color accent;
+                          Color bg;
+
+                          if (position == 1) {
+                            title = 'Primer\nPuesto';
+                            trophyIcon = Icons.emoji_events;
+                            accent = const Color(0xFFE0B100);
+                            bg = const Color(0xFFFFF9E8);
+                          } else if (position == 2) {
+                            title = 'Segundo\nPuesto';
+                            trophyIcon = Icons.emoji_events;
+                            accent = const Color(0xFF9BA3AF);
+                            bg = const Color(0xFFF2F4F7);
+                          } else {
+                            title = 'Tercer\nPuesto';
+                            trophyIcon = Icons.emoji_events;
+                            accent = const Color(0xFFB87333);
+                            bg = const Color(0xFFFFF3EC);
+                          }
+
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: canTap
+                                  ? () => _showRewardDialog(context, reward)
+                                  : null,
+                              child: Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                padding:
+                                    const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                                decoration: BoxDecoration(
+                                  color: bg,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: accent, width: 1.8),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withOpacity(0.15),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Icon(trophyIcon,
+                                            color: accent, size: 30),
+                                        if (_canManageRewards &&
+                                            reward['id'] != null)
+                                          InkWell(
+                                            onTap: _isOnline
+                                                ? () => _openEditReward(reward)
+                                                : null,
+                                            child: const Padding(
+                                              padding: EdgeInsets.all(2),
+                                              child: Icon(Icons.edit,
+                                                  color: Colors.black87,
+                                                  size: 18),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      title,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (hasObject || hasCoins)
+                                      buildRewardMedia(reward, size: 70)
+                                    else
+                                      Container(
+                                        width: 70,
+                                        height: 70,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          border: Border.all(
+                                              color: Colors.grey.shade300),
+                                        ),
+                                        child: const Icon(Icons.help_outline,
+                                            color: Colors.grey),
+                                      ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      isCoinsOnly
+                                          ? '+$coins monedas'
+                                          : objectName,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: isCoinsOnly
+                                            ? Colors.orange.shade700
+                                            : Colors.black87,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    if (hasObjectAndCoins) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '+$coins monedas',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        Widget buildCompactRewardRow(
+                            Map<String, dynamic> reward) {
+                          final position =
+                              (reward['position'] as num?)?.toInt() ?? 0;
+                          final hasObject = reward['has_object'] == true;
+                          final hasCoins = reward['has_coins'] == true;
+                          final isCoinsOnly = !hasObject && hasCoins;
+                          final hasObjectAndCoins = hasObject && hasCoins;
+                          final coins =
+                              (reward['coins_reward'] as num?)?.toInt() ?? 0;
+                          final objectName =
+                              (reward['object_name'] ?? 'Sin premio')
+                                  .toString();
+                          final objectDescription =
+                              reward['object_description'];
+                          final canTap =
+                              (hasObject && objectDescription != null) ||
+                                  hasCoins;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.03),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.blue.shade100),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: canTap
+                                  ? () => _showRewardDialog(context, reward)
+                                  : null,
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Text(
+                                      '$position',
+                                      style: TextStyle(
+                                        color: Colors.blue.shade800,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  buildRewardMedia(reward, size: 44),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isCoinsOnly
+                                              ? '+$coins monedas'
+                                              : objectName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                            color: isCoinsOnly
+                                                ? Colors.orange.shade700
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                        if (hasObjectAndCoins) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '+$coins monedas',
+                                            style: TextStyle(
+                                              color: Colors.orange.shade700,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  if (_canManageRewards && reward['id'] != null)
+                                    IconButton(
+                                      tooltip: 'Editar recompensa',
+                                      onPressed: _isOnline
+                                          ? () => _openEditReward(reward)
+                                          : null,
+                                      icon: const Icon(Icons.edit,
+                                          color: Colors.blue),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: themeProvider.isDarkMode
                                 ? Colors.black54
                                 : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.blue, width: 2),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.blue, width: 1.8),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: rewardsList.map((reward) {
-                              final position = reward['position'];
-                              final imageUrl = reward['image_url'];
-                              final coins = reward['coins_reward'] ?? 0;
-                              final objectCategory = reward['object_category'];
-                              final objectName = reward['object_name'];
-
-                              final hasObject = reward['has_object'] ?? false;
-                              final hasCoins = reward['has_coins'] ?? false;
-                              final objectDescription =
-                                  reward['object_description'];
-
-                              String positionText;
-                              Color trophyColor;
-
-                              switch (position) {
-                                case 1:
-                                  positionText = 'Primer Puesto';
-                                  trophyColor = Colors.amber;
-                                  break;
-                                case 2:
-                                  positionText = 'Segundo Puesto';
-                                  trophyColor = Colors.grey;
-                                  break;
-                                case 3:
-                                  positionText = 'Tercer Puesto';
-                                  trophyColor = const Color(0xFFCD7F32);
-                                  break;
-                                default:
-                                  positionText = position <= 50
-                                      ? 'Puestos ${position} al 50'
-                                      : 'Puesto $position';
-                                  trophyColor = Colors.grey;
-                              }
-
-                              Widget imageWidget;
-                              Widget rewardContent;
-
-                              // Construir widget de imagen
-                              if (imageUrl.startsWith('assets/')) {
-                                imageWidget = Image.asset(
-                                  imageUrl,
-                                  fit: objectCategory == 'trompetas'
-                                      ? BoxFit.contain
-                                      : BoxFit.cover,
-                                  width: 40,
-                                  height: 40,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                    );
-                                  },
-                                );
-                              } else if (File(imageUrl).existsSync()) {
-                                imageWidget = Image.file(
-                                  File(imageUrl),
-                                  fit: objectCategory == 'trompetas'
-                                      ? BoxFit.contain
-                                      : BoxFit.cover,
-                                  width: 40,
-                                  height: 40,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                    );
-                                  },
-                                );
-                              } else if (Uri.tryParse(imageUrl)?.isAbsolute ==
-                                  true) {
-                                imageWidget = CachedNetworkImage(
-                                  imageUrl: imageUrl,
-                                  cacheManager: CustomCacheManager.instance,
-                                  fit: objectCategory == 'trompetas'
-                                      ? BoxFit.contain
-                                      : BoxFit.cover,
-                                  width: 40,
-                                  height: 40,
-                                  placeholder: (context, url) => const Center(
-                                    child: CircularProgressIndicator(
-                                        color: Colors.blue),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    return Image.asset(
-                                      'assets/images/refmmp.png',
-                                      fit: BoxFit.cover,
-                                      width: 40,
-                                      height: 40,
-                                    );
-                                  },
-                                );
-                              } else {
-                                imageWidget = Image.asset(
-                                  'assets/images/refmmp.png',
-                                  fit: BoxFit.cover,
-                                  width: 40,
-                                  height: 40,
-                                );
-                              }
-
-                              // Construir contenido según el tipo de recompensa
-                              if (hasObject && hasCoins) {
-                                // Caso: Objeto + Monedas
-                                rewardContent = Column(
+                            children: [
+                              if (podiumRewards.isNotEmpty) ...[
+                                Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Primera fila: Imagen y nombre del objeto
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            shape: objectCategory == 'avatares'
-                                                ? BoxShape.circle
-                                                : BoxShape.rectangle,
-                                            borderRadius:
-                                                objectCategory != 'avatares'
-                                                    ? BorderRadius.circular(8)
-                                                    : null,
-                                            border: Border.all(
-                                                color: Colors.blue, width: 1.5),
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                objectCategory == 'avatares'
-                                                    ? BorderRadius.circular(20)
-                                                    : BorderRadius.circular(8),
-                                            child: imageWidget,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Text(
-                                            objectName,
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.blue.shade700,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines:
-                                                2, // Permitir hasta 2 líneas para el nombre
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    // Segunda fila: Solo las monedas con padding para alinear
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 52),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize
-                                            .min, // Agregar esto para evitar overflow
-                                        children: [
-                                          Flexible(
-                                            // Cambiar a Flexible en lugar de usar directamente
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Image.asset(
-                                                  'assets/images/coin.png',
-                                                  width: 16,
-                                                  height: 16,
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (context, error,
-                                                          stackTrace) =>
-                                                      const Icon(
-                                                    Icons.monetization_on,
-                                                    size: 16,
-                                                    color: Colors.amber,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Flexible(
-                                                  // Hacer el texto flexible
-                                                  child: Text(
-                                                    '+$coins monedas',
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      color:
-                                                          Colors.amber.shade700,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                    for (final reward in podiumRewards)
+                                      buildPodiumCard(
+                                        reward,
+                                        position: (reward['position'] as num?)
+                                                ?.toInt() ??
+                                            0,
                                       ),
-                                    ),
                                   ],
-                                );
-                              } else if (hasObject && !hasCoins) {
-                                // Caso: Solo Objeto - mantener igual
-                                rewardContent = Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        shape: objectCategory == 'avatares'
-                                            ? BoxShape.circle
-                                            : BoxShape.rectangle,
-                                        borderRadius:
-                                            objectCategory != 'avatares'
-                                                ? BorderRadius.circular(8)
-                                                : null,
-                                        border: Border.all(
-                                            color: Colors.blue, width: 1.5),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius:
-                                            objectCategory == 'avatares'
-                                                ? BorderRadius.circular(20)
-                                                : BorderRadius.circular(8),
-                                        child: imageWidget,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        objectName,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.blue.shade700,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 2,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else if (!hasObject && hasCoins) {
-                                // Caso: Solo Monedas - mejorar también
-                                rewardContent = Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: Colors.blue, width: 1.5),
-                                        color: Colors.amber.shade50,
-                                      ),
-                                      child: Center(
-                                        child: Image.asset(
-                                          'assets/images/coin.png',
-                                          width: 24,
-                                          height: 24,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (context, error,
-                                                  stackTrace) =>
-                                              const Icon(Icons.monetization_on,
-                                                  size: 24,
-                                                  color: Colors.amber),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        '$coins Monedas',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.blue.shade700,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                // Caso: Sin recompensa - mantener igual
-                                rewardContent = Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: Colors.grey, width: 1.5),
-                                        color: Colors.grey.shade100,
-                                      ),
-                                      child: const Icon(Icons.help_outline,
-                                          color: Colors.grey),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        'Sin premio asignado',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }
-
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                child: GestureDetector(
-                                  onTap: (hasObject &&
-                                              objectDescription != null) ||
-                                          hasCoins
-                                      ? () => _showRewardDialog(context, reward)
-                                      : null,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      color: (hasObject &&
-                                                  objectDescription != null) ||
-                                              hasCoins
-                                          ? Colors.blue.withOpacity(0.05)
-                                          : Colors.transparent,
-                                    ),
-                                    child: IntrinsicHeight(
-                                      // Agregar esto para mejor control de altura
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Icon(
-                                            Icons.emoji_events_rounded,
-                                            color: trophyColor,
-                                            size: 28,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          SizedBox(
-                                            width: 120,
-                                            child: Text(
-                                              positionText,
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.blue,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: rewardContent,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                ),
+                              ],
+                              if (remainingRewards.isNotEmpty) ...[
+                                const SizedBox(height: 14),
+                                Text(
+                                  'Más premios',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade700,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
                                   ),
                                 ),
-                              );
-                            }).toList(),
+                                const SizedBox(height: 8),
+                                ...remainingRewards
+                                    .map(buildCompactRewardRow)
+                                    .toList(),
+                              ],
+                            ],
                           ),
                         );
                       },
