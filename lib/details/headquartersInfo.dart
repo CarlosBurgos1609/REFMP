@@ -869,8 +869,16 @@ class _HeadquartersInfoState extends State<HeadquartersInfo> {
                       floating: false,
                       pinned: true,
                       leading: IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_rounded,
-                            color: Colors.white),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_rounded,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 2)
+                          ],
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                       backgroundColor: Colors.blue,
