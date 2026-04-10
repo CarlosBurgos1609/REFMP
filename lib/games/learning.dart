@@ -1257,257 +1257,263 @@ class _LearningPageState extends State<LearningPage> {
                         final canAccess = _canAccessLevel(levelNumber);
                         final progress = levelProgress[level['id']] ?? 0.0;
                         final isCompleted = progress >= 1.0;
+                        final levelName =
+                            (level['name'] ?? 'Sin nombre').toString();
+                        final levelDescription =
+                            (level['description'] ?? '').toString();
+                        final levelImage = (level['image'] ?? '').toString();
+                        final isDark =
+                            Theme.of(context).brightness == Brightness.dark;
+                        final cardColor =
+                            isDark ? const Color(0xFF1F2937) : Colors.white;
+                        final titleColor = isCompleted
+                            ? Colors.green
+                            : canAccess
+                                ? (isDark
+                                    ? Colors.lightBlue.shade200
+                                    : Colors.blue)
+                                : (isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600);
+                        final subtitleColor = isDark
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade700;
+                        final imageBg = isDark
+                            ? const Color(0xFF111827)
+                            : Colors.blue.shade50;
+                        final statusText = isCompleted
+                            ? 'Nivel completado'
+                            : levelNumber == currentUserLevel
+                                ? 'Nivel actual'
+                                : 'En progreso';
 
                         return Card(
                           margin: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 6),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          child: Stack(
-                            children: [
-                              // Overlay para niveles bloqueados
-                              if (!canAccess)
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.withOpacity(0.7),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.lock,
-                                        size: 40,
-                                        color: Colors.white,
+                              borderRadius: BorderRadius.circular(16)),
+                          color: cardColor,
+                          elevation: 3,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: canAccess
+                                ? () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => SubnivelesPage(
+                                          levelId: level['id'],
+                                          levelTitle: levelName,
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ),
-
-                              // Contenido principal
-                              Column(
+                                    ).then((_) {
+                                      _calculateLevelProgress();
+                                    });
+                                  }
+                                : () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Debes completar el nivel ${levelNumber - 1} primero'),
+                                        backgroundColor: Colors.orange,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  },
+                            child: Padding(
+                              padding: const EdgeInsets.all(0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  ListTile(
-                                    leading: Stack(
-                                      children: [
-                                        Container(
-                                          width: 60,
-                                          height: 60,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            color: Colors.grey[200],
+                                  Stack(
+                                    children: [
+                                      SizedBox(
+                                        height: 190,
+                                        width: double.infinity,
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              const BorderRadius.vertical(
+                                            top: Radius.circular(16),
                                           ),
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            child: level['image'] != null &&
-                                                    level['image']
-                                                        .toString()
-                                                        .isNotEmpty
+                                          child: Container(
+                                            color: imageBg,
+                                            child: levelImage.isNotEmpty
                                                 ? CachedNetworkImage(
-                                                    imageUrl: level['image'],
-                                                    width: 60,
-                                                    height: 60,
+                                                    imageUrl: levelImage,
+                                                    width: double.infinity,
+                                                    height: 190,
                                                     fit: BoxFit.cover,
                                                     placeholder:
                                                         (context, url) =>
                                                             Container(
-                                                      width: 60,
-                                                      height: 60,
-                                                      color: Colors.grey[300],
-                                                      child: const Center(
-                                                        child: SizedBox(
-                                                          width: 20,
-                                                          height: 20,
-                                                          child:
-                                                              CircularProgressIndicator(
-                                                            strokeWidth: 2,
-                                                            color: Colors.blue,
-                                                          ),
+                                                      color: imageBg,
+                                                      child: Center(
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          color: isDark
+                                                              ? Colors.lightBlue
+                                                              : Colors.blue,
                                                         ),
                                                       ),
                                                     ),
                                                     errorWidget:
                                                         (context, url, error) =>
                                                             Container(
-                                                      width: 60,
-                                                      height: 60,
-                                                      color:
-                                                          Colors.blue.shade100,
-                                                      child: const Icon(
+                                                      color: imageBg,
+                                                      child: Icon(
                                                         Icons.school,
-                                                        size: 30,
-                                                        color: Colors.blue,
+                                                        size: 54,
+                                                        color: isDark
+                                                            ? Colors.lightBlue
+                                                            : Colors.blue,
                                                       ),
                                                     ),
                                                   )
-                                                : Container(
-                                                    width: 60,
-                                                    height: 60,
-                                                    color: Colors.blue.shade100,
-                                                    child: const Icon(
-                                                      Icons.school,
-                                                      size: 30,
-                                                      color: Colors.blue,
-                                                    ),
+                                                : Icon(
+                                                    Icons.school,
+                                                    size: 54,
+                                                    color: isDark
+                                                        ? Colors.lightBlue
+                                                        : Colors.blue,
                                                   ),
                                           ),
                                         ),
-                                        // Indicador de completado
-                                        if (isCompleted)
-                                          Positioned(
-                                            bottom: 0,
-                                            right: 0,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                    color: Colors.white,
-                                                    width: 2),
-                                              ),
-                                              child: const Icon(
-                                                Icons.check,
-                                                color: Colors.white,
-                                                size: 16,
-                                              ),
+                                      ),
+                                      if (!canAccess)
+                                        Positioned.fill(
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                              top: Radius.circular(16),
                                             ),
-                                          ),
-                                      ],
-                                    ),
-                                    title: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            'Nivel $levelNumber: ${level['name']}',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: canAccess
-                                                  ? Colors.blue
-                                                  : Colors.grey,
+                                            child: Container(
+                                              color: Colors.black
+                                                  .withOpacity(0.45),
+                                              child: const Center(
+                                                child: Icon(
+                                                  Icons.lock_rounded,
+                                                  color: Colors.white,
+                                                  size: 36,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                        if (canAccess)
-                                          Text(
-                                            '${(progress * 100).toInt()}%',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: isCompleted
-                                                  ? Colors.green
-                                                  : Colors.orange,
-                                              fontWeight: FontWeight.bold,
+                                      if (isCompleted)
+                                        Positioned(
+                                          right: 10,
+                                          bottom: 10,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(3),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 2,
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.check,
+                                              size: 14,
+                                              color: Colors.white,
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                    subtitle: Column(
+                                        ),
+                                    ],
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        14, 14, 14, 14),
+                                    child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          level['description'],
+                                          'Nivel $levelNumber: $levelName',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: canAccess
-                                                ? Colors.grey
-                                                : Colors.grey,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: titleColor,
                                           ),
                                         ),
-                                        const SizedBox(height: 8),
-                                        // Barra de progreso
-                                        if (canAccess) ...[
-                                          LinearProgressIndicator(
-                                            value: progress,
-                                            backgroundColor: Colors.grey[300],
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                              isCompleted
-                                                  ? Colors.green
-                                                  : Colors.blue,
-                                            ),
-                                            minHeight: 6,
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          levelDescription.isNotEmpty
+                                              ? levelDescription
+                                              : 'Sin descripción disponible',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: subtitleColor,
                                           ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            isCompleted
-                                                ? '¡Nivel completado!'
-                                                : levelNumber ==
-                                                        currentUserLevel
-                                                    ? 'Nivel actual'
-                                                    : 'Completado',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: isCompleted
-                                                  ? Colors.green
-                                                  : levelNumber ==
-                                                          currentUserLevel
-                                                      ? Colors.blue
-                                                      : Colors.grey,
-                                              fontWeight: FontWeight.w500,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        if (canAccess) ...[
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            child: LinearProgressIndicator(
+                                              value: progress,
+                                              minHeight: 10,
+                                              backgroundColor: isDark
+                                                  ? Colors.grey.shade700
+                                                  : Colors.grey.shade300,
+                                              valueColor:
+                                                  const AlwaysStoppedAnimation<
+                                                      Color>(
+                                                Colors.green,
+                                              ),
                                             ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                statusText,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isCompleted
+                                                      ? Colors.green
+                                                      : levelNumber ==
+                                                              currentUserLevel
+                                                          ? (isDark
+                                                              ? Colors.lightBlue
+                                                              : Colors.blue)
+                                                          : subtitleColor,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const Spacer(),
+                                              Text(
+                                                '${(progress * 100).toInt()}%',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ] else ...[
-                                          Container(
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey[300],
-                                              borderRadius:
-                                                  BorderRadius.circular(3),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
                                           Text(
                                             'Completa el nivel anterior para desbloquear',
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Colors.grey,
+                                              color: subtitleColor,
                                               fontStyle: FontStyle.italic,
                                             ),
                                           ),
                                         ],
                                       ],
                                     ),
-                                    trailing: canAccess
-                                        ? Icon(Icons.arrow_forward_ios,
-                                            color: Colors.blue)
-                                        : Icon(Icons.lock_outline,
-                                            color: Colors.grey),
-                                    onTap: canAccess
-                                        ? () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    SubnivelesPage(
-                                                  levelId: level[
-                                                      'id'], // UUID del nivel
-                                                  levelTitle: level[
-                                                      'name'], // Opcional: título para AppBar
-                                                ),
-                                              ),
-                                            ).then((_) {
-                                              // Refrescar progreso cuando regrese de subniveles
-                                              _calculateLevelProgress();
-                                            });
-                                          }
-                                        : () {
-                                            // Mostrar mensaje de nivel bloqueado
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                    'Debes completar el nivel ${levelNumber - 1} primero'),
-                                                backgroundColor: Colors.orange,
-                                                duration:
-                                                    const Duration(seconds: 2),
-                                              ),
-                                            );
-                                          },
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         );
                       },
