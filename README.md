@@ -14,7 +14,7 @@
 
 <div align='center'>
   
-[![Descargar la versión v1.1.0](https://img.shields.io/badge/Descargar%20v1.1.0-REFMP-blue?style=for-the-badge&logo=android)](https://github.com/CarlosBurgos1609/REFMP/releases/download/v1.1.0/REFMP.apk)
+[![Descargar la versión v1.1.1](https://img.shields.io/badge/Descargar%20v1.1.1-REFMP-blue?style=for-the-badge&logo=android)](https://github.com/CarlosBurgos1609/REFMP/releases/download/v1.1.1/REFMP.apk)
 
 [![GitHub](https://img.shields.io/badge/GitHub-Repositorio-black?style=for-the-badge&logo=github)](https://github.com/CarlosBurgos1609/REFMP)
 
