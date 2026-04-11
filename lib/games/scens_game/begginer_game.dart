@@ -186,6 +186,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   static const int _openNoteAutoHitWindowMs = 90;
   static const int _pistonTransitionMissGraceMs = 170;
   static const double _continuousHitCenterLockRatio = 0.60;
+  static const bool _enableHaptics = false;
 
   bool showLogo = true;
   bool showCountdown = false;
@@ -253,6 +254,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   String? _songTrackUrl;
   String? _songTrackLocalPath;
   bool _isSongTrackPlaying = false;
+  bool _isSongTrackPrepared = false;
   bool _countdownWasStarted = false;
   bool _isPreparingTrackAfterCountdown = false;
 
@@ -559,10 +561,53 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     }
   }
 
+  Future<void> _prepareSongTrackForInstantStart() async {
+    if (!_useTrackOnlyMode) return;
+    if (_isSongTrackPrepared) return;
+
+    await _ensureSongTrackReady();
+
+    try {
+      await _songTrackPlayer.stop();
+
+      if (_songTrackLocalPath != null &&
+          File(_songTrackLocalPath!).existsSync()) {
+        await _songTrackPlayer.setVolume(0);
+        await _songTrackPlayer.play(DeviceFileSource(_songTrackLocalPath!));
+      } else if (_songTrackUrl != null && _songTrackUrl!.isNotEmpty) {
+        await _songTrackPlayer.setVolume(0);
+        await _songTrackPlayer.play(UrlSource(_songTrackUrl!));
+      } else {
+        return;
+      }
+
+      await _songTrackPlayer.pause();
+      await _songTrackPlayer.seek(Duration.zero);
+      await _songTrackPlayer.setVolume(1.0);
+      await _songTrackPlayer.setPlaybackRate(1.0);
+
+      _isSongTrackPlaying = false;
+      _isSongTrackPrepared = true;
+      print('✅ Song track preloaded and ready before countdown');
+    } catch (e) {
+      print('⚠️ Could not prewarm track before countdown: $e');
+      _isSongTrackPrepared = false;
+    }
+  }
+
   Future<void> _startSongTrackNow() async {
     if (_isSongTrackPlaying) return;
 
     try {
+      if (_isSongTrackPrepared) {
+        await _songTrackPlayer.seek(Duration.zero);
+        await _songTrackPlayer.setVolume(1.0);
+        await _songTrackPlayer.setPlaybackRate(1.0);
+        await _songTrackPlayer.resume();
+        _isSongTrackPlaying = true;
+        return;
+      }
+
       if (_songTrackLocalPath != null &&
           File(_songTrackLocalPath!).existsSync()) {
         await _songTrackPlayer.play(DeviceFileSource(_songTrackLocalPath!));
@@ -617,6 +662,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       await _songTrackPlayer.stop();
     } catch (_) {}
     _isSongTrackPlaying = false;
+    _isSongTrackPrepared = false;
   }
 
   Future<void> _applyTrackPenalty() async {
@@ -1781,7 +1827,7 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
     if (_useTrackOnlyMode) {
       await _cacheSongDataOffline();
-      await _ensureSongTrackReady();
+      await _prepareSongTrackForInstantStart();
     } else {
       await _ensureFirstNoteAudioReady();
     }
@@ -1822,7 +1868,6 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
   Future<void> _startTrackThenGameAfterCountdown() async {
     try {
       if (_useTrackOnlyMode) {
-        await _ensureSongTrackReady();
         await _startSongTrackNow();
       }
     } finally {
@@ -2197,6 +2242,13 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
                   print(
                       '🔇 Audio continuo activo - no reproducir nota de aire automática');
                 }
+
+                // Las notas al aire tambien cuentan para recuperar el estado del track.
+                if (_isAudioContinuous) {
+                  _audioController.onPlayerHit(<int>{});
+                  _playerIsOnTrack = true;
+                }
+                _clearTrackPenalty();
 
                 _onNoteHit(note.noteName, 0.0);
                 continue; // Pasar a la siguiente nota
@@ -2739,7 +2791,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
             _clearTrackPenalty();
 
             // Feedback háptico
-            HapticFeedback.mediumImpact();
+            if (_enableHaptics) {
+              HapticFeedback.mediumImpact();
+            }
 
             return;
           } else {
@@ -3195,13 +3249,19 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
     // timingQuality: 0.0 = centro perfecto, 1.0 = borde de tolerancia
     if (timingQuality <= 0.05) {
       _showFeedback('Perfecto', Colors.green);
-      HapticFeedback.mediumImpact();
+      if (_enableHaptics) {
+        HapticFeedback.mediumImpact();
+      }
     } else if (timingQuality <= 0.6) {
       _showFeedback('Bien', Colors.blue);
-      HapticFeedback.lightImpact();
+      if (_enableHaptics) {
+        HapticFeedback.lightImpact();
+      }
     } else {
       _showFeedback('Regular', Colors.orange);
-      HapticFeedback.lightImpact();
+      if (_enableHaptics) {
+        HapticFeedback.lightImpact();
+      }
     }
   }
 
@@ -3213,7 +3273,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
       currentScore = (currentScore - 5).clamp(0, double.infinity).toInt();
     });
 
-    HapticFeedback.heavyImpact();
+    if (_enableHaptics) {
+      HapticFeedback.heavyImpact();
+    }
   }
 
   // NUEVO: Método para mostrar feedback visual temporal
@@ -4916,7 +4978,9 @@ class _BegginnerGamePageState extends State<BegginnerGamePage>
 
   void _onPistonPressed(int pistonNumber) {
     // Feedback háptico
-    HapticFeedback.lightImpact();
+    if (_enableHaptics) {
+      HapticFeedback.lightImpact();
+    }
 
     final currentTime = DateTime.now().millisecondsSinceEpoch;
     _lastPistonTransitionMs = currentTime;
