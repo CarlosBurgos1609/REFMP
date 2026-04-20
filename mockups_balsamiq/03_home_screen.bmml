@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mockup version="1.0" skin="sketch" fontFace="Balsamiq Sans" measuredW="375" measuredH="812">
+  <controls>
+    <!-- Background -->
+    <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="375" h="812" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>16777215</color>
+      </controlProperties>
+    </control>
+    
+    <!-- Header with Logo -->
+    <control controlID="1" controlTypeID="Image" x="0" y="0" w="375" h="120" measuredW="77" measuredH="79" zOrder="1" locked="false" isInGroup="-1">
+      <controlProperties>
+        <src>assets%3A/images/logofn.png</src>
+        <text>REFMP%20Header%20Logo</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Menu Icon -->
+    <control controlID="2" controlTypeID="Icon" x="20" y="40" w="30" h="30" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="-1">
+      <controlProperties>
+        <icon>MenuIcon%7Cmedium</icon>
+      </controlProperties>
+    </control>
+    
+    <!-- Profile Icon -->
+    <control controlID="3" controlTypeID="Icon" x="320" y="40" w="35" h="35" measuredW="24" measuredH="24" zOrder="3" locked="false" isInGroup="-1">
+      <controlProperties>
+        <icon>CircleIcon%7Cmedium</icon>
+        <color>13421772</color>
+      </controlProperties>
+    </control>
+    
+    <!-- Divider -->
+    <control controlID="4" controlTypeID="HRule" x="20" y="140" w="335" h="5" measuredW="100" measuredH="5" zOrder="4" locked="false" isInGroup="-1">
+    </control>
+    
+    <!-- Sedes Section Title -->
+    <control controlID="5" controlTypeID="Label" x="30" y="160" w="100" h="30" measuredW="100" measuredH="30" zOrder="5" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>2848996</color>
+        <size>20</size>
+        <text>Sedes</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Sedes Carousel -->
+    <control controlID="6" controlTypeID="__group__" x="20" y="200" w="335" h="200" measuredW="335" measuredH="200" zOrder="6" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <!-- Sede Card 1 -->
+        <control controlID="0" controlTypeID="Canvas" x="10" y="0" w="150" h="180" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="6">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Image" x="15" y="5" w="140" h="100" measuredW="77" measuredH="79" zOrder="1" locked="false" isInGroup="6">
+          <controlProperties>
+            <text>Sede%20Image</text>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="15" y="110" w="140" h="20" measuredW="100" measuredH="20" zOrder="2" locked="false" isInGroup="6">
+          <controlProperties>
+            <bold>true</bold>
+            <color>2848996</color>
+            <text>Sede%20Principal</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Paragraph" x="15" y="130" w="140" h="45" measuredW="200" measuredH="80" zOrder="3" locked="false" isInGroup="6">
+          <controlProperties>
+            <size>12</size>
+            <text>Descripci%F3n%20de%20la%20sede%20principal%20con%20informaci%F3n%20relevante.</text>
+          </controlProperties>
+        </control>
+        
+        <!-- Sede Card 2 -->
+        <control controlID="4" controlTypeID="Canvas" x="175" y="0" w="150" h="180" measuredW="100" measuredH="70" zOrder="4" locked="false" isInGroup="6">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="5" controlTypeID="Image" x="180" y="5" w="140" h="100" measuredW="77" measuredH="79" zOrder="5" locked="false" isInGroup="6">
+          <controlProperties>
+            <text>Sede%20Image</text>
+          </controlProperties>
+        </control>
+        <control controlID="6" controlTypeID="Label" x="180" y="110" w="140" h="20" measuredW="100" measuredH="20" zOrder="6" locked="false" isInGroup="6">
+          <controlProperties>
+            <bold>true</bold>
+            <color>2848996</color>
+            <text>Sede%20Norte</text>
+          </controlProperties>
+        </control>
+        <control controlID="7" controlTypeID="Paragraph" x="180" y="130" w="140" h="45" measuredW="200" measuredH="80" zOrder="7" locked="false" isInGroup="6">
+          <controlProperties>
+            <size>12</size>
+            <text>Descripci%F3n%20de%20la%20sede%20norte%20con%20sus%20caracter%EDsticas.</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Carousel Indicators -->
+    <control controlID="7" controlTypeID="__group__" x="170" y="410" w="35" h="10" measuredW="35" measuredH="10" zOrder="7" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="0" y="0" w="10" h="10" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="7">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>CircleIcon%7Csmall</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="12" y="0" w="10" h="10" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="7">
+          <controlProperties>
+            <color>10066329</color>
+            <icon>CircleIcon%7Csmall</icon>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Icon" x="25" y="0" w="10" h="10" measuredW="24" measuredH="24" zOrder="2" locked="false" isInGroup="7">
+          <controlProperties>
+            <color>10066329</color>
+            <icon>CircleIcon%7Csmall</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Divider 2 -->
+    <control controlID="8" controlTypeID="HRule" x="20" y="440" w="335" h="5" measuredW="100" measuredH="5" zOrder="8" locked="false" isInGroup="-1">
+    </control>
+    
+    <!-- Aprende y Juega Section -->
+    <control controlID="9" controlTypeID="Label" x="30" y="460" w="200" h="30" measuredW="200" measuredH="30" zOrder="9" locked="false" isInGroup="-1">
+      <controlProperties>
+        <bold>true</bold>
+        <color>2848996</color>
+        <size>20</size>
+        <text>Aprende%20y%20Juega</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Game Cards -->
+    <control controlID="10" controlTypeID="__group__" x="20" y="500" w="335" h="250" measuredW="335" measuredH="250" zOrder="10" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <!-- Game Card -->
+        <control controlID="0" controlTypeID="Canvas" x="40" y="0" w="255" h="200" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="10">
+          <controlProperties>
+            <borderColor>10066329</borderColor>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Image" x="50" y="10" w="235" h="120" measuredW="77" measuredH="79" zOrder="1" locked="false" isInGroup="10">
+          <controlProperties>
+            <text>Trompeta%20Game</text>
+          </controlProperties>
+        </control>
+        <control controlID="2" controlTypeID="Label" x="50" y="140" w="150" h="25" measuredW="100" measuredH="25" zOrder="2" locked="false" isInGroup="10">
+          <controlProperties>
+            <bold>true</bold>
+            <color>2848996</color>
+            <size>16</size>
+            <text>Trompeta</text>
+          </controlProperties>
+        </control>
+        <control controlID="3" controlTypeID="Button" x="210" y="160" w="70" h="30" measuredW="70" measuredH="30" zOrder="3" locked="false" isInGroup="10">
+          <controlProperties>
+            <color>2848996</color>
+            <size>12</size>
+            <text>%F0%9F%8E%AE%20Jugar</text>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Game Indicators -->
+    <control controlID="11" controlTypeID="__group__" x="170" y="760" w="35" h="10" measuredW="35" measuredH="10" zOrder="11" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Icon" x="0" y="0" w="10" h="10" measuredW="24" measuredH="24" zOrder="0" locked="false" isInGroup="11">
+          <controlProperties>
+            <color>2848996</color>
+            <icon>CircleIcon%7Csmall</icon>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="12" y="0" w="10" h="10" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="11">
+          <controlProperties>
+            <color>10066329</color>
+            <icon>CircleIcon%7Csmall</icon>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+  </controls>
+</mockup>
