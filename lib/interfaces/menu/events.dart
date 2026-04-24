@@ -214,6 +214,7 @@ class _EventsPageState extends State<EventsPage> {
     final futures = await Future.wait([
       supabase.from('users').select().eq('user_id', userId).maybeSingle(),
       supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('directors').select().eq('user_id', userId).maybeSingle(),
       supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
     ]);
 
@@ -229,6 +230,7 @@ class _EventsPageState extends State<EventsPage> {
     final futures = await Future.wait([
       supabase.from('users').select().eq('user_id', userId).maybeSingle(),
       supabase.from('teachers').select().eq('user_id', userId).maybeSingle(),
+      supabase.from('directors').select().eq('user_id', userId).maybeSingle(),
       supabase.from('advisors').select().eq('user_id', userId).maybeSingle(),
     ]);
 
