@@ -27,7 +27,8 @@ class LoginConnections {
         'teachers',
         'advisors',
         'graduates',
-        'parents'
+        'parents',
+        'directors'
       ];
 
       for (final table in tables) {
