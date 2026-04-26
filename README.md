@@ -22,7 +22,8 @@
 
 # 📄 Documentación
 
-En esta sección se presentan los documentos principales relacionados con el desarrollo, uso e implementación de la aplicación REFMP. Estos documentos permiten comprender el funcionamiento del sistema, su instalación, uso y especificaciones técnicas.
+> [!NOTE]
+> En esta sección se presentan los documentos principales relacionados con el desarrollo, uso e implementación de la aplicación REFMP. Estos documentos permiten comprender el funcionamiento del sistema, su instalación, uso y especificaciones técnicas.
 
 ---
 
