@@ -30,7 +30,7 @@
 ## 📘 Documento de Tesis (Versión Final)
 Contiene el desarrollo completo del proyecto, incluyendo marco teórico, metodología, resultados, análisis y conclusiones.
 
-🔗 [Ver documento completo](https://drive.google.com/file/d/1EK791WOFhDb5mB72KTkIuSF_4M6XX3dE/view?usp=sharing)
+🔗 [Ver documento completo](https://drive.google.com/file/d/1kr1dqOE1LWizwm3MHlzBVaVXLlA94VYQ/view?usp=sharing)
 
 ---
 
