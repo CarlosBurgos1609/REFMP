@@ -26,12 +26,13 @@
 > En esta sección se presentan los documentos principales relacionados con el desarrollo, uso e implementación de la aplicación REFMP. Estos documentos permiten comprender el funcionamiento del sistema, su instalación, uso y especificaciones técnicas.
 
 ---
-
+<!--
 ## 📘 Documento de Tesis (Versión Final)
 Contiene el desarrollo completo del proyecto, incluyendo marco teórico, metodología, resultados, análisis y conclusiones.
 
 🔗 [Ver documento completo](https://drive.google.com/file/d/1kr1dqOE1LWizwm3MHlzBVaVXLlA94VYQ/view?usp=sharing)
 
+--->
 ---
 
 ## ⚙️ Manual de Instalación
