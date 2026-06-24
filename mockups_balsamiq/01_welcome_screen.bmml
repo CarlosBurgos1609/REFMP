@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mockup version="1.0" skin="sketch" fontFace="Balsamiq Sans" measuredW="375" measuredH="812">
+  <controls>
+    <!-- Background Circle -->
+    <control controlID="0" controlTypeID="__group__" x="0" y="0" w="375" h="812" measuredW="375" measuredH="812" zOrder="0" locked="false" isInGroup="-1">
+      <groupChildrenDescriptors>
+        <control controlID="0" controlTypeID="Canvas" x="0" y="0" w="375" h="812" measuredW="100" measuredH="70" zOrder="0" locked="false" isInGroup="0">
+          <controlProperties>
+            <color>16777215</color>
+          </controlProperties>
+        </control>
+        <control controlID="1" controlTypeID="Icon" x="-50" y="-50" w="200" h="200" measuredW="24" measuredH="24" zOrder="1" locked="false" isInGroup="0">
+          <controlProperties>
+            <borderColor>2848996</borderColor>
+            <color>2848996</color>
+            <icon>CircleIcon%7Clarge</icon>
+            <size>200</size>
+          </controlProperties>
+        </control>
+      </groupChildrenDescriptors>
+    </control>
+    
+    <!-- Logo -->
+    <control controlID="1" controlTypeID="Image" x="37" y="120" w="300" h="81" measuredW="77" measuredH="79" zOrder="1" locked="false" isInGroup="-1">
+      <controlProperties>
+        <src>assets%3A/images/logofn.png</src>
+        <text>REFMP%0ARed%20de%20Escuelas%20de%20Formaci%F3n%20Musical%20de%20Pasto</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Description Text -->
+    <control controlID="2" controlTypeID="Paragraph" x="30" y="230" w="315" h="200" measuredW="275" measuredH="80" zOrder="2" locked="false" isInGroup="-1">
+      <controlProperties>
+        <align>left</align>
+        <size>16</size>
+        <text>La%20Red%20de%20Escuelas%20de%20Formaci%F3n%20Musical%20de%20Pasto%20es%20un%20proyecto%20que%20busca%20fomentar%20la%20educaci%F3n%20musical%20en%20la%20regi%F3n%20mediante%20la%20ense%F1anza%20de%20instrumentos%20y%20la%20promoci%F3n%20de%20la%20cultura%20musical%20local.%20Est%E1%20conformada%20por%20diversas%20escuelas%20y%20centros%20de%20formaci%F3n%20que%20ofrecen%20a%20ni%F1os%2C%20j%F3venes%20y%20adultos%20la%20oportunidad%20de%20aprender%20m%FAsica%20de%20manera%20estructurada.</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Login Button -->
+    <control controlID="3" controlTypeID="Button" x="50" y="480" w="275" h="60" measuredW="275" measuredH="60" zOrder="3" locked="false" isInGroup="-1">
+      <controlProperties>
+        <color>2848996</color>
+        <size>18</size>
+        <text>%F0%9F%91%A4%20Ir%20al%20Inicio%20de%20Sesi%F3n</text>
+      </controlProperties>
+    </control>
+    
+    <!-- Title -->
+    <control controlID="4" controlTypeID="Label" x="30" y="30" w="315" h="30" measuredW="200" measuredH="30" zOrder="4" locked="false" isInGroup="-1">
+      <controlProperties>
+        <align>center</align>
+        <bold>true</bold>
+        <size>20</size>
+        <text>Bienvenido%20a%20REFMP</text>
+      </controlProperties>
+    </control>
+  </controls>
+</mockup>
